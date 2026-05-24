@@ -57,6 +57,35 @@ class _HomePageState extends State<HomePage> {
     await _persistLayout(current);
   }
 
+  /// 编辑态下点尺寸按钮，弹窗选择卡片大小（cw×ch）。
+  Future<void> _openSizeSheet(InstalledPlugin p) async {
+    final picked = await showModalBottomSheet<WoCardSize>(
+      context: context,
+      builder: (_) => _SizeSheet(
+        current: (cw: p.layout.cw, ch: p.layout.ch),
+      ),
+    );
+    if (picked != null && mounted) {
+      await _resize(p, picked.cw, picked.ch);
+    }
+  }
+
+  /// 改变某张卡片的大小并持久化（first-fit 会据新尺寸自动重排）。
+  Future<void> _resize(InstalledPlugin p, int cw, int ch) async {
+    if (p.layout.cw == cw && p.layout.ch == ch) return;
+    final session = WoScope.of(context);
+    final current = [
+      ..._effectiveOrder(
+        session.bootstrap?.installedPlugins ?? const <InstalledPlugin>[],
+      ),
+    ];
+    final idx = current.indexWhere((e) => e.id == p.id);
+    if (idx < 0) return;
+    current[idx] = p.copyWith(layout: p.layout.copyWith(cw: cw, ch: ch));
+    setState(() => _ordered = current);
+    await _persistLayout(current);
+  }
+
   /// 按新顺序跑 first-fit 算出 col/row，整体提交给后端。失败则回退到后端布局。
   Future<void> _persistLayout(List<InstalledPlugin> ordered) async {
     final session = WoScope.of(context);
@@ -214,6 +243,7 @@ class _HomePageState extends State<HomePage> {
                                   installed: plugins[i],
                                   onRemove: () => _remove(plugins[i]),
                                   onReorder: _reorder,
+                                  onResize: () => _openSizeSheet(plugins[i]),
                                 )
                               : _WidgetCard(
                                   installed: plugins[i],
@@ -259,6 +289,7 @@ class _WidgetCard extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     required this.onRemove,
+    this.onResize,
     this.showRemove = true,
   });
 
@@ -268,7 +299,10 @@ class _WidgetCard extends StatelessWidget {
   final VoidCallback? onLongPress;
   final VoidCallback onRemove;
 
-  /// 拖拽预览（feedback）里不需要再画删除按钮。
+  /// 编辑态下点它弹出尺寸选择；为空则不显示尺寸按钮。
+  final VoidCallback? onResize;
+
+  /// 拖拽预览（feedback）里不需要再画编辑控件（删除 / 尺寸按钮）。
   final bool showRemove;
 
   @override
@@ -377,6 +411,28 @@ class _WidgetCard extends StatelessWidget {
               ),
             ),
           ),
+        if (editing && showRemove && onResize != null)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: GestureDetector(
+              onTap: onResize,
+              child: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.aspect_ratio,
+                  color: Colors.white,
+                  size: 13,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -392,12 +448,14 @@ class _DraggableTile extends StatelessWidget {
     required this.installed,
     required this.onRemove,
     required this.onReorder,
+    required this.onResize,
   });
 
   final int index;
   final InstalledPlugin installed;
   final VoidCallback onRemove;
   final void Function(int from, int to) onReorder;
+  final VoidCallback onResize;
 
   @override
   Widget build(BuildContext context) {
@@ -409,6 +467,7 @@ class _DraggableTile extends StatelessWidget {
           installed: installed,
           editing: true,
           onRemove: onRemove,
+          onResize: onResize,
         );
         final feedback = SizedBox(
           width: c.maxWidth,
@@ -445,6 +504,137 @@ class _DraggableTile extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+/// 卡片尺寸（cw×ch，单位 cell）。
+typedef WoCardSize = ({int cw, int ch});
+
+/// 可选的预设卡片尺寸。
+const _cardSizePresets = <({String label, String hint, int cw, int ch})>[
+  (label: '小', hint: '2×1 · 半宽矮条', cw: 2, ch: 1),
+  (label: '中', hint: '2×2 · 半宽方形', cw: 2, ch: 2),
+  (label: '宽', hint: '4×2 · 通栏', cw: 4, ch: 2),
+];
+
+/// 选择卡片大小的底部弹窗。返回所选 [WoCardSize]（取消则返回 null）。
+class _SizeSheet extends StatelessWidget {
+  const _SizeSheet({required this.current});
+
+  final WoCardSize current;
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: WoTokens.space4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: wo.hairline,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: WoTokens.space4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: WoTokens.space5),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('卡片大小', style: t.titleLarge),
+              ),
+            ),
+            const SizedBox(height: WoTokens.space2),
+            for (final s in _cardSizePresets)
+              _SizeOption(
+                label: s.label,
+                hint: s.hint,
+                cw: s.cw,
+                ch: s.ch,
+                selected: s.cw == current.cw && s.ch == current.ch,
+                onTap: () => Navigator.of(context).pop((cw: s.cw, ch: s.ch)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SizeOption extends StatelessWidget {
+  const _SizeOption({
+    required this.label,
+    required this.hint,
+    required this.cw,
+    required this.ch,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String hint;
+  final int cw;
+  final int ch;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return Material(
+      color: selected ? wo.accentSoft : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: WoTokens.space5,
+            vertical: WoTokens.space3,
+          ),
+          child: Row(
+            children: [
+              // 按 cw×ch 比例画一个迷你预览块。
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: Center(
+                  child: Container(
+                    width: 32 * cw / 4,
+                    height: 32 * ch / 4,
+                    decoration: BoxDecoration(
+                      color: selected ? wo.accent : wo.fgDim,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: WoTokens.space4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: t.titleMedium?.copyWith(
+                        color: selected ? wo.accentDeep : wo.fg,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                    ),
+                    Text(hint, style: t.bodySmall?.copyWith(color: wo.fgMid)),
+                  ],
+                ),
+              ),
+              if (selected) Icon(Icons.check_circle, color: wo.accent, size: 20),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

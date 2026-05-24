@@ -216,6 +216,13 @@ class PluginLayout {
         cw: (j['cw'] as num?)?.toInt() ?? 2,
         ch: (j['ch'] as num?)?.toInt() ?? 2,
       );
+
+  PluginLayout copyWith({int? col, int? row, int? cw, int? ch}) => PluginLayout(
+        col: col ?? this.col,
+        row: row ?? this.row,
+        cw: cw ?? this.cw,
+        ch: ch ?? this.ch,
+      );
 }
 
 class PluginPreview {
@@ -266,6 +273,16 @@ class InstalledPlugin {
         enabled: j['enabled'] as bool? ?? true,
         layout: PluginLayout.fromJson(j['layout'] as Map<String, dynamic>),
         preview: PluginPreview.fromJson(j['preview'] as Map<String, dynamic>),
+      );
+
+  InstalledPlugin copyWith({PluginLayout? layout}) => InstalledPlugin(
+        id: id,
+        familyId: familyId,
+        pluginId: pluginId,
+        plugin: plugin,
+        enabled: enabled,
+        layout: layout ?? this.layout,
+        preview: preview,
       );
 }
 
