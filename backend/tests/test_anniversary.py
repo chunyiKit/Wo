@@ -56,6 +56,81 @@ async def test_delete_anniversary(client: AsyncClient) -> None:
     assert listing.json()["data"] == []
 
 
+async def _create_date(client: AsyncClient, fid: str, **overrides: object) -> dict:
+    """Create one anniversary and return the created record."""
+    payload: dict[str, object] = {"name": "原始", "event_date": "2024-01-01"}
+    payload.update(overrides)
+    response = await client.post(
+        f"/api/v1/families/{fid}/plugins/anniversary/dates",
+        json=payload,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+async def test_update_anniversary_all_fields(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    created = await _create_date(client, fid, emoji="💞", note="旧备注")
+
+    updated = await client.put(
+        f"/api/v1/families/{fid}/plugins/anniversary/dates/{created['id']}",
+        json={
+            "name": "结婚纪念日",
+            "event_date": "2025-06-18",
+            "emoji": "💍",
+            "is_lunar": True,
+            "note": "改到新日期",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    data = updated.json()["data"]
+    assert data["id"] == created["id"]
+    assert data["name"] == "结婚纪念日"
+    assert data["event_date"] == "2025-06-18"
+    assert data["emoji"] == "💍"
+    assert data["is_lunar"] is True
+    assert data["note"] == "改到新日期"
+
+    # 持久化：再 GET 一次确认确实写库了。
+    listing = await client.get(f"/api/v1/families/{fid}/plugins/anniversary/dates")
+    rows = listing.json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["name"] == "结婚纪念日"
+    assert rows[0]["event_date"] == "2025-06-18"
+
+
+async def test_update_anniversary_partial_keeps_other_fields(
+    client: AsyncClient,
+) -> None:
+    fid = await _create_family(client)
+    created = await _create_date(
+        client, fid, name="相识日", event_date="2020-05-20", emoji="🌹", note="保留我"
+    )
+
+    # 只改名字，其余字段应保持不变（exclude_unset 语义）。
+    updated = await client.put(
+        f"/api/v1/families/{fid}/plugins/anniversary/dates/{created['id']}",
+        json={"name": "相识纪念日"},
+    )
+    assert updated.status_code == 200, updated.text
+    data = updated.json()["data"]
+    assert data["name"] == "相识纪念日"
+    assert data["event_date"] == "2020-05-20"
+    assert data["emoji"] == "🌹"
+    assert data["note"] == "保留我"
+
+
+async def test_update_nonexistent_returns_404(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    missing = uuid.uuid4()
+    response = await client.put(
+        f"/api/v1/families/{fid}/plugins/anniversary/dates/{missing}",
+        json={"name": "无所谓"},
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+
+
 async def test_anniversary_non_member_returns_404(client: AsyncClient) -> None:
     fid = await _create_family(client)
     # 小宝 (not a member) tries to read.
