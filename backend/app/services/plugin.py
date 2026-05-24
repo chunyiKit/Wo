@@ -92,6 +92,7 @@ async def install_plugin(
     plugin_id: str,
     actor: User,
     layout: tuple[int, int, int, int] | None = None,
+    config: dict | None = None,
 ) -> InstalledPlugin:
     """Install a plugin into a family.
 
@@ -111,18 +112,20 @@ async def install_plugin(
             details={"plugin_id": plugin_id},
         )
 
-    # Already installed?
-    existing_stmt = select(InstalledPlugin).where(
-        InstalledPlugin.family_id == family_id,
-        InstalledPlugin.plugin_id == plugin_id,
-    )
-    if (await session.execute(existing_stmt)).scalar_one_or_none() is not None:
-        raise AppError(
-            ErrorCode.PLUGIN_ALREADY_INSTALLED,
-            f"插件「{manifest.name}」已经安装",
-            status_code=409,
-            details={"plugin_id": plugin_id},
+    # Already installed? Single-install plugins reject a duplicate; multi-instance
+    # plugins (e.g. anniversary) allow many cards, each with its own config.
+    if not manifest.multi_instance:
+        existing_stmt = select(InstalledPlugin).where(
+            InstalledPlugin.family_id == family_id,
+            InstalledPlugin.plugin_id == plugin_id,
         )
+        if (await session.execute(existing_stmt)).scalar_one_or_none() is not None:
+            raise AppError(
+                ErrorCode.PLUGIN_ALREADY_INSTALLED,
+                f"插件「{manifest.name}」已经安装",
+                status_code=409,
+                details={"plugin_id": plugin_id},
+            )
 
     cells = await _occupied_cells(session, family_id)
     if layout is None:
@@ -147,6 +150,7 @@ async def install_plugin(
         row=row,
         cw=cw,
         ch=ch,
+        config=config or {},
         installed_by=actor.id,
     )
     session.add(installed)
@@ -188,6 +192,34 @@ async def uninstall_plugin(
 
     await session.delete(installed)
     await session.commit()
+
+
+async def update_config(
+    session: AsyncSession,
+    *,
+    family_id: UUID,
+    install_id: UUID,
+    actor: User,
+    config: dict,
+) -> InstalledPlugin:
+    """Replace an installed card's `config` (e.g. which anniversary it pins)."""
+    membership = await require_membership(session, actor.id, family_id)
+    require_admin(membership)
+
+    installed = await session.get(InstalledPlugin, install_id)
+    if installed is None or installed.family_id != family_id:
+        raise AppError(
+            ErrorCode.NOT_FOUND,
+            "安装记录不存在",
+            status_code=404,
+            details={"install_id": str(install_id)},
+        )
+
+    installed.config = config
+    session.add(installed)
+    await session.commit()
+    await session.refresh(installed)
+    return installed
 
 
 # ---- Layout batch update --------------------------------------------------

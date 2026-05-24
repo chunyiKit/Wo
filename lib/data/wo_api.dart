@@ -118,6 +118,19 @@ class WoApi {
   Future<void> uninstallPlugin(String familyId, String installId) =>
       _client.delete('/families/$familyId/plugins/$installId');
 
+  /// 更新某张已装卡片的配置（如纪念日卡绑定 `{anniversary_id: ...}`）。
+  Future<InstalledPlugin> updatePluginConfig(
+    String familyId,
+    String installId,
+    Map<String, dynamic> config,
+  ) async {
+    final data = await _client.patch(
+      '/families/$familyId/plugins/$installId',
+      body: {'config': config},
+    );
+    return InstalledPlugin.fromJson(data as Map<String, dynamic>);
+  }
+
   /// 整体更新家庭首页布局。[items] 必须覆盖且仅覆盖所有已装插件，每项形如
   /// `{install_id, col, row, cw, ch}`。后端会校验越界 / 重叠后原子替换。
   Future<void> updateLayout(

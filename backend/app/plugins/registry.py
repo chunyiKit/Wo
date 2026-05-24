@@ -15,7 +15,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
-from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -54,6 +53,10 @@ class PluginManifest:
     permissions: tuple[Permission, ...] = ()
     screenshots: tuple[str, ...] = ()
     size_kb: int = 0
+    # When True, a family may install this plugin more than once (each card can
+    # be configured independently via InstalledPlugin.config). Defaults to
+    # single-install.
+    multi_instance: bool = False
 
 
 class PluginPreview(BaseModel):
@@ -65,9 +68,12 @@ class PluginPreview(BaseModel):
     color_token: ColorToken
 
 
-# A preview hook receives the session + family_id and returns a fresh preview.
-# Plugins that don't register one fall back to a default (plugin name only).
-PreviewProvider = Callable[[AsyncSession, UUID], Awaitable[PluginPreview]]
+# A preview hook receives the session + the installed-plugin row (so it can read
+# per-card `config`, e.g. which anniversary this card is pinned to) and returns a
+# fresh preview. Plugins that don't register one fall back to a default.
+# Typed as `object` to avoid a circular import with app.models.plugin; hooks
+# annotate the concrete `InstalledPlugin` type themselves.
+PreviewProvider = Callable[[AsyncSession, "object"], Awaitable[PluginPreview]]
 
 
 @dataclass

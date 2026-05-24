@@ -14,7 +14,7 @@ stay index-friendly.
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, UniqueConstraint
+from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -39,11 +39,10 @@ class InstalledPlugin(SQLModel, table=True):
     """A plugin installed into a specific family, with its layout + config."""
 
     __tablename__ = "installed_plugins"
-    __table_args__ = (
-        # A family can only install a given plugin once (uninstall → reinstall
-        # is a new row, so this is the right shape).
-        UniqueConstraint("family_id", "plugin_id", name="uq_installed_family_plugin"),
-    )
+    # NOTE: no (family_id, plugin_id) unique constraint — multi-instance plugins
+    # (e.g. anniversary) allow several cards of the same plugin per family, each
+    # with its own `config`. Single-install is enforced in app.services.plugin
+    # for plugins whose manifest has multi_instance=False.
 
     id: UUID = Field(default_factory=new_uuid7, primary_key=True)
     family_id: UUID = Field(

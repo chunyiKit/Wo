@@ -88,6 +88,7 @@ async def list_installed(
 class InstallRequest(BaseModel):
     plugin_id: str
     layout: LayoutRead | None = None
+    config: dict | None = None
 
 
 @installed_router.post(
@@ -112,6 +113,7 @@ async def install_endpoint(
         plugin_id=payload.plugin_id,
         actor=current_user,
         layout=layout_tuple,
+        config=payload.config,
     )
     return ok(await to_installed_read(session, ip))
 
@@ -133,6 +135,31 @@ async def uninstall_endpoint(
         actor=current_user,
     )
     return ok({"uninstalled": str(install_id)})
+
+
+class ConfigUpdateRequest(BaseModel):
+    config: dict
+
+
+@installed_router.patch(
+    "/{family_id}/plugins/{install_id}",
+    response_model=ApiResponse[InstalledPluginRead],
+)
+async def update_config_endpoint(
+    family_id: UUID,
+    install_id: UUID,
+    payload: ConfigUpdateRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[InstalledPluginRead]:
+    ip = await plugin_service.update_config(
+        session,
+        family_id=family_id,
+        install_id=install_id,
+        actor=current_user,
+        config=payload.config,
+    )
+    return ok(await to_installed_read(session, ip))
 
 
 # ---- Layout ---------------------------------------------------------------

@@ -17,4 +17,6 @@ MANIFEST = PluginManifest(
     publisher="Wo Studio",
     default_layout=DefaultLayout(cw=2, ch=2),
     permissions=(Permission(code="members.read", label="读取家庭成员列表"),),
+    # 允许一个家庭装多张纪念日卡，每张可绑定不同的纪念日（见 config.anniversary_id）。
+    multi_instance=True,
 )

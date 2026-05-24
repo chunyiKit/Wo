@@ -47,6 +47,7 @@ class PluginRead(BaseModel):
     size_kb: int
     rating: float
     install_count: int
+    multi_instance: bool
 
 
 class LayoutRead(BaseModel):
@@ -85,6 +86,7 @@ def to_plugin_read(manifest: PluginManifest, db_plugin: Plugin) -> PluginRead:
         size_kb=manifest.size_kb,
         rating=db_plugin.rating,
         install_count=db_plugin.install_count,
+        multi_instance=manifest.multi_instance,
     )
 
 
@@ -96,7 +98,7 @@ async def compute_preview(
     """Call the plugin's preview hook; degrade to plugin name on any error."""
     if reg.preview is not None:
         try:
-            return await reg.preview(session, ip.family_id)
+            return await reg.preview(session, ip)
         except Exception:
             # Preview must never crash the home request.
             pass

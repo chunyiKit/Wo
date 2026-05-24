@@ -158,6 +158,7 @@ class Plugin {
     required this.sizeKb,
     required this.rating,
     required this.installCount,
+    this.multiInstance = false,
   });
 
   final String id;
@@ -174,6 +175,9 @@ class Plugin {
   final int sizeKb;
   final double rating;
   final int installCount;
+
+  /// 是否允许一个家庭安装多张（每张卡可独立配置，如纪念日绑定不同日子）。
+  final bool multiInstance;
 
   factory Plugin.fromJson(Map<String, dynamic> j) => Plugin(
         id: j['id'] as String,
@@ -194,6 +198,7 @@ class Plugin {
         sizeKb: (j['size_kb'] as num?)?.toInt() ?? 0,
         rating: (j['rating'] as num?)?.toDouble() ?? 0,
         installCount: (j['install_count'] as num?)?.toInt() ?? 0,
+        multiInstance: j['multi_instance'] as bool? ?? false,
       );
 }
 
@@ -255,6 +260,7 @@ class InstalledPlugin {
     required this.enabled,
     required this.layout,
     required this.preview,
+    this.config = const {},
   });
 
   final String id;
@@ -265,6 +271,9 @@ class InstalledPlugin {
   final PluginLayout layout;
   final PluginPreview preview;
 
+  /// 单卡配置（如纪念日 `{"anniversary_id": "..."}`）。空 = 总览/未绑定。
+  final Map<String, dynamic> config;
+
   factory InstalledPlugin.fromJson(Map<String, dynamic> j) => InstalledPlugin(
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
@@ -273,9 +282,11 @@ class InstalledPlugin {
         enabled: j['enabled'] as bool? ?? true,
         layout: PluginLayout.fromJson(j['layout'] as Map<String, dynamic>),
         preview: PluginPreview.fromJson(j['preview'] as Map<String, dynamic>),
+        config: (j['config'] as Map<String, dynamic>?) ?? const {},
       );
 
-  InstalledPlugin copyWith({PluginLayout? layout}) => InstalledPlugin(
+  InstalledPlugin copyWith({PluginLayout? layout, Map<String, dynamic>? config}) =>
+      InstalledPlugin(
         id: id,
         familyId: familyId,
         pluginId: pluginId,
@@ -283,6 +294,7 @@ class InstalledPlugin {
         enabled: enabled,
         layout: layout ?? this.layout,
         preview: preview,
+        config: config ?? this.config,
       );
 }
 

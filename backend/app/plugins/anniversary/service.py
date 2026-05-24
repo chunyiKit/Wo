@@ -1,12 +1,12 @@
 """Anniversary business logic — date math (solar + lunar) + preview hook."""
 
 from datetime import date
-from uuid import UUID
 
 from lunardate import LunarDate
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app.models.plugin import InstalledPlugin
 from app.plugins.anniversary.models import Anniversary, AnniversaryRead
 from app.plugins.registry import PluginPreview
 
@@ -75,9 +75,24 @@ def build_read(row: Anniversary, today: date | None = None) -> AnniversaryRead:
     )
 
 
-async def preview_hook(session: AsyncSession, family_id: UUID) -> PluginPreview:
-    """Surface the next-upcoming anniversary on the family's home card."""
-    stmt = select(Anniversary).where(Anniversary.family_id == family_id)
+def _countdown_preview(row: Anniversary, today: date) -> PluginPreview:
+    delta = days_until(row.event_date, today, is_lunar=row.is_lunar)
+    secondary = "就是今天 🎉" if delta == 0 else f"还有 {delta} 天"
+    return PluginPreview(
+        primary=f"{row.emoji} {row.name}",
+        secondary=secondary,
+        color_token="anniv",
+    )
+
+
+async def preview_hook(session: AsyncSession, ip: InstalledPlugin) -> PluginPreview:
+    """Render the home card for one installed anniversary widget.
+
+    A card pinned via `config["anniversary_id"]` shows that specific date; an
+    unpinned (overview) card shows the next-upcoming one. A pinned date that no
+    longer exists silently falls back to the overview behaviour.
+    """
+    stmt = select(Anniversary).where(Anniversary.family_id == ip.family_id)
     rows = list((await session.execute(stmt)).scalars().all())
 
     if not rows:
@@ -88,11 +103,13 @@ async def preview_hook(session: AsyncSession, family_id: UUID) -> PluginPreview:
         )
 
     today = date.today()
+
+    pinned_id = (ip.config or {}).get("anniversary_id")
+    if pinned_id:
+        pinned = next((r for r in rows if str(r.id) == str(pinned_id)), None)
+        if pinned is not None:
+            return _countdown_preview(pinned, today)
+        # Pinned date was deleted → fall through to overview.
+
     next_one = min(rows, key=lambda r: days_until(r.event_date, today, is_lunar=r.is_lunar))
-    delta = days_until(next_one.event_date, today, is_lunar=next_one.is_lunar)
-    secondary = "就是今天 🎉" if delta == 0 else f"还有 {delta} 天"
-    return PluginPreview(
-        primary=f"{next_one.emoji} {next_one.name}",
-        secondary=secondary,
-        color_token="anniv",
-    )
+    return _countdown_preview(next_one, today)

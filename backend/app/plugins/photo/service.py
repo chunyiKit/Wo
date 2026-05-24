@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.errors import AppError, ErrorCode
+from app.models.plugin import InstalledPlugin
 from app.models.user import User
 from app.plugins.photo.models import Photo, PhotoRead
 from app.plugins.registry import PluginPreview
@@ -99,8 +100,9 @@ def _humanize_delta(delta: timedelta) -> str:
     return f"{seconds // 86400} 天前"
 
 
-async def preview_hook(session: AsyncSession, family_id: UUID) -> PluginPreview:
+async def preview_hook(session: AsyncSession, ip: InstalledPlugin) -> PluginPreview:
     """Show total + this-week's photos + latest uploader timing."""
+    family_id = ip.family_id
     total_stmt = select(func.count()).select_from(Photo).where(Photo.family_id == family_id)
     total = int((await session.execute(total_stmt)).scalar_one())
 

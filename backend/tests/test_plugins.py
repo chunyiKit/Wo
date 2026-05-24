@@ -57,15 +57,34 @@ async def test_install_uses_manifest_default_layout(client: AsyncClient) -> None
     assert ip["layout"] == {"col": 0, "row": 0, "cw": 2, "ch": 2}
 
 
-async def test_install_twice_returns_409(client: AsyncClient) -> None:
+async def test_install_single_instance_twice_returns_409(client: AsyncClient) -> None:
+    # photo is single-instance → installing it twice is rejected.
     fid = await _create_family(client)
-    await client.post(f"/api/v1/families/{fid}/plugins", json={"plugin_id": "anniversary"})
+    await client.post(f"/api/v1/families/{fid}/plugins", json={"plugin_id": "photo"})
     response = await client.post(
         f"/api/v1/families/{fid}/plugins",
-        json={"plugin_id": "anniversary"},
+        json={"plugin_id": "photo"},
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "PLUGIN_ALREADY_INSTALLED"
+
+
+async def test_install_multi_instance_allows_many(client: AsyncClient) -> None:
+    # anniversary is multi_instance → a family can install several cards.
+    fid = await _create_family(client)
+    first = await client.post(
+        f"/api/v1/families/{fid}/plugins", json={"plugin_id": "anniversary"}
+    )
+    second = await client.post(
+        f"/api/v1/families/{fid}/plugins", json={"plugin_id": "anniversary"}
+    )
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["data"]["id"] != second.json()["data"]["id"]
+
+    listing = await client.get(f"/api/v1/families/{fid}/plugins")
+    anniv_cards = [p for p in listing.json()["data"] if p["plugin_id"] == "anniversary"]
+    assert len(anniv_cards) == 2
 
 
 async def test_install_unknown_plugin_404(client: AsyncClient) -> None:
@@ -202,3 +221,97 @@ async def test_layout_update_overflow_rejected(client: AsyncClient) -> None:
         },
     )
     assert response.status_code == 409
+
+
+# ---- Per-card config (anniversary binding) ---------------------------------
+
+
+async def _create_anniversary(client: AsyncClient, fid: str, name: str) -> str:
+    created = await client.post(
+        f"/api/v1/families/{fid}/plugins/anniversary/dates",
+        json={"name": name, "event_date": "2024-03-15"},
+    )
+    return created.json()["data"]["id"]
+
+
+async def test_install_with_config_pins_anniversary(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    a_id = await _create_anniversary(client, fid, "结婚纪念日")
+    await _create_anniversary(client, fid, "宝宝生日")
+
+    response = await client.post(
+        f"/api/v1/families/{fid}/plugins",
+        json={"plugin_id": "anniversary", "config": {"anniversary_id": a_id}},
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()["data"]
+    assert data["config"] == {"anniversary_id": a_id}
+    assert "结婚纪念日" in data["preview"]["primary"]
+
+
+async def test_two_cards_show_their_own_pinned_dates(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    a_id = await _create_anniversary(client, fid, "结婚纪念日")
+    b_id = await _create_anniversary(client, fid, "宝宝生日")
+
+    await client.post(
+        f"/api/v1/families/{fid}/plugins",
+        json={"plugin_id": "anniversary", "config": {"anniversary_id": a_id}},
+    )
+    await client.post(
+        f"/api/v1/families/{fid}/plugins",
+        json={"plugin_id": "anniversary", "config": {"anniversary_id": b_id}},
+    )
+
+    listing = await client.get(f"/api/v1/families/{fid}/plugins")
+    primaries = {p["preview"]["primary"] for p in listing.json()["data"]}
+    assert any("结婚纪念日" in p for p in primaries)
+    assert any("宝宝生日" in p for p in primaries)
+
+
+async def test_patch_config_rebinds_card(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    a_id = await _create_anniversary(client, fid, "结婚纪念日")
+    b_id = await _create_anniversary(client, fid, "宝宝生日")
+    ip = (
+        await client.post(
+            f"/api/v1/families/{fid}/plugins",
+            json={"plugin_id": "anniversary", "config": {"anniversary_id": a_id}},
+        )
+    ).json()["data"]
+
+    patched = await client.patch(
+        f"/api/v1/families/{fid}/plugins/{ip['id']}",
+        json={"config": {"anniversary_id": b_id}},
+    )
+    assert patched.status_code == 200, patched.text
+    data = patched.json()["data"]
+    assert data["config"] == {"anniversary_id": b_id}
+    assert "宝宝生日" in data["preview"]["primary"]
+
+
+async def test_pinned_deleted_falls_back_to_overview(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    a_id = await _create_anniversary(client, fid, "结婚纪念日")
+    ip = (
+        await client.post(
+            f"/api/v1/families/{fid}/plugins",
+            json={"plugin_id": "anniversary", "config": {"anniversary_id": a_id}},
+        )
+    ).json()["data"]
+
+    await client.delete(f"/api/v1/families/{fid}/plugins/anniversary/dates/{a_id}")
+
+    listing = await client.get(f"/api/v1/families/{fid}/plugins")
+    card = next(p for p in listing.json()["data"] if p["id"] == ip["id"])
+    assert card["preview"]["primary"] == "还没有记录"
+
+
+async def test_patch_config_unknown_install_404(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    fake = str(uuid.uuid4())
+    response = await client.patch(
+        f"/api/v1/families/{fid}/plugins/{fake}",
+        json={"config": {"anniversary_id": fake}},
+    )
+    assert response.status_code == 404

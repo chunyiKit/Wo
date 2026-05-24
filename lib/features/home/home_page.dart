@@ -10,6 +10,7 @@ import '../../theme/color_token.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
 import '../../widgets/wo_widget_grid.dart';
+import '../plugins/anniversary/anniversary_edit_page.dart';
 
 /// 家庭首页（Direction A · 温润日常 + 异形 Widget 网格）。
 ///
@@ -162,13 +163,65 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 点击卡片进入对应插件页（仅非编辑态）。目前仅纪念日有专属页面。
-  void _openPlugin(InstalledPlugin ip) {
-    switch (ip.pluginId) {
-      case 'anniversary':
-        context.push(WoRoutes.anniversary);
-      default:
-        break;
+  /// 点击卡片进入对应插件页（仅非编辑态）。
+  ///
+  /// 纪念日：绑定卡 → 直接进入所绑定纪念日的编辑页；总览卡（或绑定项已删）
+  /// → 进入纪念日列表页。
+  Future<void> _openPlugin(InstalledPlugin ip) async {
+    if (ip.pluginId != 'anniversary') return;
+    final pinnedId = ip.config['anniversary_id'] as String?;
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (pinnedId != null && familyId != null) {
+      try {
+        final list = await session.api.anniversaries(familyId);
+        Anniversary? match;
+        for (final a in list) {
+          if (a.id == pinnedId) {
+            match = a;
+            break;
+          }
+        }
+        if (match != null && mounted) {
+          await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => AnniversaryEditPage(existing: match),
+            ),
+          );
+          if (mounted) await session.refresh();
+          return;
+        }
+      } catch (_) {
+        // 取数失败就退回列表页。
+      }
+    }
+    if (mounted) context.push(WoRoutes.anniversary);
+  }
+
+  /// 编辑态下给纪念日卡绑定某个纪念日（或切回总览）。
+  Future<void> _openBindSheet(InstalledPlugin ip) async {
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    final picked = await showModalBottomSheet<_BindChoice>(
+      context: context,
+      builder: (_) => _BindSheet(
+        familyId: familyId,
+        currentId: ip.config['anniversary_id'] as String?,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    try {
+      await session.api.updatePluginConfig(
+        familyId,
+        ip.id,
+        picked.anniversaryId == null
+            ? <String, dynamic>{}
+            : {'anniversary_id': picked.anniversaryId},
+      );
+      await session.refresh();
+    } catch (e) {
+      if (mounted) _toast(context, e);
     }
   }
 
@@ -274,6 +327,9 @@ class _HomePageState extends State<HomePage> {
                                     onRemove: () => _remove(plugins[i]),
                                     onReorder: _reorder,
                                     onResize: () => _openSizeSheet(plugins[i]),
+                                    onBind: plugins[i].pluginId == 'anniversary'
+                                        ? () => _openBindSheet(plugins[i])
+                                        : null,
                                   )
                                 : _WidgetCard(
                                     installed: plugins[i],
@@ -321,6 +377,7 @@ class _WidgetCard extends StatelessWidget {
     this.onLongPress,
     required this.onRemove,
     this.onResize,
+    this.onBind,
     this.showRemove = true,
   });
 
@@ -332,6 +389,9 @@ class _WidgetCard extends StatelessWidget {
 
   /// 编辑态下点它弹出尺寸选择；为空则不显示尺寸按钮。
   final VoidCallback? onResize;
+
+  /// 编辑态下点它弹出「绑定纪念日」选择；为空则不显示绑定按钮。
+  final VoidCallback? onBind;
 
   /// 拖拽预览（feedback）里不需要再画编辑控件（删除 / 尺寸按钮）。
   final bool showRemove;
@@ -467,6 +527,34 @@ class _WidgetCard extends StatelessWidget {
               ),
             ),
           ),
+        if (editing && showRemove && onBind != null)
+          Positioned(
+            bottom: 6,
+            right: 6,
+            child: GestureDetector(
+              onTap: onBind,
+              child: Container(
+                height: 22,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.link, color: Colors.white, size: 13),
+                    SizedBox(width: 3),
+                    Text(
+                      '绑定',
+                      style: TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -483,6 +571,7 @@ class _DraggableTile extends StatelessWidget {
     required this.onRemove,
     required this.onReorder,
     required this.onResize,
+    this.onBind,
   });
 
   final int index;
@@ -490,6 +579,7 @@ class _DraggableTile extends StatelessWidget {
   final VoidCallback onRemove;
   final void Function(int from, int to) onReorder;
   final VoidCallback onResize;
+  final VoidCallback? onBind;
 
   @override
   Widget build(BuildContext context) {
@@ -502,6 +592,7 @@ class _DraggableTile extends StatelessWidget {
           editing: true,
           onRemove: onRemove,
           onResize: onResize,
+          onBind: onBind,
         );
         final feedback = SizedBox(
           width: c.maxWidth,
@@ -670,6 +761,155 @@ class _SizeOption extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 绑定选择结果：[anniversaryId] 为空表示「总览（显示最近的）」。
+class _BindChoice {
+  const _BindChoice(this.anniversaryId);
+  final String? anniversaryId;
+}
+
+/// 选择这张纪念日卡要绑定哪个纪念日（或切回总览）的底部弹窗。
+class _BindSheet extends StatefulWidget {
+  const _BindSheet({required this.familyId, this.currentId});
+
+  final String familyId;
+  final String? currentId;
+
+  @override
+  State<_BindSheet> createState() => _BindSheetState();
+}
+
+class _BindSheetState extends State<_BindSheet> {
+  late final Future<List<Anniversary>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = WoScope.api(context).anniversaries(widget.familyId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: WoTokens.space4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: wo.hairline,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: WoTokens.space4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: WoTokens.space5),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('这张卡显示哪个纪念日', style: t.titleLarge),
+              ),
+            ),
+            const SizedBox(height: WoTokens.space2),
+            // 总览选项。
+            _BindRow(
+              emoji: '🗓️',
+              title: '总览（显示最近的）',
+              selected: widget.currentId == null,
+              onTap: () => Navigator.of(context).pop(const _BindChoice(null)),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: FutureBuilder<List<Anniversary>>(
+                future: _future,
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(WoTokens.space5),
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+                  final items = snap.data ?? const <Anniversary>[];
+                  if (items.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(WoTokens.space5),
+                      child: Text(
+                        '还没有纪念日，先去添加一个吧。',
+                        style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                      ),
+                    );
+                  }
+                  return ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final a in items)
+                        _BindRow(
+                          emoji: a.emoji,
+                          title: a.name,
+                          subtitle: a.daysUntil == 0
+                              ? '就是今天 🎉'
+                              : '还有 ${a.daysUntil} 天',
+                          selected: a.id == widget.currentId,
+                          onTap: () =>
+                              Navigator.of(context).pop(_BindChoice(a.id)),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BindRow extends StatelessWidget {
+  const _BindRow({
+    required this.emoji,
+    required this.title,
+    this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String emoji;
+  final String title;
+  final String? subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return Material(
+      color: selected ? wo.accentSoft : Colors.transparent,
+      child: ListTile(
+        leading: Text(emoji, style: const TextStyle(fontSize: 22)),
+        title: Text(
+          title,
+          style: t.titleMedium?.copyWith(
+            color: selected ? wo.accentDeep : wo.fg,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: subtitle == null
+            ? null
+            : Text(subtitle!, style: t.bodySmall?.copyWith(color: wo.fgMid)),
+        trailing: selected ? Icon(Icons.check_circle, color: wo.accent) : null,
+        onTap: onTap,
       ),
     );
   }
@@ -1039,7 +1279,9 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
                         _miniCard(
                           context,
                           p,
-                          installed: installedIds.contains(p.id),
+                          // 多实例插件（如纪念日）可重复添加，不置灰。
+                          installed:
+                              !p.multiInstance && installedIds.contains(p.id),
                         ),
                     ],
                   );
