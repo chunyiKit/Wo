@@ -385,6 +385,7 @@ class Anniversary {
     required this.isLunar,
     this.note,
     this.createdAt,
+    required this.daysUntil,
   });
 
   final String id;
@@ -396,6 +397,9 @@ class Anniversary {
   final String? note;
   final DateTime? createdAt;
 
+  /// 距离下一次发生还有多少天（后端计算，农历会按农历周年推算）。
+  final int daysUntil;
+
   factory Anniversary.fromJson(Map<String, dynamic> j) => Anniversary(
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
@@ -406,6 +410,7 @@ class Anniversary {
         isLunar: j['is_lunar'] as bool? ?? false,
         note: j['note'] as String?,
         createdAt: _parseDate(j['created_at']),
+        daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
       );
 }
 

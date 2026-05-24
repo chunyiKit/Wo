@@ -62,10 +62,7 @@ class _AnniversaryListPageState extends State<AnniversaryListPage> {
           builder: (context, items) {
             if (items.isEmpty) return _Empty(onAdd: () => _openEditor());
             final sorted = [...items]
-              ..sort(
-                (a, b) =>
-                    _daysUntil(a.eventDate).compareTo(_daysUntil(b.eventDate)),
-              );
+              ..sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
             return ListView.separated(
               padding: const EdgeInsets.fromLTRB(
                 WoTokens.space4,
@@ -88,17 +85,6 @@ class _AnniversaryListPageState extends State<AnniversaryListPage> {
   }
 }
 
-/// 距离下一次该纪念日还有多少天（按公历周年算）。
-int _daysUntil(DateTime target) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  var next = DateTime(today.year, target.month, target.day);
-  if (next.isBefore(today)) {
-    next = DateTime(today.year + 1, target.month, target.day);
-  }
-  return next.difference(today).inDays;
-}
-
 class _AnniversaryTile extends StatelessWidget {
   const _AnniversaryTile({required this.item, required this.onTap});
 
@@ -109,7 +95,7 @@ class _AnniversaryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    final delta = _daysUntil(item.eventDate);
+    final delta = item.daysUntil;
     final countdown = delta == 0 ? '就是今天 🎉' : '还有 $delta 天';
     final dateText =
         '${item.eventDate.year}.${item.eventDate.month.toString().padLeft(2, '0')}.${item.eventDate.day.toString().padLeft(2, '0')}'

@@ -20,6 +20,7 @@ from app.plugins.anniversary.models import (
     AnniversaryRead,
     AnniversaryUpdate,
 )
+from app.plugins.anniversary.service import build_read
 
 router = APIRouter(
     prefix="/families/{family_id}/plugins/anniversary",
@@ -40,7 +41,7 @@ async def list_dates(
         .order_by(Anniversary.event_date)
     )
     rows = (await session.execute(stmt)).scalars().all()
-    return ok([AnniversaryRead.model_validate(r, from_attributes=True) for r in rows])
+    return ok([build_read(r) for r in rows])
 
 
 @router.post(
@@ -63,7 +64,7 @@ async def create_date(
     session.add(row)
     await session.commit()
     await session.refresh(row)
-    return ok(AnniversaryRead.model_validate(row, from_attributes=True))
+    return ok(build_read(row))
 
 
 @router.put("/dates/{date_id}", response_model=ApiResponse[AnniversaryRead])
@@ -83,7 +84,7 @@ async def update_date(
     session.add(row)
     await session.commit()
     await session.refresh(row)
-    return ok(AnniversaryRead.model_validate(row, from_attributes=True))
+    return ok(build_read(row))
 
 
 @router.delete("/dates/{date_id}", response_model=ApiResponse[dict])

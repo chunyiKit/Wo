@@ -5,6 +5,8 @@ from datetime import date, timedelta
 
 from httpx import AsyncClient
 
+from app.plugins.anniversary.service import days_until
+
 XIAOBAO = {"X-User-Id": "019000a0-1100-7000-8000-000000000003"}
 
 
@@ -129,6 +131,46 @@ async def test_update_nonexistent_returns_404(client: AsyncClient) -> None:
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "NOT_FOUND"
+
+
+# ── 倒计时推算（纯函数，确定性，不依赖运行当天）─────────────────────────
+
+
+def test_days_until_solar() -> None:
+    today = date(2026, 1, 1)
+    target = date(2024, 3, 15)  # 每年公历 3-15 复现
+    assert days_until(target, today, is_lunar=False) == (date(2026, 3, 15) - today).days
+
+
+def test_days_until_lunar() -> None:
+    today = date(2026, 1, 1)
+    target = date(2024, 3, 15)  # 农历二月初六；2026 年对应公历 3-24
+    assert days_until(target, today, is_lunar=True) == (date(2026, 3, 24) - today).days
+
+
+def test_days_until_today_is_zero() -> None:
+    today = date(2026, 5, 24)
+    assert days_until(today, today, is_lunar=False) == 0
+
+
+def test_days_until_lunar_leap_month_edge_does_not_crash() -> None:
+    # 2023 含农历闰二月；未来年份未必有闰月，应回退而非报错。
+    today = date(2026, 1, 1)
+    result = days_until(date(2023, 4, 1), today, is_lunar=True)
+    assert 0 <= result <= 400
+
+
+async def test_list_includes_days_until(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    soon = date.today() + timedelta(days=10)
+    await client.post(
+        f"/api/v1/families/{fid}/plugins/anniversary/dates",
+        json={"name": "十天后", "event_date": soon.isoformat()},
+    )
+    listing = await client.get(f"/api/v1/families/{fid}/plugins/anniversary/dates")
+    row = listing.json()["data"][0]
+    assert "days_until" in row
+    assert row["days_until"] == 10
 
 
 async def test_anniversary_non_member_returns_404(client: AsyncClient) -> None:

@@ -64,3 +64,6 @@ class AnniversaryRead(AnniversaryBase):
     family_id: UUID
     created_at: datetime
     created_by: UUID | None
+    # Days from today to the next occurrence (lunar-aware); computed server-side
+    # so clients don't reimplement the calendar math. See service.days_until.
+    days_until: int = 0
