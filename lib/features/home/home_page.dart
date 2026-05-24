@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
@@ -28,6 +29,32 @@ class _HomePageState extends State<HomePage> {
   /// 优先使用它（落点后立刻反映，不等服务端往返）。持久化成功 / 失败后清空，
   /// 重新以后端为准。
   List<InstalledPlugin>? _ordered;
+
+  /// 上次按返回键的时刻，用于「再按一次返回退出」。
+  DateTime? _lastBackAt;
+
+  /// 拦截系统返回键：编辑态先退出编辑（布局已在每次改动时即时保存），
+  /// 否则需要 2 秒内连按两次才真正退出应用，避免误触退出。
+  void _handleBack(bool didPop, Object? result) {
+    if (didPop) return;
+    if (_editing) {
+      setState(() => _editing = false);
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastBackAt != null &&
+        now.difference(_lastBackAt!) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackAt = now;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('再按一次返回退出'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 
   /// 计算「当前应展示的顺序」：本地重排优先，但一旦后端插件集合发生变化
   /// （装/卸插件、切家庭）就回退到后端，避免本地顺序失真。
@@ -177,96 +204,100 @@ class _HomePageState extends State<HomePage> {
       session.bootstrap?.installedPlugins ?? const <InstalledPlugin>[],
     );
 
-    return Scaffold(
-      backgroundColor: wo.bg,
-      appBar: AppBar(
-        title: GestureDetector(
-          onTap: _openFamilySwitcher,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  family.name,
-                  style: t.titleLarge,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.expand_more, color: wo.fgMid, size: 20),
-            ],
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '通知',
-            icon: Badge(
-              isLabelVisible: session.unreadCount > 0,
-              label: Text('${session.unreadCount}'),
-              child: const Icon(Icons.notifications_outlined),
-            ),
-            onPressed: () => context.go(WoRoutes.messages),
-          ),
-          if (plugins.isNotEmpty)
-            IconButton(
-              tooltip: _editing ? '完成编辑' : '编辑布局',
-              icon: Icon(_editing ? Icons.check : Icons.edit_outlined),
-              onPressed: () => setState(() => _editing = !_editing),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: RefreshIndicator(
-          onRefresh: session.refresh,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(
-              WoTokens.space4,
-              WoTokens.space2,
-              WoTokens.space4,
-              100,
-            ),
-            child: plugins.isEmpty
-                ? _EmptyGrid(onAdd: _openAddPluginSheet)
-                : WoWidgetGrid(
-                    crossAxisCount: 4,
-                    gap: WoTokens.space3,
-                    children: [
-                      for (var i = 0; i < plugins.length; i++)
-                        WoWidgetGridTile(
-                          cw: plugins[i].layout.cw.clamp(1, 4),
-                          ch: plugins[i].layout.ch.clamp(1, 4),
-                          child: _editing
-                              ? _DraggableTile(
-                                  index: i,
-                                  installed: plugins[i],
-                                  onRemove: () => _remove(plugins[i]),
-                                  onReorder: _reorder,
-                                  onResize: () => _openSizeSheet(plugins[i]),
-                                )
-                              : _WidgetCard(
-                                  installed: plugins[i],
-                                  editing: false,
-                                  onTap: () => _openPlugin(plugins[i]),
-                                  onLongPress: () =>
-                                      setState(() => _editing = true),
-                                  onRemove: () => _remove(plugins[i]),
-                                ),
-                        ),
-                      WoWidgetGridTile(
-                        cw: 4,
-                        ch: 1,
-                        child: _AddPluginEntry(onTap: _openAddPluginSheet),
-                      ),
-                    ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _handleBack,
+      child: Scaffold(
+        backgroundColor: wo.bg,
+        appBar: AppBar(
+          title: GestureDetector(
+            onTap: _openFamilySwitcher,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    family.name,
+                    style: t.titleLarge,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.expand_more, color: wo.fgMid, size: 20),
+              ],
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: '通知',
+              icon: Badge(
+                isLabelVisible: session.unreadCount > 0,
+                label: Text('${session.unreadCount}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+              onPressed: () => context.go(WoRoutes.messages),
+            ),
+            if (plugins.isNotEmpty)
+              IconButton(
+                tooltip: _editing ? '完成编辑' : '编辑布局',
+                icon: Icon(_editing ? Icons.check : Icons.edit_outlined),
+                onPressed: () => setState(() => _editing = !_editing),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          top: false,
+          child: RefreshIndicator(
+            onRefresh: session.refresh,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(
+                WoTokens.space4,
+                WoTokens.space2,
+                WoTokens.space4,
+                100,
+              ),
+              child: plugins.isEmpty
+                  ? _EmptyGrid(onAdd: _openAddPluginSheet)
+                  : WoWidgetGrid(
+                      crossAxisCount: 4,
+                      gap: WoTokens.space3,
+                      children: [
+                        for (var i = 0; i < plugins.length; i++)
+                          WoWidgetGridTile(
+                            cw: plugins[i].layout.cw.clamp(1, 4),
+                            ch: plugins[i].layout.ch.clamp(1, 4),
+                            child: _editing
+                                ? _DraggableTile(
+                                    index: i,
+                                    installed: plugins[i],
+                                    onRemove: () => _remove(plugins[i]),
+                                    onReorder: _reorder,
+                                    onResize: () => _openSizeSheet(plugins[i]),
+                                  )
+                                : _WidgetCard(
+                                    installed: plugins[i],
+                                    editing: false,
+                                    onTap: () => _openPlugin(plugins[i]),
+                                    onLongPress: () =>
+                                        setState(() => _editing = true),
+                                    onRemove: () => _remove(plugins[i]),
+                                  ),
+                          ),
+                        WoWidgetGridTile(
+                          cw: 4,
+                          ch: 1,
+                          child: _AddPluginEntry(onTap: _openAddPluginSheet),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddPluginSheet,
-        child: const Icon(Icons.add),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _openAddPluginSheet,
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }
@@ -626,14 +657,16 @@ class _SizeOption extends StatelessWidget {
                       label,
                       style: t.titleMedium?.copyWith(
                         color: selected ? wo.accentDeep : wo.fg,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
                       ),
                     ),
                     Text(hint, style: t.bodySmall?.copyWith(color: wo.fgMid)),
                   ],
                 ),
               ),
-              if (selected) Icon(Icons.check_circle, color: wo.accent, size: 20),
+              if (selected)
+                Icon(Icons.check_circle, color: wo.accent, size: 20),
             ],
           ),
         ),
