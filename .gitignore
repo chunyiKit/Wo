@@ -6,7 +6,7 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-pubspec.lock
+# pubspec.lock 纳入版本管理：锁定 Flutter 应用依赖版本，保证团队/CI 构建可复现。
 
 # IDE
 .idea/
