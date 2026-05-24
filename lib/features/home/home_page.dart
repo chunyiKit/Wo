@@ -339,15 +339,18 @@ class _WidgetCard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              installed.plugin.name,
-                              style: t.labelMedium?.copyWith(color: fgMid),
-                            ),
-                            Text(
                               preview.primary,
                               style: t.titleMedium?.copyWith(
                                 color: fg,
                                 fontWeight: FontWeight.w600,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            // 矮卡也要能看到倒计时（secondary）；没有时回退插件名。
+                            Text(
+                              preview.secondary ?? installed.plugin.name,
+                              style: t.labelMedium?.copyWith(color: fgMid),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
