@@ -1,0 +1,36 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+
+# Platform 工件（由 flutter create . 生成后再忽略平台内的派生文件）
+android/.gradle/
+android/.idea/
+android/local.properties
+android/captures/
+android/key.properties
+android/app/release/
+android/app/debug/
+android/app/profile/
+android/app/build/
+
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/flutter_export_environment.sh
+
+# Misc
+.DS_Store
+*.log

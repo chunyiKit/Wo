@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Local uploaded files (photos, etc.) — production uses S3-style storage.
+storage/

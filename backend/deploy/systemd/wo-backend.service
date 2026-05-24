@@ -1,0 +1,39 @@
+[Unit]
+Description=Wo backend (FastAPI / uvicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=exec
+User=wo
+Group=wo
+WorkingDirectory=/opt/wo-backend
+# Loaded in order; later files override earlier ones. db.env holds the PG
+# password; app.env holds everything else (storage path, debug flag, etc.).
+EnvironmentFile=/etc/wo/db.env
+EnvironmentFile=/etc/wo/app.env
+# uv-managed venv at .venv/, populated by deploy.sh via `uv sync`.
+ExecStart=/opt/wo-backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --proxy-headers \
+    --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+# Drop privileges + lock down filesystem writes.
+NoNewPrivileges=true
+ProtectSystem=strict
+# read-only (not true): uv installs the Python interpreter under
+# /home/wo/.local/share/uv, and the venv's bin/python symlinks into it.
+# ProtectHome=true masks /home entirely → exec fails with 203/EXEC. read-only
+# keeps home unwritable but lets systemd reach the interpreter to launch.
+ProtectHome=read-only
+PrivateTmp=true
+# The app must be able to write uploaded files here.
+ReadWritePaths=/var/lib/wo/storage
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+[project]
+name = "wo-backend"
+version = "0.1.0"
+description = "Wo backend service"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlmodel>=0.0.22",
+    "asyncpg>=0.30.0",
+    "psycopg[binary]>=3.2.0",
+    "greenlet>=3.1.0",
+    "alembic>=1.14.0",
+    "pydantic-settings>=2.6.0",
+    "uuid-utils>=0.11.0",
+    "pillow>=11.0.0",
+    "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+    "ruff>=0.8.0",
+    "asgi-lifespan>=2.1.0",
+]
+
+# Download deps from the Tencent Cloud PyPI mirror. Without this, uv.lock pins
+# every wheel URL to files.pythonhosted.org, which is slow/unreliable behind the
+# GFW — setting UV_INDEX_URL alone does NOT redirect those pinned download URLs,
+# only re-locking against this index does. Re-run `uv lock` after editing.
+[[tool.uv.index]]
+url = "https://mirrors.cloud.tencent.com/pypi/simple/"
+default = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Alembic generates these files mechanically; don't lint them.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Keep all async fixtures/tests on a single event loop so the SQLAlchemy
+# async engine (created at import time) stays bound to one loop and asyncpg
+# connections don't get reused across loops.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]

@@ -1,0 +1,160 @@
+/* Wo Design Tokens
+ * Warm caramel + cream system. Two themes, swapped via data-theme on the
+ * frame's root.
+ */
+
+[data-theme="light"] {
+  --bg: #FBF7F1;
+  --bg-elev: #FFFFFF;
+  --bg-tint: #F4EFE7;
+  --bg-app: #FBF7F1;
+
+  --fg: #2A2722;
+  --fg-mid: #6B635A;
+  --fg-dim: #9A9085;
+  --hairline: rgba(42, 39, 34, 0.08);
+
+  --accent: #E8895A;
+  --accent-deep: #C76A3F;
+  --accent-soft: #FCE4D4;
+
+  --photo: #E8DCC8;
+  --money: #E8D4A8;
+  --anniv: #F0C4B4;
+  --chore: #D6DCC8;
+  --pet:   #E8D0E0;
+
+  --shadow-card: 0 1px 2px rgba(42,30,20,0.04), 0 6px 20px rgba(42,30,20,0.06);
+  --shadow-fab:  0 4px 16px rgba(232,137,90,0.32);
+}
+
+[data-theme="dark"] {
+  --bg: #15120F;
+  --bg-elev: #221F1B;
+  --bg-tint: #1C1916;
+  --bg-app: #15120F;
+
+  --fg: #F2EDE5;
+  --fg-mid: #A89F94;
+  --fg-dim: #6A6660;
+  --hairline: rgba(255, 248, 240, 0.07);
+
+  --accent: #F09A6E;
+  --accent-deep: #E8895A;
+  --accent-soft: #3A2820;
+
+  --photo: #3A3226;
+  --money: #3A331F;
+  --anniv: #3A2A22;
+  --chore: #2C3026;
+  --pet:   #3A2E36;
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  --shadow-fab:  0 4px 18px rgba(232,137,90,0.45);
+}
+
+.wo-screen {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "HarmonyOS Sans SC", "PingFang SC", "Noto Sans SC",
+               -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.wo-scroll {
+  overflow-y: auto;
+  height: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.wo-scroll::-webkit-scrollbar { display: none; }
+
+/* Long-press wiggle (used in edit mode) */
+@keyframes wo-wiggle {
+  0%, 100% { transform: rotate(-0.6deg); }
+  50%      { transform: rotate(0.6deg); }
+}
+.wo-edit .wo-card {
+  animation: wo-wiggle 0.42s ease-in-out infinite;
+  animation-delay: var(--wiggle-delay, 0s);
+}
+.wo-edit .wo-card .wo-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+.wo-remove {
+  position: absolute;
+  top: 6px; left: 6px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: rgba(42,39,34,0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 3;
+  border: none;
+  cursor: pointer;
+}
+[data-theme="dark"] .wo-remove {
+  background: rgba(255,248,240,0.32);
+  color: #15120F;
+}
+
+.wo-card {
+  background: var(--bg-elev);
+  border-radius: 22px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease;
+}
+.wo-card:active { transform: scale(0.985); }
+
+.wo-tabbar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 72px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  padding: 8px 24px 12px;
+  z-index: 2;
+}
+.wo-tab {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  position: relative;
+}
+.wo-tab.is-active { color: var(--accent-deep); }
+[data-theme="dark"] .wo-tab.is-active { color: var(--accent); }
+.wo-tab-emoji { font-size: 22px; line-height: 1; }
+
+.wo-fab {
+  position: absolute;
+  right: 18px; bottom: 92px;
+  width: 56px; height: 56px;
+  border-radius: 18px;
+  background: var(--accent);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-fab);
+  font-size: 26px;
+  font-weight: 300;
+  z-index: 2;
+  border: none;
+}
