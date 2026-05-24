@@ -236,6 +236,7 @@ class PluginPreview {
     this.secondary,
     this.badge,
     required this.colorToken,
+    this.emoji,
   });
 
   final String primary;
@@ -243,11 +244,16 @@ class PluginPreview {
   final String? badge;
   final String colorToken;
 
+  /// 卡片主图标。为空时回退到插件 manifest 的 emoji（让卡片能显示内容自身的
+  /// emoji，如所选纪念日的 emoji 而非插件的 🎂）。
+  final String? emoji;
+
   factory PluginPreview.fromJson(Map<String, dynamic> j) => PluginPreview(
         primary: j['primary'] as String? ?? '',
         secondary: j['secondary'] as String?,
         badge: j['badge'] as String?,
         colorToken: j['color_token'] as String? ?? 'accent',
+        emoji: j['emoji'] as String?,
       );
 }
 
@@ -285,7 +291,10 @@ class InstalledPlugin {
         config: (j['config'] as Map<String, dynamic>?) ?? const {},
       );
 
-  InstalledPlugin copyWith({PluginLayout? layout, Map<String, dynamic>? config}) =>
+  InstalledPlugin copyWith({
+    PluginLayout? layout,
+    Map<String, dynamic>? config,
+  }) =>
       InstalledPlugin(
         id: id,
         familyId: familyId,
@@ -433,8 +442,7 @@ class Anniversary {
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
         name: j['name'] as String? ?? '',
-        eventDate:
-            _parseDate(j['event_date']) ?? DateTime.now(),
+        eventDate: _parseDate(j['event_date']) ?? DateTime.now(),
         emoji: j['emoji'] as String? ?? '💞',
         isLunar: j['is_lunar'] as bool? ?? false,
         note: j['note'] as String?,

@@ -401,6 +401,8 @@ class _WidgetCard extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     final preview = installed.preview;
+    // 卡片主图标：优先用 preview 自带 emoji（如所选纪念日），回退插件 emoji。
+    final emoji = preview.emoji ?? installed.plugin.emoji;
     final emphasized = wo.isEmphasizedToken(preview.colorToken);
     final color = wo.colorForToken(preview.colorToken);
     final fg = emphasized ? Colors.white : wo.fg;
@@ -420,7 +422,7 @@ class _WidgetCard extends StatelessWidget {
                 ? Row(
                     children: [
                       Text(
-                        installed.plugin.emoji,
+                        emoji,
                         style: const TextStyle(fontSize: 22),
                       ),
                       const SizedBox(width: WoTokens.space3),
@@ -454,7 +456,7 @@ class _WidgetCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        installed.plugin.emoji,
+                        emoji,
                         style: const TextStyle(fontSize: 26),
                       ),
                       const Spacer(),

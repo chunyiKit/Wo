@@ -79,9 +79,10 @@ def _countdown_preview(row: Anniversary, today: date) -> PluginPreview:
     delta = days_until(row.event_date, today, is_lunar=row.is_lunar)
     secondary = "就是今天 🎉" if delta == 0 else f"还有 {delta} 天"
     return PluginPreview(
-        primary=f"{row.emoji} {row.name}",
+        primary=row.name,
         secondary=secondary,
         color_token="anniv",
+        emoji=row.emoji,
     )
 
 

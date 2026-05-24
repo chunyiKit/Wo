@@ -66,6 +66,10 @@ class PluginPreview(BaseModel):
     secondary: str | None = None
     badge: str | None = None
     color_token: ColorToken
+    # Big icon to show on the card. When None the client falls back to the
+    # plugin's manifest emoji. Lets a card reflect content-specific emoji
+    # (e.g. the chosen anniversary emoji rather than the plugin's 🎂).
+    emoji: str | None = None
 
 
 # A preview hook receives the session + the installed-plugin row (so it can read

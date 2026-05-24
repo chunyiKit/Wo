@@ -246,7 +246,9 @@ async def test_install_with_config_pins_anniversary(client: AsyncClient) -> None
     assert response.status_code == 201, response.text
     data = response.json()["data"]
     assert data["config"] == {"anniversary_id": a_id}
-    assert "结婚纪念日" in data["preview"]["primary"]
+    assert data["preview"]["primary"] == "结婚纪念日"
+    # Card shows the anniversary's own emoji, not the plugin's 🎂.
+    assert data["preview"]["emoji"] == "💞"
 
 
 async def test_two_cards_show_their_own_pinned_dates(client: AsyncClient) -> None:
