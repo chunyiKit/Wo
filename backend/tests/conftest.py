@@ -7,6 +7,15 @@ from httpx import ASGITransport, AsyncClient
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_limiter() -> None:
+    """Login limiters are process-global; clear them so per-test counts start fresh."""
+    from app.api.v1.routes.auth import _login_ip_limiter, _login_phone_limiter
+
+    _login_ip_limiter.reset()
+    _login_phone_limiter.reset()
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     """HTTP client that drives the real ASGI app, lifespan included.

@@ -25,5 +25,12 @@ class Settings(BaseSettings):
     # Per-upload size cap, bytes. 20 MB covers reasonable family photos.
     max_upload_bytes: int = 20 * 1024 * 1024
 
+    # Login throttling within the window (seconds). Per-IP guards against
+    # enumeration/bulk registration; per-phone guards a single number against
+    # targeting (and SMS bombing once P5 adds codes).
+    login_rate_limit_max: int = 10
+    login_rate_limit_per_phone_max: int = 5
+    login_rate_limit_window_seconds: int = 60
+
 
 settings = Settings()

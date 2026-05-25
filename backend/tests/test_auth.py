@@ -62,3 +62,37 @@ async def test_login_seed_user(client: AsyncClient) -> None:
     data = res.json()["data"]
     assert data["is_new"] is False
     assert data["user"]["display_name"] == "老陈"
+
+
+async def test_login_rate_limited_after_burst(client: AsyncClient) -> None:
+    from app.core.config import settings
+
+    # Exhaust the per-IP allowance, then expect the next attempt to be throttled.
+    for _ in range(settings.login_rate_limit_max):
+        ok_res = await client.post("/api/v1/auth/login", json={"phone": _random_phone()})
+        assert ok_res.status_code == 200
+
+    blocked = await client.post("/api/v1/auth/login", json={"phone": _random_phone()})
+    assert blocked.status_code == 429
+    body = blocked.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "RATE_LIMIT"
+
+
+async def test_login_rate_limited_per_phone(client: AsyncClient) -> None:
+    from app.core.config import settings
+
+    # Hammering one number trips the per-phone limit before the (higher) IP one.
+    phone = _random_phone()
+    assert settings.login_rate_limit_per_phone_max < settings.login_rate_limit_max
+    for _ in range(settings.login_rate_limit_per_phone_max):
+        ok_res = await client.post("/api/v1/auth/login", json={"phone": phone})
+        assert ok_res.status_code == 200
+
+    blocked = await client.post("/api/v1/auth/login", json={"phone": phone})
+    assert blocked.status_code == 429
+    assert blocked.json()["error"]["code"] == "RATE_LIMIT"
+
+    # A different number from the same IP still gets through.
+    other = await client.post("/api/v1/auth/login", json={"phone": _random_phone()})
+    assert other.status_code == 200
