@@ -20,6 +20,7 @@ from app.models.user import UserRead, UserUpdate
 from app.plugins.views import InstalledPluginRead, to_installed_read
 from app.services import family as family_service
 from app.services import notification as notification_service
+from app.services import user as user_service
 
 router = APIRouter(tags=["me"])
 
@@ -83,13 +84,13 @@ async def update_me(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[UserRead]:
-    """更新当前用户资料（目前支持昵称 display_name）。仅更新提供的字段。"""
-    for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(current_user, key, value)
-    session.add(current_user)
-    await session.commit()
-    await session.refresh(current_user)
-    return ok(UserRead.model_validate(current_user, from_attributes=True))
+    """更新当前用户资料（目前支持昵称 display_name）。仅更新提供的字段。
+
+    改昵称会同步到「仍沿用旧昵称」的家庭成员身份上，使记账等按成员展示
+    名字的地方同步刷新（见 user_service.update_me）。
+    """
+    user = await user_service.update_me(session, current_user, payload)
+    return ok(UserRead.model_validate(user, from_attributes=True))
 
 
 @router.get("/me/families", response_model=ApiResponse[list[FamilyRead]])
