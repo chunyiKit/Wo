@@ -27,6 +27,11 @@ import 'wo_routes.dart';
 /// 当前先静态跳到 onboarding。
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'wo-root');
 
+/// 首页 Tab 自己的 navigator key。插件详情页是用 [Navigator.push] 命令式压栈的，
+/// goBranch 只会重置 go_router 的声明式页面，清不掉这种命令式路由，
+/// 所以切 Tab 时需要拿这个 key 把首页栈 popUntil 回根页。
+final _homeBranchKey = GlobalKey<NavigatorState>(debugLabel: 'wo-home-branch');
+
 GoRouter buildRouter() {
   return GoRouter(
     navigatorKey: _rootKey,
@@ -67,10 +72,12 @@ GoRouter buildRouter() {
 
       // 主壳子：每个 Tab 一个独立 navigator，保持各自栈
       StatefulShellRoute.indexedStack(
-        builder: (_, __, shell) => WoShell(shell: shell),
+        builder: (_, __, shell) =>
+            WoShell(shell: shell, homeBranchKey: _homeBranchKey),
         branches: [
           // ── 首页 Tab
           StatefulShellBranch(
+            navigatorKey: _homeBranchKey,
             routes: [
               GoRoute(
                 path: WoRoutes.home,
