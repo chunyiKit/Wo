@@ -12,9 +12,14 @@
 #   5. Write /etc/wo/db.env with the generated PG password (mode 0640).
 #   6. Lay down /opt/wo-backend and /var/lib/wo/storage with correct ownership.
 #   7. Install the systemd unit + nginx site config (not enabled until first deploy).
-#   8. Open UFW ports 80 + SSH if UFW is active.
+#   8. Open UFW ports 80 + 443 + SSH if UFW is active.
 #
-# Cloud-vendor security groups (e.g. 腾讯云安全组) must be opened separately.
+# TLS: nginx serves HTTPS on 443 from /etc/wo/tls/{server.crt,server.key}.
+# This script prepares the dir; the cert/key are uploaded separately by
+# backend/deploy/tls/install-on-server.sh (run after generate-certs.sh).
+#
+# Cloud-vendor security groups (e.g. 腾讯云安全组) must be opened separately
+# — open BOTH 80 and 443 there.
 
 set -euo pipefail
 
@@ -126,7 +131,7 @@ if [[ ! -f "$APP_ENV_FILE" ]]; then
 # Generated $(date -u +%FT%TZ) by setup-server.sh — edit and 'systemctl restart wo-backend' after changes.
 DEBUG=false
 STORAGE_ROOT=$STORAGE_DIR
-WEB_BASE_URL=http://122.51.81.235
+WEB_BASE_URL=https://122.51.81.235
 MAX_UPLOAD_BYTES=20971520
 EOF
     chown root:$APP_USER "$APP_ENV_FILE"
@@ -139,6 +144,29 @@ mkdir -p "$APP_DIR" "$STORAGE_DIR"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR" "$STORAGE_DIR"
 # Storage must be writable by the app, readable by no one else (private files).
 chmod 0750 "$STORAGE_DIR"
+
+# TLS dir for the nginx cert/key. The actual cert + key are uploaded later by
+# backend/deploy/tls/install-on-server.sh; we just make the dir so nginx -t
+# doesn't choke on a missing path on first run. Owned by root (nginx master
+# reads it as root).
+mkdir -p /etc/wo/tls
+chown root:root /etc/wo/tls
+chmod 0755 /etc/wo/tls
+
+# nginx -t (below) fails if the cert path is missing, but the REAL cert is
+# uploaded later by install-on-server.sh. So drop a throwaway placeholder just
+# to let nginx start. It is NOT the cert the app trusts — install-on-server.sh
+# overwrites it with the CA-signed one.
+if [[ ! -f /etc/wo/tls/server.crt ]]; then
+    log "Writing placeholder TLS cert (replaced by install-on-server.sh)"
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -subj "/CN=wo-placeholder" \
+        -addext "subjectAltName=IP:122.51.81.235" \
+        -keyout /etc/wo/tls/server.key \
+        -out /etc/wo/tls/server.crt >/dev/null 2>&1
+    chmod 0644 /etc/wo/tls/server.crt
+    chmod 0600 /etc/wo/tls/server.key
+fi
 
 # ---- 7. systemd unit + nginx site ------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -161,18 +189,20 @@ systemctl reload nginx
 
 # ---- 8. Firewall ------------------------------------------------------------
 if ufw status | grep -q "Status: active"; then
-    log "UFW is active — opening 80/tcp"
+    log "UFW is active — opening 80/tcp + 443/tcp"
     ufw allow 22/tcp >/dev/null
     ufw allow 80/tcp >/dev/null
+    ufw allow 443/tcp >/dev/null
 else
-    warn "UFW is not active. Make sure 腾讯云 security group allows port 80."
+    warn "UFW is not active. Make sure 腾讯云 security group allows ports 80 + 443."
 fi
 
 log "Server bootstrap complete."
 echo
 echo "Next steps:"
 echo "  1. From your local machine, run: bash backend/deploy/deploy.sh"
-echo "  2. Curl http://122.51.81.235/api/v1/health to verify."
+echo "  2. Upload the real TLS cert: bash backend/deploy/tls/install-on-server.sh"
+echo "  3. Curl https://122.51.81.235/api/v1/health -k to verify."
 echo
 echo "Env files (review for secrets):"
 echo "  $DB_ENV_FILE"

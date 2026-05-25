@@ -9,7 +9,7 @@ class ApiConfig {
   /// API 根地址（不含 /api/v1 前缀）。
   static const baseUrl = String.fromEnvironment(
     'WO_API_BASE_URL',
-    defaultValue: 'http://122.51.81.235',
+    defaultValue: 'https://122.51.81.235',
   );
 
   /// 开发期强制身份覆盖：后端用 X-User-Id 头识别当前用户（P5 接真实 JWT 前的

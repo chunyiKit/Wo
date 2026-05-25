@@ -21,3 +21,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # 自签 CA 公钥证书,App 启动时加载并据此信任后端 HTTPS。
+    - assets/certs/wo_ca.crt

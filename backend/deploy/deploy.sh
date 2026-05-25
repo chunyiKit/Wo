@@ -94,13 +94,26 @@ sudo -u wo bash -lc "
 # Restart (or start) the service.
 sudo systemctl enable --now wo-backend
 sudo systemctl restart wo-backend
+
+# Install the nginx site config from the synced repo. setup-server.sh only runs
+# once at bootstrap, so without this any nginx config change (e.g. TLS) would
+# never reach /etc/nginx on a normal deploy. Only reload if the test passes, so
+# a bad config can't take nginx down.
+sudo install -m 0644 "$WO_APP_DIR/deploy/nginx/wo-backend.conf" \
+    /etc/nginx/sites-available/wo-backend
+sudo ln -sf /etc/nginx/sites-available/wo-backend \
+    /etc/nginx/sites-enabled/wo-backend
+sudo nginx -t
 sudo systemctl reload nginx
 REMOTE
 
 # ---- 4. Healthcheck ---------------------------------------------------------
-log "Healthcheck → http://$WO_SSH_HOST/api/v1/health"
+log "Healthcheck → https://$WO_SSH_HOST/api/v1/health"
+# -k: this is just a liveness probe, not the app's security boundary. The cert
+# is our self-signed one; skipping verification here avoids depending on the
+# CA file being present on whoever runs the deploy. The app itself pins the CA.
 for i in 1 2 3 4 5; do
-    if curl -sf "http://$WO_SSH_HOST/api/v1/health" \
+    if curl -sfk "https://$WO_SSH_HOST/api/v1/health" \
             | grep -q '"success":true'; then
         log "Deploy OK 🎉"
         exit 0

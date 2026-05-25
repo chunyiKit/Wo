@@ -31,6 +31,12 @@ ios/Flutter/Flutter.framework
 ios/Flutter/Flutter.podspec
 ios/Flutter/flutter_export_environment.sh
 
+# TLS 私钥 / 证书产物（CA 公钥 assets/certs/wo_ca.crt 例外，需入库随 App 打包）
+backend/deploy/tls/out/
+*.key
+*.csr
+*.srl
+
 # Misc
 .DS_Store
 *.log
