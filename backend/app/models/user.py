@@ -13,8 +13,10 @@ it without a token.
 """
 
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy import Column, DateTime
 from sqlmodel import Field, SQLModel
 
@@ -45,6 +47,12 @@ class User(UserBase, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+
+class UserUpdate(BaseModel):
+    """PATCH /me request body — 每个字段可选，仅更新提供的字段。"""
+
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=24)] | None = None
 
 
 class UserRead(UserBase):

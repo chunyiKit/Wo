@@ -22,3 +22,20 @@ async def test_me_returns_seed_user_with_extended_shape(client: AsyncClient) -> 
     assert "families_joined" in stats
     assert stats["plugins_used"] == 0
     assert stats["days_active"] >= 0
+
+
+async def test_patch_me_updates_display_name(client: AsyncClient) -> None:
+    response = await client.patch("/api/v1/me", json={"display_name": "陈大山"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["display_name"] == "陈大山"
+
+    # 改动已落库：再读一次 /me 应返回新昵称。
+    again = await client.get("/api/v1/me")
+    assert again.json()["data"]["user"]["display_name"] == "陈大山"
+
+
+async def test_patch_me_rejects_empty_display_name(client: AsyncClient) -> None:
+    response = await client.patch("/api/v1/me", json={"display_name": ""})
+    assert response.status_code == 422

@@ -39,6 +39,48 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _editName(WoUser user) async {
+    final controller = TextEditingController(text: user.displayName);
+    final next = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        void submit() {
+          final v = controller.text.trim();
+          if (v.isNotEmpty) Navigator.of(ctx).pop(v);
+        }
+
+        return AlertDialog(
+          title: const Text('修改昵称'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 24,
+            decoration: const InputDecoration(hintText: '昵称'),
+            onSubmitted: (_) => submit(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(onPressed: submit, child: const Text('保存')),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (next == null || next == user.displayName || !mounted) return;
+
+    final session = WoScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await session.api.updateMe(displayName: next);
+      await session.refresh();
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('保存失败，请稍后再试')));
+    }
+  }
+
   Future<void> _logout() async {
     final session = WoScope.of(context);
     final router = GoRouter.of(context);
@@ -100,6 +142,11 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    tooltip: '修改昵称',
+                    onPressed: () => _editName(user),
                   ),
                 ],
               ),

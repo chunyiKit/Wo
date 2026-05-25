@@ -30,6 +30,17 @@ class WoApi {
     return data.map((e) => Family.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 更新当前用户资料（目前支持昵称）。仅传需要变更的字段。
+  Future<WoUser> updateMe({String? displayName}) async {
+    final data = await _client.patch(
+      '/me',
+      body: {
+        if (displayName != null) 'display_name': displayName,
+      },
+    );
+    return WoUser.fromJson(data as Map<String, dynamic>);
+  }
+
   // ── 家庭 ────────────────────────────────────────────────────
   Future<Family> createFamily({
     required String name,

@@ -16,7 +16,7 @@ from app.core.auth import CurrentUserDep
 from app.core.response import ApiResponse, ok
 from app.models.family import FamilyRead
 from app.models.plugin import InstalledPlugin
-from app.models.user import UserRead
+from app.models.user import UserRead, UserUpdate
 from app.plugins.views import InstalledPluginRead, to_installed_read
 from app.services import family as family_service
 from app.services import notification as notification_service
@@ -75,6 +75,21 @@ async def me(
             stats=stats,
         )
     )
+
+
+@router.patch("/me", response_model=ApiResponse[UserRead])
+async def update_me(
+    payload: UserUpdate,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[UserRead]:
+    """更新当前用户资料（目前支持昵称 display_name）。仅更新提供的字段。"""
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(current_user, key, value)
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
+    return ok(UserRead.model_validate(current_user, from_attributes=True))
 
 
 @router.get("/me/families", response_model=ApiResponse[list[FamilyRead]])
