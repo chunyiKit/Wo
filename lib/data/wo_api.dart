@@ -56,6 +56,24 @@ class WoApi {
             as Map<String, dynamic>,
       );
 
+  /// 修改家庭资料（名称/标语/emoji）。仅传需要变更的字段。owner/admin 才有权限。
+  Future<Family> updateFamily(
+    String familyId, {
+    String? name,
+    String? slogan,
+    String? emoji,
+  }) async {
+    final data = await _client.patch(
+      '/families/$familyId',
+      body: {
+        if (name != null) 'name': name,
+        if (slogan != null) 'slogan': slogan,
+        if (emoji != null) 'emoji': emoji,
+      },
+    );
+    return Family.fromJson(data as Map<String, dynamic>);
+  }
+
   Future<List<Member>> members(String familyId) async {
     final data = await _client.get('/families/$familyId/members') as List;
     return data.map((e) => Member.fromJson(e as Map<String, dynamic>)).toList();

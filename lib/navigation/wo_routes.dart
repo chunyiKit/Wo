@@ -21,8 +21,8 @@ class WoRoutes {
   // 二级页
   static const marketplace = '/marketplace';
   static const pluginDetail = '/marketplace/plugin/:id';
-  static const familyManage = '/family';
-  static const familyInvite = '/family/invite';
+  static const familyManage = '/home/family';
+  static const familyInvite = '/home/family/invite';
   static const settings = '/me/settings';
   static const notifications = '/notifications';
 

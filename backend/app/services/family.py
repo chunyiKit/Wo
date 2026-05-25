@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.errors import AppError, ErrorCode
-from app.core.permissions import require_membership
-from app.models.family import Family, FamilyCreate
+from app.core.permissions import require_admin, require_membership
+from app.models.family import Family, FamilyCreate, FamilyUpdate
 from app.models.membership import Membership
 from app.models.user import User
 
@@ -67,6 +67,30 @@ async def get_family_view(
             "家庭不存在",
             status_code=404,
         )
+    member_count = await _count_active_members(session, family_id)
+    return family, membership, member_count
+
+
+async def update_family(
+    session: AsyncSession,
+    family_id: UUID,
+    payload: FamilyUpdate,
+    user: User,
+) -> tuple[Family, Membership, int]:
+    """Update a family's profile (name/slogan/emoji). Owner/Admin only."""
+    membership = await require_membership(session, user.id, family_id)
+    require_admin(membership)
+    family = await session.get(Family, family_id)
+    if family is None:
+        # Membership exists, so this is defensive only.
+        raise AppError(ErrorCode.FAMILY_NOT_FOUND, "家庭不存在", status_code=404)
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(family, key, value)
+    session.add(family)
+    await session.commit()
+    await session.refresh(family)
+
     member_count = await _count_active_members(session, family_id)
     return family, membership, member_count
 

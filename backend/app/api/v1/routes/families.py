@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from app.api.deps import SessionDep
 from app.core.auth import CurrentUserDep
 from app.core.response import ApiResponse, ok
-from app.models.family import FamilyCreate, FamilyRead
+from app.models.family import FamilyCreate, FamilyRead, FamilyUpdate
 from app.services import family as family_service
 
 router = APIRouter(prefix="/families", tags=["families"])
@@ -32,6 +32,19 @@ async def get_family(
 ) -> ApiResponse[FamilyRead]:
     family, membership, count = await family_service.get_family_view(
         session, family_id, current_user
+    )
+    return ok(FamilyRead.from_components(family, membership, count))
+
+
+@router.patch("/{family_id}", response_model=ApiResponse[FamilyRead])
+async def update_family(
+    family_id: UUID,
+    payload: FamilyUpdate,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[FamilyRead]:
+    family, membership, count = await family_service.update_family(
+        session, family_id, payload, current_user
     )
     return ok(FamilyRead.from_components(family, membership, count))
 

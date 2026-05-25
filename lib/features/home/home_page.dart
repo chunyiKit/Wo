@@ -1147,6 +1147,15 @@ class _FamilySwitcherSheetState extends State<_FamilySwitcherSheet> {
                 ),
               ),
             const Divider(height: WoTokens.space5),
+            if (currentId != null)
+              ListTile(
+                leading: Icon(Icons.settings_outlined, color: wo.fgMid),
+                title: Text('家庭设置', style: t.titleMedium),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push(WoRoutes.familyManage);
+                },
+              ),
             ListTile(
               leading: Icon(Icons.add, color: wo.accentDeep),
               title: Text(

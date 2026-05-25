@@ -8,10 +8,10 @@ docs/backend-contract.md §3.2 / §5.2.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy import Column, DateTime
 from sqlmodel import Field, SQLModel
 
@@ -41,6 +41,14 @@ class Family(FamilyBase, table=True):
 
 class FamilyCreate(FamilyBase):
     """POST /families request body."""
+
+
+class FamilyUpdate(BaseModel):
+    """PATCH /families/{id} request body —每个字段可选，仅更新提供的字段。"""
+
+    name: Annotated[str, StringConstraints(min_length=1, max_length=16)] | None = None
+    slogan: Annotated[str, StringConstraints(max_length=24)] | None = None
+    emoji: Annotated[str, StringConstraints(min_length=1, max_length=16)] | None = None
 
 
 class FamilyRead(BaseModel):
