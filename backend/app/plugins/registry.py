@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 PluginCategory = Literal["life", "finance", "health", "education", "entertainment"]
 ColorToken = Literal["photo", "money", "anniv", "chore", "pet", "accent"]
+# Optional emphasis applied to a card's `secondary` text. None = normal color.
+SecondaryTone = Literal["warning", "danger"]
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,8 @@ class PluginPreview(BaseModel):
     secondary: str | None = None
     badge: str | None = None
     color_token: ColorToken
+    # Emphasis for `secondary` (e.g. a budget running low). None = normal.
+    secondary_tone: SecondaryTone | None = None
     # Big icon to show on the card. When None the client falls back to the
     # plugin's manifest emoji. Lets a card reflect content-specific emoji
     # (e.g. the chosen anniversary emoji rather than the plugin's 🎂).

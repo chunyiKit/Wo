@@ -5,6 +5,16 @@ library;
 DateTime? _parseDate(Object? v) =>
     v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
 
+/// 后端 Decimal 字段会被序列化成 JSON 字符串（如 "12.50"），也可能是数字。
+/// 统一安全解析：数字 / 字符串都接受，无法解析返回 null。
+double? _parseNumOrNull(Object? v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+double _parseNum(Object? v) => _parseNumOrNull(v) ?? 0;
+
 class WoUser {
   const WoUser({
     required this.id,
@@ -237,6 +247,7 @@ class PluginPreview {
     this.badge,
     required this.colorToken,
     this.emoji,
+    this.secondaryTone,
   });
 
   final String primary;
@@ -248,12 +259,17 @@ class PluginPreview {
   /// emoji，如所选纪念日的 emoji 而非插件的 🎂）。
   final String? emoji;
 
+  /// secondary 文字的强调色（warning / danger），为空表示正常色。
+  /// 见 theme/color_token.dart 的 colorForTone。
+  final String? secondaryTone;
+
   factory PluginPreview.fromJson(Map<String, dynamic> j) => PluginPreview(
         primary: j['primary'] as String? ?? '',
         secondary: j['secondary'] as String?,
         badge: j['badge'] as String?,
         colorToken: j['color_token'] as String? ?? 'accent',
         emoji: j['emoji'] as String?,
+        secondaryTone: j['secondary_tone'] as String?,
       );
 }
 
@@ -448,6 +464,60 @@ class Anniversary {
         note: j['note'] as String?,
         createdAt: _parseDate(j['created_at']),
         daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class Expense {
+  const Expense({
+    required this.id,
+    required this.familyId,
+    required this.amount,
+    required this.category,
+    this.note,
+    this.createdBy,
+    this.creatorName,
+    this.creatorEmoji,
+    this.createdAt,
+  });
+
+  final String id;
+  final String familyId;
+  final double amount;
+  final String category; // dining | shopping | utilities | car
+  final String? note;
+  final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final DateTime? createdAt;
+
+  factory Expense.fromJson(Map<String, dynamic> j) => Expense(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        amount: _parseNum(j['amount']),
+        category: j['category'] as String? ?? '',
+        note: j['note'] as String?,
+        createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        createdAt: _parseDate(j['created_at']),
+      );
+}
+
+class AccountingSummary {
+  const AccountingSummary({
+    required this.monthTotal,
+    this.budget,
+    this.remaining,
+  });
+
+  final double monthTotal;
+  final double? budget;
+  final double? remaining;
+
+  factory AccountingSummary.fromJson(Map<String, dynamic> j) => AccountingSummary(
+        monthTotal: _parseNum(j['month_total']),
+        budget: _parseNumOrNull(j['budget']),
+        remaining: _parseNumOrNull(j['remaining']),
       );
 }
 

@@ -211,6 +211,72 @@ class WoApi {
   Future<void> deleteAnniversary(String familyId, String id) =>
       _client.delete('/families/$familyId/plugins/anniversary/dates/$id');
 
+  // ── 记账插件 ────────────────────────────────────────────────
+  Future<List<Expense>> expenses(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/accounting/transactions') as List;
+    return data.map((e) => Expense.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Expense> createExpense(
+    String familyId, {
+    required double amount,
+    required String category,
+    String? note,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/accounting/transactions',
+      body: {
+        'amount': amount,
+        'category': category,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
+    return Expense.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Expense> updateExpense(
+    String familyId,
+    String id, {
+    required double amount,
+    required String category,
+    String? note,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/accounting/transactions/$id',
+      body: {
+        'amount': amount,
+        'category': category,
+        'note': note,
+      },
+    );
+    return Expense.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteExpense(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/accounting/transactions/$id');
+
+  Future<AccountingSummary> accountingSummary(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/accounting/summary');
+    return AccountingSummary.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<double?> getBudget(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/accounting/budget')
+        as Map<String, dynamic>;
+    final raw = data['monthly_amount'];
+    if (raw == null) return null;
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw.toString());
+  }
+
+  Future<void> setBudget(String familyId, double amount) => _client.put(
+        '/families/$familyId/plugins/accounting/budget',
+        body: {'monthly_amount': amount},
+      );
+
   static String _formatDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
