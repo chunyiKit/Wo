@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "app.wo.wo"
+    namespace = "io.github.chunyikit.wo"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,14 +15,19 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "app.wo.wo"
+        applicationId = "io.github.chunyikit.wo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 极光推送占位符：被 jpush_flutter 合并进来的 manifest meta-data 引用。
+        // AppKey 必须与极光控制台、后端 JPUSH_APP_KEY 一致；包名已注册为 applicationId。
+        manifestPlaceholders["JPUSH_PKGNAME"] = "io.github.chunyikit.wo"
+        manifestPlaceholders["JPUSH_APPKEY"] = "c7b049b2dae09a723655dc8e"
+        manifestPlaceholders["JPUSH_CHANNEL"] = "default_developer"
     }
 
     buildTypes {

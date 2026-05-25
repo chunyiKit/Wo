@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Talk to the Wo backend over the network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13+ (API 33): show notifications (JPush remote pushes + any
+         local notifications). Requested at runtime via PushService. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="wo"
         android:name="${applicationName}"

@@ -20,4 +20,12 @@ class ApiConfig {
 
   /// 所有业务接口的统一前缀。
   static const apiPrefix = '/api/v1';
+
+  /// 极光 AppKey。这是**公开**标识（会随 APK 一起分发，也写在 Android manifest
+  /// 占位符里），非机密；真正的 MasterSecret 只在后端。Dart 侧的 setup() 主要给
+  /// iOS 用，Android 由 manifest meta-data 驱动，两边保持一致即可。
+  static const jpushAppKey = 'c7b049b2dae09a723655dc8e';
+
+  /// 极光渠道标识，与 Android manifest 占位符 JPUSH_CHANNEL 对齐。
+  static const jpushChannel = 'default_developer';
 }

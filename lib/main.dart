@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'data/api_config.dart';
+import 'data/push_service.dart';
 import 'data/wo_http_overrides.dart';
 import 'data/wo_session.dart';
 import 'navigation/wo_router.dart';
@@ -15,7 +18,16 @@ Future<void> main() async {
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
-  runApp(WoApp(session: WoSession()));
+
+  // 极光推送：初始化 SDK + 申请通知权限（后台进行，不阻塞首帧）。registration
+  // id 的上报由 WoSession 在登录/启动时完成。
+  final push = PushService(
+    appKey: ApiConfig.jpushAppKey,
+    channel: ApiConfig.jpushChannel,
+  );
+  unawaited(push.init());
+
+  runApp(WoApp(session: WoSession(push: push)));
 }
 
 class WoApp extends StatefulWidget {

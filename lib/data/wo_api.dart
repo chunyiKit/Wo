@@ -185,6 +185,23 @@ class WoApi {
     return ((data as Map<String, dynamic>)['marked'] as num?)?.toInt() ?? 0;
   }
 
+  // ── 设备推送 token ──────────────────────────────────────────
+  /// 注册本机的极光 registration id，用于接收远程推送。后端按 registration id
+  /// 幂等 upsert，重复调用安全。[platform] 取 'android' / 'ios'。
+  Future<void> registerDevice({
+    required String registrationId,
+    required String platform,
+  }) =>
+      _client.post(
+        '/devices/register',
+        body: {'registration_id': registrationId, 'platform': platform},
+      );
+
+  /// 注销本机 token（登出时调用）。后端按 (registration id, 当前用户) 删除，
+  /// 不存在也返回成功。
+  Future<void> unregisterDevice(String registrationId) =>
+      _client.delete('/devices/$registrationId');
+
   // ── 纪念日插件 ──────────────────────────────────────────────
   Future<List<Anniversary>> anniversaries(String familyId) async {
     final data = await _client
