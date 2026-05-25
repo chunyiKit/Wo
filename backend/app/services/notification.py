@@ -14,10 +14,12 @@ from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.models.family import Family
 from app.models.membership import Membership
 from app.models.notification import Notification
+from app.models.push_outbox import PushOutbox
 from app.models.user import User
 
 DEFAULT_LIMIT = 50
@@ -140,14 +142,20 @@ def _add_for_recipients(
     deeplink: str | None = None,
 ) -> None:
     for uid in recipients:
-        session.add(
-            Notification(
-                user_id=uid,
-                type=notification_type,
-                family_id=family_id,
-                title=title,
-                body=body,
-                icon_emoji=icon_emoji,
-                deeplink=deeplink,
-            )
+        notif = Notification(
+            user_id=uid,
+            type=notification_type,
+            family_id=family_id,
+            title=title,
+            body=body,
+            icon_emoji=icon_emoji,
+            deeplink=deeplink,
         )
+        session.add(notif)
+        # Stage the push intent in the *same* transaction (id is available now
+        # via the UUIDv7 default_factory). The caller's commit makes notification
+        # + outbox atomic; the dispatcher drains it after commit, so a rolled-back
+        # transaction never produces a ghost push. Gated so push-disabled
+        # deployments don't accumulate dead outbox rows.
+        if settings.push_enabled:
+            session.add(PushOutbox(notification_id=notif.id))

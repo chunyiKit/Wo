@@ -32,5 +32,21 @@ class Settings(BaseSettings):
     login_rate_limit_per_phone_max: int = 5
     login_rate_limit_window_seconds: int = 60
 
+    # ---- Push (JPush / 极光推送) -------------------------------------------
+    # Master switch. When false: notifications skip outbox staging and the
+    # dispatcher loop never starts — so dev/tests behave exactly as before push.
+    push_enabled: bool = False
+    # JPush app credentials (Push API v3 uses HTTP Basic: app_key:master_secret).
+    # Left blank in dev/tests; the client no-ops when either is empty.
+    jpush_app_key: str = ""
+    jpush_master_secret: str = ""
+    jpush_api_url: str = "https://api.jpush.cn/v3/push"
+    # iOS APNs gateway: false = sandbox (dev builds), true = production.
+    jpush_apns_production: bool = False
+    # Dispatcher tuning.
+    push_poll_interval_seconds: float = 5.0
+    push_batch_size: int = 100
+    push_max_attempts: int = 5
+
 
 settings = Settings()
