@@ -11,7 +11,6 @@ import '../features/join/join_landing_page.dart';
 import '../features/join/scan_page.dart';
 import '../features/marketplace/marketplace_page.dart';
 import '../features/marketplace/plugin_detail_page.dart';
-import '../features/plugins/anniversary/anniversary_list_page.dart';
 import '../features/messages/messages_page.dart';
 import '../features/onboarding/onboarding_page.dart';
 import '../features/profile/profile_page.dart';
@@ -88,10 +87,6 @@ GoRouter buildRouter() {
                         ),
                       ),
                     ],
-                  ),
-                  GoRoute(
-                    path: 'anniversary',
-                    builder: (_, __) => const AnniversaryListPage(),
                   ),
                   GoRoute(
                     path: 'family',

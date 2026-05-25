@@ -25,4 +25,17 @@ extension WoColorTokenX on WoColors {
 
   /// accent 卡片用实心暖橙 + 白字（与原设计里的「纪念日」强调卡一致）。
   bool isEmphasizedToken(String token) => token == 'accent';
+
+  /// 把 `secondary_tone`（warning / danger）映射成强调色；为空返回 null，
+  /// 调用方据此回退到正常文字色。
+  Color? colorForTone(String? tone) {
+    switch (tone) {
+      case 'warning':
+        return warning;
+      case 'danger':
+        return danger;
+      default:
+        return null;
+    }
+  }
 }

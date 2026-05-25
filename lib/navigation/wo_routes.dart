@@ -28,6 +28,4 @@ class WoRoutes {
 
   static String pluginDetailFor(String id) => '/marketplace/plugin/$id';
 
-  // 插件页（首页卡片点击进入）
-  static const anniversary = '/home/anniversary';
 }

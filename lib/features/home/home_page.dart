@@ -10,7 +10,7 @@ import '../../theme/color_token.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
 import '../../widgets/wo_widget_grid.dart';
-import '../plugins/anniversary/anniversary_edit_page.dart';
+import '../plugins/plugin_pages.dart';
 
 /// 家庭首页（Direction A · 温润日常 + 异形 Widget 网格）。
 ///
@@ -168,34 +168,12 @@ class _HomePageState extends State<HomePage> {
   /// 纪念日：绑定卡 → 直接进入所绑定纪念日的编辑页；总览卡（或绑定项已删）
   /// → 进入纪念日列表页。
   Future<void> _openPlugin(InstalledPlugin ip) async {
-    if (ip.pluginId != 'anniversary') return;
-    final pinnedId = ip.config['anniversary_id'] as String?;
-    final session = WoScope.of(context);
-    final familyId = session.currentFamilyId;
-    if (pinnedId != null && familyId != null) {
-      try {
-        final list = await session.api.anniversaries(familyId);
-        Anniversary? match;
-        for (final a in list) {
-          if (a.id == pinnedId) {
-            match = a;
-            break;
-          }
-        }
-        if (match != null && mounted) {
-          await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => AnniversaryEditPage(existing: match),
-            ),
-          );
-          if (mounted) await session.refresh();
-          return;
-        }
-      } catch (_) {
-        // 取数失败就退回列表页。
-      }
-    }
-    if (mounted) context.push(WoRoutes.anniversary);
+    final page = pluginPageFor(ip);
+    if (page == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => page),
+    );
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   /// 编辑态下给纪念日卡绑定某个纪念日（或切回总览）。
@@ -407,6 +385,8 @@ class _WidgetCard extends StatelessWidget {
     final color = wo.colorForToken(preview.colorToken);
     final fg = emphasized ? Colors.white : wo.fg;
     final fgMid = emphasized ? Colors.white.withValues(alpha: 0.85) : wo.fgMid;
+    // secondary 可带强调色（如预算见底），为空回退到 fgMid。
+    final secondaryColor = wo.colorForTone(preview.secondaryTone) ?? fgMid;
     final isCompact = installed.layout.ch <= 1;
 
     return Stack(
@@ -443,7 +423,11 @@ class _WidgetCard extends StatelessWidget {
                             // 矮卡也要能看到倒计时（secondary）；没有时回退插件名。
                             Text(
                               preview.secondary ?? installed.plugin.name,
-                              style: t.labelMedium?.copyWith(color: fgMid),
+                              style: t.labelMedium?.copyWith(
+                                color: preview.secondary != null
+                                    ? secondaryColor
+                                    : fgMid,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -480,7 +464,12 @@ class _WidgetCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           preview.secondary!,
-                          style: t.bodySmall?.copyWith(color: fgMid),
+                          style: t.bodySmall?.copyWith(
+                            color: secondaryColor,
+                            fontWeight: preview.secondaryTone != null
+                                ? FontWeight.w700
+                                : null,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

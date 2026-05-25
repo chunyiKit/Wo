@@ -44,6 +44,12 @@ class WoTokens {
   static const choreDark = Color(0xFF2C3026);
   static const petDark = Color(0xFF3A2E36);
 
+  // 语义强调色（预算见底等）：黄=warning，红=danger。需在卡片底色上可读。
+  static const warningLight = Color(0xFFC98A00);
+  static const dangerLight = Color(0xFFC0392B);
+  static const warningDark = Color(0xFFE6B84D);
+  static const dangerDark = Color(0xFFF06A5D);
+
   // ── 圆角 ──────────────────────────────────────────────────────
   static const cardRadius = 22.0;
   static const fabRadius = 18.0;
@@ -89,6 +95,8 @@ class WoColors extends ThemeExtension<WoColors> {
     required this.anniv,
     required this.chore,
     required this.pet,
+    required this.warning,
+    required this.danger,
   });
 
   final Color bg;
@@ -108,6 +116,8 @@ class WoColors extends ThemeExtension<WoColors> {
   final Color anniv;
   final Color chore;
   final Color pet;
+  final Color warning;
+  final Color danger;
 
   static const light = WoColors(
     bg: WoTokens.lightBg,
@@ -125,6 +135,8 @@ class WoColors extends ThemeExtension<WoColors> {
     anniv: WoTokens.annivLight,
     chore: WoTokens.choreLight,
     pet: WoTokens.petLight,
+    warning: WoTokens.warningLight,
+    danger: WoTokens.dangerLight,
   );
 
   static const dark = WoColors(
@@ -143,6 +155,8 @@ class WoColors extends ThemeExtension<WoColors> {
     anniv: WoTokens.annivDark,
     chore: WoTokens.choreDark,
     pet: WoTokens.petDark,
+    warning: WoTokens.warningDark,
+    danger: WoTokens.dangerDark,
   );
 
   @override
@@ -162,6 +176,8 @@ class WoColors extends ThemeExtension<WoColors> {
     Color? anniv,
     Color? chore,
     Color? pet,
+    Color? warning,
+    Color? danger,
   }) {
     return WoColors(
       bg: bg ?? this.bg,
@@ -179,6 +195,8 @@ class WoColors extends ThemeExtension<WoColors> {
       anniv: anniv ?? this.anniv,
       chore: chore ?? this.chore,
       pet: pet ?? this.pet,
+      warning: warning ?? this.warning,
+      danger: danger ?? this.danger,
     );
   }
 
@@ -201,6 +219,8 @@ class WoColors extends ThemeExtension<WoColors> {
       anniv: Color.lerp(anniv, other.anniv, t)!,
       chore: Color.lerp(chore, other.chore, t)!,
       pet: Color.lerp(pet, other.pet, t)!,
+      warning: Color.lerp(warning, other.warning, t)!,
+      danger: Color.lerp(danger, other.danger, t)!,
     );
   }
 }

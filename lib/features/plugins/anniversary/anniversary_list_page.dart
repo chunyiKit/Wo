@@ -18,10 +18,17 @@ class AnniversaryListPage extends StatefulWidget {
 class _AnniversaryListPageState extends State<AnniversaryListPage> {
   late Future<List<Anniversary>> _future;
 
+  bool _loaded = false;
+
+  // 首次加载放在 didChangeDependencies 而非 initState：_reload 通过
+  // WoScope.of(context) 依赖 InheritedWidget，在 initState 阶段访问会抛异常。
   @override
-  void initState() {
-    super.initState();
-    _reload();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loaded) {
+      _loaded = true;
+      _reload();
+    }
   }
 
   void _reload() {
