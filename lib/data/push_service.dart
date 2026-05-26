@@ -34,15 +34,20 @@ class PushService {
   /// 可选：通知被点击时的回调（用于 deeplink 跳转）。由上层注入。
   void Function(Map<String, dynamic> event)? onOpenNotification;
 
+  /// 可选：消息中心可能有新内容时的回调（前台收到 / 点开推送时触发）。
+  /// 上层据此刷新消息列表与未读角标。
+  void Function()? onInboxShouldRefresh;
+
   /// 初始化极光 SDK 并申请通知权限。重复调用安全（只跑一次）。
   Future<void> init() async {
     if (_initialized || !_supported) return;
     _initialized = true;
 
     _jpush.addEventHandler(
-      onReceiveNotification: _logEvent('onReceiveNotification'),
+      // 前台收到通知 / 点开通知 都意味着消息中心有新内容，触发上层刷新。
+      onReceiveNotification: _handleInbox('onReceiveNotification'),
       onOpenNotification: _handleOpen,
-      onReceiveMessage: _logEvent('onReceiveMessage'),
+      onReceiveMessage: _handleInbox('onReceiveMessage'),
     );
 
     // 必须先 setup 才能用其他能力。production 控制 iOS APNs 网关（沙箱/正式），
@@ -95,12 +100,14 @@ class PushService {
 
   Future<dynamic> _handleOpen(Map<String, dynamic> event) async {
     if (kDebugMode) debugPrint('[push] onOpenNotification: $event');
+    onInboxShouldRefresh?.call();
     onOpenNotification?.call(event);
   }
 
   // 返回类型显式写出，避免 jpush 两个库都导出的 `EventHandler` typedef 造成歧义。
-  Future<dynamic> Function(Map<String, dynamic>) _logEvent(String name) =>
+  Future<dynamic> Function(Map<String, dynamic>) _handleInbox(String name) =>
       (Map<String, dynamic> event) async {
         if (kDebugMode) debugPrint('[push] $name: $event');
+        onInboxShouldRefresh?.call();
       };
 }

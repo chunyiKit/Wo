@@ -25,9 +25,12 @@ Future<void> main() async {
     appKey: ApiConfig.jpushAppKey,
     channel: ApiConfig.jpushChannel,
   );
+  final session = WoSession(push: push);
+  // 前台收到 / 点开推送时，刷新消息中心与未读角标。
+  push.onInboxShouldRefresh = session.requestMessagesRefresh;
   unawaited(push.init());
 
-  runApp(WoApp(session: WoSession(push: push)));
+  runApp(WoApp(session: session));
 }
 
 class WoApp extends StatefulWidget {
@@ -39,12 +42,27 @@ class WoApp extends StatefulWidget {
   State<WoApp> createState() => _WoAppState();
 }
 
-class _WoAppState extends State<WoApp> {
+class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
   // 路由表只构建一次，避免热重载时丢失导航栈。
   final _router = buildRouter();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从后台回到前台时刷新消息中心：推送多在后台到达，回来要能立刻看到。
+    if (state == AppLifecycleState.resumed && widget.session.isLoggedIn) {
+      widget.session.requestMessagesRefresh();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.session.dispose();
     super.dispose();
   }

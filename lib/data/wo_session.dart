@@ -30,6 +30,16 @@ class WoSession extends ChangeNotifier {
   bool _loading = false;
   Object? _error;
 
+  /// 消息中心刷新信号。点「消息」Tab、App 恢复前台、前台收到推送时自增；
+  /// 消息页监听它并重新拉取列表（消息页常驻 Tab 不会自己重建，故需外部触发）。
+  final ValueNotifier<int> messagesRefreshSignal = ValueNotifier<int>(0);
+
+  /// 请求消息页刷新（并顺带刷新 bootstrap，更新未读角标）。
+  void requestMessagesRefresh() {
+    messagesRefreshSignal.value++;
+    unawaited(refresh());
+  }
+
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
   Bootstrap? get bootstrap => _bootstrap;
   bool get loading => _loading;
@@ -133,6 +143,12 @@ class WoSession extends ChangeNotifier {
   Future<void> switchFamily(String familyId) async {
     await api.switchFamily(familyId);
     await refresh();
+  }
+
+  @override
+  void dispose() {
+    messagesRefreshSignal.dispose();
+    super.dispose();
   }
 }
 

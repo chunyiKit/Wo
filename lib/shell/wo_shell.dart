@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/wo_session.dart';
 import '../navigation/wo_routes.dart';
 import '../theme/wo_tokens.dart';
 
@@ -45,6 +46,10 @@ class WoShell extends StatelessWidget {
               // 首页里命令式压入的插件详情页再用 popUntil 清掉。
               shell.goBranch(i, initialLocation: true);
               homeBranchKey.currentState?.popUntil((r) => r.isFirst);
+              // 进「消息」Tab 时强制重拉一次（消息页常驻、不会自己重建）。
+              if (_tabs[i].route == WoRoutes.messages) {
+                WoScope.of(context).requestMessagesRefresh();
+              }
             },
             destinations: [
               for (final tab in _tabs)

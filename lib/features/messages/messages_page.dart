@@ -17,11 +17,34 @@ class MessagesPage extends StatefulWidget {
 
 class _MessagesPageState extends State<MessagesPage> {
   late Future<List<WoNotification>> _future;
+  WoSession? _session;
 
   @override
   void initState() {
     super.initState();
     _future = WoScope.api(context).notifications();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 订阅刷新信号：点「消息」Tab / App 恢复前台 / 收到推送时会触发重拉。
+    final session = WoScope.of(context);
+    if (!identical(session, _session)) {
+      _session?.messagesRefreshSignal.removeListener(_onRefreshSignal);
+      _session = session;
+      session.messagesRefreshSignal.addListener(_onRefreshSignal);
+    }
+  }
+
+  void _onRefreshSignal() {
+    if (mounted) _reload();
+  }
+
+  @override
+  void dispose() {
+    _session?.messagesRefreshSignal.removeListener(_onRefreshSignal);
+    super.dispose();
   }
 
   Future<void> _reload() async {
