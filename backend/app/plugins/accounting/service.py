@@ -81,7 +81,9 @@ def _fmt(amount: Decimal) -> str:
     return f"¥{quantized}"
 
 
-async def preview_hook(session: AsyncSession, ip: InstalledPlugin) -> PluginPreview:
+async def preview_hook(
+    session: AsyncSession, ip: InstalledPlugin, _viewer_id: UUID | None = None
+) -> PluginPreview:
     """Render the home card for the accounting widget.
 
     A compact (2×1) card shows only this month's total; a standard (2×2) card

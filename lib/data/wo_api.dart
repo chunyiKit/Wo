@@ -90,6 +90,32 @@ class WoApi {
     return data.map((e) => Member.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 离开家庭（移除自己的成员身份）。主理人不能直接离开（后端返回 403）。
+  Future<void> leaveFamily(String familyId) async {
+    await _client.delete('/families/$familyId/members/me');
+  }
+
+  /// 修改成员角色（owner/admin 可操作，不能改主理人；目标角色限家人/管理员/孩子/宠物）。
+  Future<Member> updateMemberRole(
+    String familyId,
+    String userId,
+    String role,
+  ) async {
+    final data = await _client.patch(
+      '/families/$familyId/members/$userId',
+      body: {'role': role},
+    );
+    return Member.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 转让主理人（仅当前主理人可操作）。转让后自己降为管理员。
+  Future<void> transferOwnership(String familyId, String newOwnerId) async {
+    await _client.post(
+      '/families/$familyId/transfer-ownership',
+      body: {'new_owner_id': newOwnerId},
+    );
+  }
+
   // ── 邀请 ────────────────────────────────────────────────────
   Future<InvitationResult> createInvitation(
     String familyId, {
@@ -400,6 +426,78 @@ class WoApi {
     ) as List;
     return data.map((e) => e as String).toList();
   }
+
+  // ── 家务插件 ────────────────────────────────────────────────
+  /// 拉取家务列表。[done] 为空取全部，false 取未完成，true 取已完成。
+  Future<List<Chore>> chores(String familyId, {bool? done}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/chore/chores',
+      query: done != null ? {'done': done} : null,
+    ) as List;
+    return data.map((e) => Chore.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Chore> createChore(
+    String familyId, {
+    required String title,
+    required String emoji,
+    String? note,
+    String? assignedTo,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/chore/chores',
+      body: {
+        'title': title,
+        'emoji': emoji,
+        if (note != null && note.isNotEmpty) 'note': note,
+        if (assignedTo != null && assignedTo.isNotEmpty)
+          'assigned_to': assignedTo,
+      },
+    );
+    return Chore.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 更新家务本体（标题/emoji/备注/负责人）。编辑页一次性提交完整状态，
+  /// [assignedTo] 为空表示清除指派。完成状态用 complete/reopen 接口单独切换。
+  Future<Chore> updateChore(
+    String familyId,
+    String id, {
+    required String title,
+    required String emoji,
+    String? note,
+    String? assignedTo,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/chore/chores/$id',
+      body: {
+        'title': title,
+        'emoji': emoji,
+        'note': note,
+        'assigned_to':
+            (assignedTo != null && assignedTo.isNotEmpty) ? assignedTo : null,
+      },
+    );
+    return Chore.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteChore(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/chore/chores/$id');
+
+  Future<Chore> completeChore(String familyId, String id) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/chore/chores/$id/complete');
+    return Chore.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Chore> reopenChore(String familyId, String id) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/chore/chores/$id/reopen');
+    return Chore.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 手动提醒负责人（给 TA 发一条通知）。家务须已指派且未完成。
+  Future<void> remindChore(String familyId, String id) =>
+      _client.post('/families/$familyId/plugins/chore/chores/$id/remind');
 
   // ── 记账插件 ────────────────────────────────────────────────
   Future<List<Expense>> expenses(

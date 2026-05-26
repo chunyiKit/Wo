@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -76,12 +77,14 @@ class PluginPreview(BaseModel):
     emoji: str | None = None
 
 
-# A preview hook receives the session + the installed-plugin row (so it can read
-# per-card `config`, e.g. which anniversary this card is pinned to) and returns a
-# fresh preview. Plugins that don't register one fall back to a default.
-# Typed as `object` to avoid a circular import with app.models.plugin; hooks
-# annotate the concrete `InstalledPlugin` type themselves.
-PreviewProvider = Callable[[AsyncSession, "object"], Awaitable[PluginPreview]]
+# A preview hook receives the session, the installed-plugin row (so it can read
+# per-card `config`, e.g. which anniversary this card is pinned to), and the id
+# of the user the card is being rendered for (so a card can show viewer-specific
+# data, e.g. how many chores *I* still owe). It returns a fresh preview. Plugins
+# that don't register one fall back to a default.
+# `ip` is typed as `object` to avoid a circular import with app.models.plugin;
+# hooks annotate the concrete `InstalledPlugin` type themselves.
+PreviewProvider = Callable[[AsyncSession, "object", "UUID | None"], Awaitable[PluginPreview]]
 
 
 @dataclass

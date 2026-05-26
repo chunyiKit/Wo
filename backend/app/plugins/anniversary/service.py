@@ -1,6 +1,7 @@
 """Anniversary business logic — date math (solar + lunar) + preview hook."""
 
 from datetime import date
+from uuid import UUID
 
 from lunardate import LunarDate
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,7 +95,9 @@ def _countdown_preview(row: Anniversary, today: date) -> PluginPreview:
     )
 
 
-async def preview_hook(session: AsyncSession, ip: InstalledPlugin) -> PluginPreview:
+async def preview_hook(
+    session: AsyncSession, ip: InstalledPlugin, _viewer_id: UUID | None = None
+) -> PluginPreview:
     """Render the home card for one installed anniversary widget.
 
     A card pinned via `config["anniversary_id"]` shows that specific date; an

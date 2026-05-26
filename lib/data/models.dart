@@ -621,6 +621,58 @@ class Recipe {
       );
 }
 
+/// 家务插件的一条待办（对应后端 chore_chores 表 / ChoreRead）。
+class Chore {
+  const Chore({
+    required this.id,
+    required this.familyId,
+    required this.title,
+    this.note,
+    required this.emoji,
+    this.assignedTo,
+    required this.done,
+    this.completedAt,
+    this.createdAt,
+    this.createdBy,
+    this.assigneeName,
+    this.assigneeEmoji,
+  });
+
+  final String id;
+  final String familyId;
+  final String title;
+  final String? note;
+  final String emoji;
+
+  /// 负责人 user id，可空（未指派）。
+  final String? assignedTo;
+  final bool done;
+  final DateTime? completedAt;
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  /// 负责人展示信息，后端注入；未指派或该成员已离开时为空。
+  final String? assigneeName;
+  final String? assigneeEmoji;
+
+  bool get isAssigned => assignedTo != null && assignedTo!.isNotEmpty;
+
+  factory Chore.fromJson(Map<String, dynamic> j) => Chore(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        title: j['title'] as String? ?? '',
+        note: j['note'] as String?,
+        emoji: j['emoji'] as String? ?? '🧹',
+        assignedTo: j['assigned_to'] as String?,
+        done: j['done'] as bool? ?? false,
+        completedAt: _parseDate(j['completed_at']),
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+        assigneeName: j['assignee_name'] as String?,
+        assigneeEmoji: j['assignee_emoji'] as String?,
+      );
+}
+
 class InvitationPreview {
   const InvitationPreview({
     required this.familyName,

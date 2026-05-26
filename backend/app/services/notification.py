@@ -157,6 +157,35 @@ async def notify_family(
     return len(recipients)
 
 
+async def notify_users(
+    session: AsyncSession,
+    *,
+    recipients: Sequence[UUID],
+    notification_type: str,
+    family_id: UUID | None,
+    title: str,
+    body: str,
+    icon_emoji: str = "🔔",
+    deeplink: str | None = None,
+) -> int:
+    """Stage a notification for an explicit set of recipients. Returns the
+    count. Like the other notifiers it does NOT commit — the caller's
+    transaction does. Lets plugins emit notifications (e.g. a chore reminder to
+    its assignee) without each duplicating the push-outbox staging logic.
+    """
+    _add_for_recipients(
+        session,
+        recipients=recipients,
+        notification_type=notification_type,
+        family_id=family_id,
+        title=title,
+        body=body,
+        icon_emoji=icon_emoji,
+        deeplink=deeplink,
+    )
+    return len(recipients)
+
+
 async def notify_member_joined(
     session: AsyncSession,
     *,
@@ -177,6 +206,85 @@ async def notify_member_joined(
         title=f"{joining_user.display_name}加入了「{family.name}」",
         body="现在你们可以一起记录生活了 🎉",
         icon_emoji="👋",
+        deeplink=f"wo://family/{family.id}/members",
+    )
+
+
+async def notify_member_left(
+    session: AsyncSession,
+    *,
+    family: Family,
+    leaving_user: User,
+) -> None:
+    """Tell remaining members that someone left the family.
+
+    Call this AFTER the leaver's membership row is removed (and flushed) so the
+    recipient query naturally excludes them; the explicit exclusion is belt-and-
+    suspenders. Like the other notifiers it does NOT commit.
+    """
+    recipients = await _other_active_member_ids(session, family.id, leaving_user.id)
+    _add_for_recipients(
+        session,
+        recipients=recipients,
+        notification_type="member_left",
+        family_id=family.id,
+        title=f"{leaving_user.display_name}离开了「{family.name}」",
+        body="TA 退出了这个家。",
+        icon_emoji="👋",
+        deeplink=f"wo://family/{family.id}/members",
+    )
+
+
+async def notify_role_changed(
+    session: AsyncSession,
+    *,
+    family: Family,
+    target_user_id: UUID,
+    role_label: str,
+) -> None:
+    """Tell a member their role in this family changed. Does NOT commit."""
+    _add_for_recipients(
+        session,
+        recipients=[target_user_id],
+        notification_type="role_changed",
+        family_id=family.id,
+        title=f"你在「{family.name}」的身份变更为{role_label}",
+        body="可在家庭管理里查看成员权限。",
+        icon_emoji="🛡️",
+        deeplink=f"wo://family/{family.id}/members",
+    )
+
+
+async def notify_ownership_transferred(
+    session: AsyncSession,
+    *,
+    family: Family,
+    new_owner: User,
+    previous_owner: User,
+) -> None:
+    """Tell the new owner they're now in charge, and tell everyone else who.
+
+    Call AFTER role rows are updated. Does NOT commit.
+    """
+    _add_for_recipients(
+        session,
+        recipients=[new_owner.id],
+        notification_type="ownership_received",
+        family_id=family.id,
+        title=f"你已成为「{family.name}」的主理人 👑",
+        body=f"{previous_owner.display_name}把这个家交给了你。",
+        icon_emoji="👑",
+        deeplink=f"wo://family/{family.id}/members",
+    )
+    others = [uid for uid in await _active_member_ids(session, family.id) if uid != new_owner.id]
+    _add_for_recipients(
+        session,
+        recipients=others,
+        notification_type="ownership_transferred",
+        family_id=family.id,
+        title=f"{new_owner.display_name}成为了「{family.name}」的新主理人",
+        body="家庭管理权限已转交。",
+        icon_emoji="👑",
         deeplink=f"wo://family/{family.id}/members",
     )
 

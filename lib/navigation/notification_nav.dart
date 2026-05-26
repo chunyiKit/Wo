@@ -5,10 +5,12 @@ import '../data/wo_session.dart';
 import '../features/family/family_manage_page.dart';
 import '../features/plugins/accounting/accounting_page.dart';
 import '../features/plugins/anniversary/anniversary_list_page.dart';
+import '../features/plugins/chore/chore_list_page.dart';
 
 /// 通知点击跳转：根据 [WoNotification.deeplink] 打开对应页面。支持
 ///   wo://family/{fid}/plugins/anniversary  → 纪念日列表
 ///   wo://family/{fid}/plugins/accounting   → 记账
+///   wo://family/{fid}/plugins/chore        → 家务活
 ///   wo://family/{fid}/members              → 家庭成员
 ///
 /// 目标家庭与当前不同时先 [WoSession.switchFamily]（这些页面都按 currentFamilyId
@@ -56,6 +58,7 @@ _Target? _resolve(String? deeplink) {
     page = switch (rest[1]) {
       'anniversary' => const AnniversaryListPage(),
       'accounting' => const AccountingPage(),
+      'chore' => const ChoreListPage(),
       _ => null,
     };
   } else if (rest.length == 1 && rest[0] == 'members') {

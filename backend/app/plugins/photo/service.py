@@ -100,7 +100,9 @@ def _humanize_delta(delta: timedelta) -> str:
     return f"{seconds // 86400} 天前"
 
 
-async def preview_hook(session: AsyncSession, ip: InstalledPlugin) -> PluginPreview:
+async def preview_hook(
+    session: AsyncSession, ip: InstalledPlugin, _viewer_id: UUID | None = None
+) -> PluginPreview:
     """Show total + this-week's photos + latest uploader timing."""
     family_id = ip.family_id
     total_stmt = select(func.count()).select_from(Photo).where(Photo.family_id == family_id)

@@ -82,7 +82,7 @@ async def list_installed(
         .order_by(InstalledPlugin.row, InstalledPlugin.col)
     )
     rows = (await session.execute(stmt)).scalars().all()
-    return ok([await to_installed_read(session, r) for r in rows])
+    return ok([await to_installed_read(session, r, current_user.id) for r in rows])
 
 
 class InstallRequest(BaseModel):
@@ -115,7 +115,7 @@ async def install_endpoint(
         layout=layout_tuple,
         config=payload.config,
     )
-    return ok(await to_installed_read(session, ip))
+    return ok(await to_installed_read(session, ip, current_user.id))
 
 
 @installed_router.delete(
@@ -159,7 +159,7 @@ async def update_config_endpoint(
         actor=current_user,
         config=payload.config,
     )
-    return ok(await to_installed_read(session, ip))
+    return ok(await to_installed_read(session, ip, current_user.id))
 
 
 # ---- Layout ---------------------------------------------------------------
@@ -194,4 +194,4 @@ async def update_layout_endpoint(
         actor=current_user,
         items=items,
     )
-    return ok([await to_installed_read(session, ip) for ip in updated])
+    return ok([await to_installed_read(session, ip, current_user.id) for ip in updated])

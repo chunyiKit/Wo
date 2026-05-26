@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../data/models.dart';
 import 'accounting/accounting_page.dart';
 import 'anniversary/anniversary_list_page.dart';
+import 'chore/chore_list_page.dart';
 import 'recipe/recipe_list_page.dart';
 
 /// 根据已安装插件构建它的详情页。
@@ -16,11 +17,13 @@ const Map<String, PluginPageBuilder> _pluginPages = {
   'accounting': _accountingPage,
   'anniversary': _anniversaryPage,
   'recipe': _recipePage,
+  'chore': _chorePage,
 };
 
 Widget _accountingPage(InstalledPlugin ip) => const AccountingPage();
 Widget _anniversaryPage(InstalledPlugin ip) => const AnniversaryListPage();
 Widget _recipePage(InstalledPlugin ip) => const RecipeListPage();
+Widget _chorePage(InstalledPlugin ip) => const ChoreListPage();
 
 /// 返回插件对应的详情页；未注册的插件返回 null（卡片点击无动作）。
 Widget? pluginPageFor(InstalledPlugin ip) => _pluginPages[ip.pluginId]?.call(ip);

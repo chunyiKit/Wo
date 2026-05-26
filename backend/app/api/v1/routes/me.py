@@ -122,7 +122,9 @@ async def bootstrap(
                     .order_by(InstalledPlugin.row, InstalledPlugin.col)
                 )
                 rows = (await session.execute(stmt)).scalars().all()
-                installed_plugins = [await to_installed_read(session, r) for r in rows]
+                installed_plugins = [
+                    await to_installed_read(session, r, current_user.id) for r in rows
+                ]
                 break
 
     unread = await notification_service.count_unread(session, current_user.id)

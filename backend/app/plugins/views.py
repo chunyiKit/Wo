@@ -94,11 +94,16 @@ async def compute_preview(
     session: AsyncSession,
     ip: InstalledPlugin,
     reg: PluginRegistration,
+    viewer_id: UUID | None = None,
 ) -> PluginPreview:
-    """Call the plugin's preview hook; degrade to plugin name on any error."""
+    """Call the plugin's preview hook; degrade to plugin name on any error.
+
+    `viewer_id` is the user the card is rendered for, letting a hook surface
+    viewer-specific data (e.g. the chore plugin shows *my* outstanding count).
+    """
     if reg.preview is not None:
         try:
-            return await reg.preview(session, ip)
+            return await reg.preview(session, ip, viewer_id)
         except Exception:
             # Preview must never crash the home request.
             pass
@@ -108,6 +113,7 @@ async def compute_preview(
 async def to_installed_read(
     session: AsyncSession,
     ip: InstalledPlugin,
+    viewer_id: UUID | None = None,
 ) -> InstalledPluginRead:
     reg = registry.get(ip.plugin_id)
     if reg is None:
@@ -131,7 +137,7 @@ async def to_installed_read(
         enabled=ip.enabled,
         layout=LayoutRead(col=ip.col, row=ip.row, cw=ip.cw, ch=ip.ch),
         config=ip.config or {},
-        preview=await compute_preview(session, ip, reg),
+        preview=await compute_preview(session, ip, reg, viewer_id),
         installed_at=ip.installed_at,
         installed_by=ip.installed_by,
     )

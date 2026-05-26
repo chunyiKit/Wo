@@ -157,7 +157,9 @@ async def delete_tag(session: AsyncSession, family_id: UUID, name: str) -> list[
     return await _query_tags(session, family_id)
 
 
-async def preview_hook(session: AsyncSession, ip: InstalledPlugin) -> PluginPreview:
+async def preview_hook(
+    session: AsyncSession, ip: InstalledPlugin, _viewer_id: UUID | None = None
+) -> PluginPreview:
     """Render the home card: newest dish name + total count."""
     stmt = (
         select(Recipe)
