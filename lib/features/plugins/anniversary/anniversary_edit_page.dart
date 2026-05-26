@@ -35,9 +35,14 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
     '🌙',
   ];
 
+  // 提前提醒的可选天数（0 = 当天）。
+  static const _daysBeforeOptions = [0, 1, 3, 7];
+
   late String _emoji;
   late DateTime _date;
   late bool _isLunar;
+  late bool _notifyEnabled;
+  late int _notifyDaysBefore;
   late final TextEditingController _name;
   late final TextEditingController _note;
   bool _submitting = false;
@@ -51,6 +56,8 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
     _emoji = e?.emoji ?? '💞';
     _date = e?.eventDate ?? DateTime.now();
     _isLunar = e?.isLunar ?? false;
+    _notifyEnabled = e?.notifyEnabled ?? false;
+    _notifyDaysBefore = e?.notifyDaysBefore ?? 1;
     _name = TextEditingController(text: e?.name ?? '');
     _note = TextEditingController(text: e?.note ?? '');
   }
@@ -91,6 +98,8 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
           emoji: _emoji,
           isLunar: _isLunar,
           note: note.isEmpty ? null : note,
+          notifyEnabled: _notifyEnabled,
+          notifyDaysBefore: _notifyDaysBefore,
         );
       } else {
         await session.api.createAnniversary(
@@ -100,6 +109,8 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
           emoji: _emoji,
           isLunar: _isLunar,
           note: note.isEmpty ? null : note,
+          notifyEnabled: _notifyEnabled,
+          notifyDaysBefore: _notifyDaysBefore,
         );
       }
       if (mounted) nav.pop(true);
@@ -290,6 +301,52 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 value: _isLunar,
                 onChanged: (v) => setState(() => _isLunar = v),
               ),
+              // 到期提醒开关 + 提前天数。
+              SwitchListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: WoTokens.space2),
+                title: const Text('到期提醒'),
+                subtitle: Text(
+                  _notifyEnabled
+                      ? (_notifyDaysBefore == 0
+                          ? '当天给全家发一条通知'
+                          : '提前 $_notifyDaysBefore 天给全家发一条通知')
+                      : '到日子时给全家发一条通知',
+                  style: t.bodySmall?.copyWith(color: wo.fgMid),
+                ),
+                value: _notifyEnabled,
+                onChanged: (v) => setState(() => _notifyEnabled = v),
+              ),
+              if (_notifyEnabled) ...[
+                const SizedBox(height: WoTokens.space2),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: WoTokens.space2),
+                  child: Row(
+                    children: [
+                      Text(
+                        '提前',
+                        style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                      ),
+                      const SizedBox(width: WoTokens.space3),
+                      Expanded(
+                        child: Wrap(
+                          spacing: WoTokens.space2,
+                          children: [
+                            for (final d in _daysBeforeOptions)
+                              ChoiceChip(
+                                label: Text(d == 0 ? '当天' : '$d 天'),
+                                selected: _notifyDaysBefore == d,
+                                onSelected: (_) =>
+                                    setState(() => _notifyDaysBefore = d),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: WoTokens.space2),
               TextField(
                 controller: _note,

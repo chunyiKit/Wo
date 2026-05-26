@@ -218,6 +218,8 @@ class WoApi {
     required String emoji,
     bool isLunar = false,
     String? note,
+    bool notifyEnabled = false,
+    int notifyDaysBefore = 0,
   }) async {
     final data = await _client.post(
       '/families/$familyId/plugins/anniversary/dates',
@@ -227,6 +229,8 @@ class WoApi {
         'emoji': emoji,
         'is_lunar': isLunar,
         if (note != null && note.isNotEmpty) 'note': note,
+        'notify_enabled': notifyEnabled,
+        'notify_days_before': notifyDaysBefore,
       },
     );
     return Anniversary.fromJson(data as Map<String, dynamic>);
@@ -240,6 +244,8 @@ class WoApi {
     required String emoji,
     bool isLunar = false,
     String? note,
+    bool notifyEnabled = false,
+    int notifyDaysBefore = 0,
   }) async {
     final data = await _client.put(
       '/families/$familyId/plugins/anniversary/dates/$id',
@@ -249,6 +255,8 @@ class WoApi {
         'emoji': emoji,
         'is_lunar': isLunar,
         'note': note,
+        'notify_enabled': notifyEnabled,
+        'notify_days_before': notifyDaysBefore,
       },
     );
     return Anniversary.fromJson(data as Map<String, dynamic>);

@@ -440,6 +440,8 @@ class Anniversary {
     this.note,
     this.createdAt,
     required this.daysUntil,
+    this.notifyEnabled = false,
+    this.notifyDaysBefore = 0,
   });
 
   final String id;
@@ -454,6 +456,10 @@ class Anniversary {
   /// 距离下一次发生还有多少天（后端计算，农历会按农历周年推算）。
   final int daysUntil;
 
+  /// 到期提醒开关，以及提前几天提醒（0 = 当天）。
+  final bool notifyEnabled;
+  final int notifyDaysBefore;
+
   factory Anniversary.fromJson(Map<String, dynamic> j) => Anniversary(
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
@@ -464,6 +470,8 @@ class Anniversary {
         note: j['note'] as String?,
         createdAt: _parseDate(j['created_at']),
         daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
+        notifyEnabled: j['notify_enabled'] as bool? ?? false,
+        notifyDaysBefore: (j['notify_days_before'] as num?)?.toInt() ?? 0,
       );
 }
 
