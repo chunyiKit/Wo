@@ -185,6 +185,9 @@ class WoApi {
     return ((data as Map<String, dynamic>)['marked'] as num?)?.toInt() ?? 0;
   }
 
+  Future<void> deleteNotification(String id) =>
+      _client.delete('/notifications/$id');
+
   // ── 设备推送 token ──────────────────────────────────────────
   /// 注册本机的极光 registration id，用于接收远程推送。后端按 registration id
   /// 幂等 upsert，重复调用安全。[platform] 取 'android' / 'ios'。
