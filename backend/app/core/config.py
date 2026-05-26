@@ -48,5 +48,12 @@ class Settings(BaseSettings):
     push_batch_size: int = 100
     push_max_attempts: int = 5
 
+    # ---- Anniversary reminders --------------------------------------------
+    # Background loop that emits "anniversary due" notifications. Off by default
+    # (like push) so dev/tests don't run it; enable per env. The check is
+    # idempotent per occurrence, so polling hourly just makes delivery timely.
+    anniversary_reminder_enabled: bool = False
+    anniversary_reminder_poll_seconds: float = 3600.0
+
 
 settings = Settings()

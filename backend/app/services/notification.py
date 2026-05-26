@@ -106,6 +106,42 @@ async def _other_active_member_ids(
     return list((await session.execute(stmt)).scalars().all())
 
 
+async def _active_member_ids(session: AsyncSession, family_id: UUID) -> list[UUID]:
+    stmt = select(Membership.user_id).where(
+        Membership.family_id == family_id,
+        Membership.status == "active",
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def notify_family(
+    session: AsyncSession,
+    *,
+    family_id: UUID,
+    notification_type: str,
+    title: str,
+    body: str,
+    icon_emoji: str = "🔔",
+    deeplink: str | None = None,
+) -> int:
+    """Stage a notification for every active member of a family. Returns the
+    recipient count. Like the other notifiers it does NOT commit — the caller's
+    transaction does, keeping the notification atomic with its trigger.
+    """
+    recipients = await _active_member_ids(session, family_id)
+    _add_for_recipients(
+        session,
+        recipients=recipients,
+        notification_type=notification_type,
+        family_id=family_id,
+        title=title,
+        body=body,
+        icon_emoji=icon_emoji,
+        deeplink=deeplink,
+    )
+    return len(recipients)
+
+
 async def notify_member_joined(
     session: AsyncSession,
     *,

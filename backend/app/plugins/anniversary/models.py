@@ -13,6 +13,9 @@ from sqlmodel import Field, SQLModel
 
 from app.core.ids import new_uuid7
 
+# Upper bound on how far ahead a reminder may fire — a year covers any cadence.
+MAX_NOTIFY_DAYS_BEFORE = 365
+
 
 class AnniversaryBase(SQLModel):
     # NOTE: field is `event_date`, not `date`, to avoid clashing with the
@@ -22,6 +25,10 @@ class AnniversaryBase(SQLModel):
     emoji: str = Field(default="💞", max_length=16)
     is_lunar: bool = Field(default=False)
     note: str | None = Field(default=None, max_length=200)
+    # Due-date reminder: when on, a notification fires `notify_days_before` days
+    # ahead of each occurrence (0 = on the day itself). See plugins/.../reminders.
+    notify_enabled: bool = Field(default=False)
+    notify_days_before: int = Field(default=0, ge=0, le=MAX_NOTIFY_DAYS_BEFORE)
 
 
 class Anniversary(AnniversaryBase, table=True):
@@ -43,6 +50,13 @@ class Anniversary(AnniversaryBase, table=True):
         ondelete="SET NULL",
         nullable=True,
     )
+    # Which occurrence date we last sent a reminder for. Guards against double
+    # notifying within one occurrence's window; a new year's occurrence differs,
+    # so the next anniversary fires again. Internal — not exposed in reads.
+    last_notified_event_date: date | None = Field(
+        default=None,
+        sa_column=Column(Date, nullable=True),
+    )
 
 
 class AnniversaryCreate(AnniversaryBase):
@@ -57,6 +71,10 @@ class AnniversaryUpdate(SQLModel):
     emoji: str | None = Field(default=None, max_length=16)
     is_lunar: bool | None = None
     note: str | None = Field(default=None, max_length=200)
+    notify_enabled: bool | None = None
+    notify_days_before: int | None = Field(
+        default=None, ge=0, le=MAX_NOTIFY_DAYS_BEFORE
+    )
 
 
 class AnniversaryRead(AnniversaryBase):

@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.middleware import RequestIdMiddleware
 from app.core.seed import ensure_plugins, ensure_seed_users
+from app.plugins.anniversary.reminders import run_anniversary_reminder_loop
 from app.services.push_dispatcher import run_push_dispatcher
 
 
@@ -28,18 +29,21 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await ensure_seed_users()
     await ensure_plugins()
 
-    # Background push dispatcher — only when push is enabled (off in dev/tests).
-    stop_push = asyncio.Event()
-    push_task: asyncio.Task[None] | None = None
+    # Background loops, each gated by its own flag (all off in dev/tests). A
+    # single stop event shuts them all down cleanly on app teardown.
+    stop = asyncio.Event()
+    tasks: list[asyncio.Task[None]] = []
     if settings.push_enabled:
-        push_task = asyncio.create_task(run_push_dispatcher(stop_push))
+        tasks.append(asyncio.create_task(run_push_dispatcher(stop)))
+    if settings.anniversary_reminder_enabled:
+        tasks.append(asyncio.create_task(run_anniversary_reminder_loop(stop)))
 
     try:
         yield
     finally:
-        if push_task is not None:
-            stop_push.set()
-            await push_task
+        stop.set()
+        for task in tasks:
+            await task
 
 
 def create_app() -> FastAPI:

@@ -52,19 +52,27 @@ def _next_lunar_occurrence(target: date, today: date) -> date | None:
     return None
 
 
-def days_until(target: date, today: date | None = None, *, is_lunar: bool = False) -> int:
-    """Days from `today` to the next occurrence of the anniversary.
+def next_occurrence(
+    target: date, today: date | None = None, *, is_lunar: bool = False
+) -> date:
+    """The next (today-or-later) occurrence date of the anniversary.
 
     `is_lunar=True` recurs on the lunar anniversary of `target`; otherwise on the
     Gregorian month/day. Lunar conversion outside the library's range falls back
-    to the Gregorian calculation so a result is always returned.
+    to the Gregorian calculation so a date is always returned.
     """
     today = today or date.today()
     if is_lunar:
         occ = _next_lunar_occurrence(target, today)
         if occ is not None:
-            return (occ - today).days
-    return (_next_solar_occurrence(target, today) - today).days
+            return occ
+    return _next_solar_occurrence(target, today)
+
+
+def days_until(target: date, today: date | None = None, *, is_lunar: bool = False) -> int:
+    """Days from `today` to the next occurrence of the anniversary."""
+    today = today or date.today()
+    return (next_occurrence(target, today, is_lunar=is_lunar) - today).days
 
 
 def build_read(row: Anniversary, today: date | None = None) -> AnniversaryRead:
