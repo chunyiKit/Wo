@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
@@ -18,8 +18,14 @@ class WoSession extends ChangeNotifier {
   WoSession({WoApi? api, this.push}) : api = api ?? WoApi(ApiClient());
 
   static const _kToken = 'wo.token';
+  static const _kThemeMode = 'wo.themeMode';
 
   final WoApi api;
+
+  /// 外观主题：浅色 / 深色 / 跟随系统（默认）。本地持久化，启动时由
+  /// [loadThemeMode] 读出。用 ValueNotifier 单独承载，避免主题切换牵动其他 UI。
+  final ValueNotifier<ThemeMode> themeMode =
+      ValueNotifier<ThemeMode>(ThemeMode.system);
 
   /// 可选的推送服务。注入后会在登录/启动时上报本机 registration id、登出时注销。
   /// 测试与非移动端不注入（为 null），相关逻辑自动跳过。
@@ -64,6 +70,43 @@ class WoSession extends ChangeNotifier {
     notifyListeners();
     // 已登录则在后台补登设备 token（不阻塞启动流程）。
     if (isLoggedIn) unawaited(_syncPushRegistration());
+  }
+
+  /// 启动时读出本地保存的外观偏好。无记录则保持默认「跟随系统」。
+  /// 在 runApp 前调用，避免首帧用错主题再闪一下。
+  Future<void> loadThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    themeMode.value = _decodeThemeMode(prefs.getString(_kThemeMode));
+  }
+
+  /// 切换外观并持久化。
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (themeMode.value == mode) return;
+    themeMode.value = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kThemeMode, _encodeThemeMode(mode));
+  }
+
+  static ThemeMode _decodeThemeMode(String? raw) {
+    switch (raw) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  static String _encodeThemeMode(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'light';
+      case ThemeMode.dark:
+        return 'dark';
+      case ThemeMode.system:
+        return 'system';
+    }
   }
 
   /// 手机号登录/注册：成功后持久化身份并拉取首屏数据。
@@ -148,6 +191,7 @@ class WoSession extends ChangeNotifier {
   @override
   void dispose() {
     messagesRefreshSignal.dispose();
+    themeMode.dispose();
     super.dispose();
   }
 }

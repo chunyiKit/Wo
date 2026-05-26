@@ -24,6 +24,7 @@ class WoRoutes {
   static const familyManage = '/home/family';
   static const familyInvite = '/home/family/invite';
   static const settings = '/me/settings';
+  static const appearance = '/me/settings/appearance';
   static const notifications = '/notifications';
 
   static String pluginDetailFor(String id) => '/marketplace/plugin/$id';

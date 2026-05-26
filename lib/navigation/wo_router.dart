@@ -13,6 +13,7 @@ import '../features/marketplace/marketplace_page.dart';
 import '../features/marketplace/plugin_detail_page.dart';
 import '../features/messages/messages_page.dart';
 import '../features/onboarding/onboarding_page.dart';
+import '../features/profile/appearance_page.dart';
 import '../features/profile/profile_page.dart';
 import '../features/profile/settings_page.dart';
 import '../features/splash/splash_page.dart';
@@ -128,6 +129,12 @@ GoRouter buildRouter() {
                   GoRoute(
                     path: 'settings',
                     builder: (_, __) => const SettingsPage(),
+                    routes: [
+                      GoRoute(
+                        path: 'appearance',
+                        builder: (_, __) => const AppearancePage(),
+                      ),
+                    ],
                   ),
                 ],
               ),
