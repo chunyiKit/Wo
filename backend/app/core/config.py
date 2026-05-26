@@ -55,5 +55,12 @@ class Settings(BaseSettings):
     anniversary_reminder_enabled: bool = False
     anniversary_reminder_poll_seconds: float = 3600.0
 
+    # ---- Accounting month-end reminder ------------------------------------
+    # Background loop that, on each month's last day at 21:00 Asia/Shanghai,
+    # nudges families with the accounting plugin to review their balance. Off by
+    # default; idempotent per month so hourly polling is fine.
+    accounting_monthly_notice_enabled: bool = False
+    accounting_monthly_notice_poll_seconds: float = 3600.0
+
 
 settings = Settings()

@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.middleware import RequestIdMiddleware
 from app.core.seed import ensure_plugins, ensure_seed_users
+from app.plugins.accounting.reminders import run_accounting_monthly_loop
 from app.plugins.anniversary.reminders import run_anniversary_reminder_loop
 from app.services.push_dispatcher import run_push_dispatcher
 
@@ -37,6 +38,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(run_push_dispatcher(stop)))
     if settings.anniversary_reminder_enabled:
         tasks.append(asyncio.create_task(run_anniversary_reminder_loop(stop)))
+    if settings.accounting_monthly_notice_enabled:
+        tasks.append(asyncio.create_task(run_accounting_monthly_loop(stop)))
 
     try:
         yield
