@@ -75,6 +75,21 @@ async def mark_read(
     return notif
 
 
+async def delete_notification(
+    session: AsyncSession,
+    notification_id: UUID,
+    user_id: UUID,
+) -> None:
+    """Delete one of the caller's notifications. 404 (not 403) for someone
+    else's, to avoid leaking which ids exist. The push_outbox row, if any, is
+    removed by the FK cascade."""
+    notif = await session.get(Notification, notification_id)
+    if notif is None or notif.user_id != user_id:
+        raise AppError(ErrorCode.NOT_FOUND, "通知不存在", status_code=404)
+    await session.delete(notif)
+    await session.commit()
+
+
 async def mark_all_read(session: AsyncSession, user_id: UUID) -> int:
     """Mark all unread notifications as read. Returns number affected."""
     stmt = (

@@ -53,3 +53,13 @@ async def mark_all_notifications_read(
 ) -> ApiResponse[MarkAllReadResponse]:
     affected = await notification_service.mark_all_read(session, current_user.id)
     return ok(MarkAllReadResponse(marked=affected))
+
+
+@router.delete("/{notification_id}", response_model=ApiResponse[None])
+async def delete_notification(
+    notification_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[None]:
+    await notification_service.delete_notification(session, notification_id, current_user.id)
+    return ok(None)

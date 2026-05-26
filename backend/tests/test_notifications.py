@@ -129,3 +129,30 @@ async def test_list_caps_at_100(client: AsyncClient) -> None:
     # limit=999 should clamp by FastAPI's Query validator (le=100).
     response = await client.get("/api/v1/notifications?limit=999")
     assert response.status_code == 422
+
+
+async def test_delete_own_notification(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    await _accept_invite_as(client, fid, XIAOLIN)
+
+    notifs = (await client.get("/api/v1/notifications")).json()["data"]
+    target = next(n for n in notifs if n["family_id"] == fid)
+
+    resp = await client.delete(f"/api/v1/notifications/{target['id']}")
+    assert resp.status_code == 200, resp.text
+
+    after = (await client.get("/api/v1/notifications")).json()["data"]
+    assert all(n["id"] != target["id"] for n in after), "deleted notification should be gone"
+
+
+async def test_cant_delete_other_users_notification(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    await _accept_invite_as(client, fid, XIAOLIN)
+
+    # 老陈's notification; 小宝 (not the owner) tries to delete → hidden as 404.
+    target = (await client.get("/api/v1/notifications")).json()["data"][0]["id"]
+    resp = await client.delete(f"/api/v1/notifications/{target}", headers=XIAOBAO)
+    assert resp.status_code == 404
+    # Still there for the real owner.
+    after = (await client.get("/api/v1/notifications")).json()["data"]
+    assert any(n["id"] == target for n in after)
