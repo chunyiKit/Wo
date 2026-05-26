@@ -48,6 +48,14 @@ class ApiClient {
 
   static const _timeout = Duration(seconds: 15);
 
+  /// 拼接图片等原始资源的完整地址用（相对路径已含 /api/v1 前缀，故这里只给 host）。
+  String get baseUrl => _baseUrl;
+
+  /// 加载受鉴权保护的资源（如菜谱封面原图）时要带的头。
+  Map<String, String> get imageHeaders => {
+        if (userId.isNotEmpty) 'X-User-Id': userId,
+      };
+
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -77,9 +85,32 @@ class ApiClient {
         () => _http.put(_uri(path), headers: _headers, body: _encode(body)),
       );
 
-  Future<dynamic> delete(String path, {Object? body}) => _send(
-        () => _http.delete(_uri(path), headers: _headers, body: _encode(body)),
+  Future<dynamic> delete(String path, {Object? body, Map<String, dynamic>? query}) =>
+      _send(
+        () => _http.delete(
+          _uri(path, query),
+          headers: _headers,
+          body: _encode(body),
+        ),
       );
+
+  /// 上传单个文件（multipart/form-data）。不声明文件 content-type——后端用
+  /// Pillow 探测真实格式，不信任客户端声明的类型。
+  Future<dynamic> uploadFile(
+    String path, {
+    required List<int> bytes,
+    required String filename,
+    String field = 'file',
+  }) =>
+      _send(() async {
+        final req = http.MultipartRequest('POST', _uri(path));
+        if (userId.isNotEmpty) req.headers['X-User-Id'] = userId;
+        req.headers['Accept'] = 'application/json';
+        req.files.add(
+          http.MultipartFile.fromBytes(field, bytes, filename: filename),
+        );
+        return http.Response.fromStream(await req.send());
+      });
 
   String? _encode(Object? body) => body == null ? null : jsonEncode(body);
 

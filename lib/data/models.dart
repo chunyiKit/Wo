@@ -529,6 +529,98 @@ class AccountingSummary {
       );
 }
 
+/// 菜谱里的一条食材，如 {name: 番茄, amount: 2个}。
+class RecipeIngredient {
+  const RecipeIngredient({required this.name, this.amount = ''});
+
+  final String name;
+  final String amount;
+
+  factory RecipeIngredient.fromJson(Map<String, dynamic> j) => RecipeIngredient(
+        name: j['name'] as String? ?? '',
+        amount: j['amount'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'name': name, 'amount': amount};
+}
+
+class Recipe {
+  const Recipe({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.emoji,
+    required this.category,
+    required this.minutes,
+    required this.difficulty,
+    this.servings,
+    this.note,
+    this.ingredients = const [],
+    this.steps = const [],
+    this.createdBy,
+    this.creatorName,
+    this.creatorEmoji,
+    this.createdAt,
+    this.coverUrl,
+    this.coverVersion = 0,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+  final String category;
+
+  /// 烹饪时长（分钟）。
+  final int minutes;
+
+  /// 难度 1..3：简单 / 中等 / 有点难。
+  final int difficulty;
+
+  /// 几人份，可空。
+  final int? servings;
+  final String? note;
+  final List<RecipeIngredient> ingredients;
+  final List<String> steps;
+
+  final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final DateTime? createdAt;
+
+  /// 封面照片的相对地址（已含 /api/v1，带 ?v= 版本号）。为空表示没传过照片，用 emoji。
+  final String? coverUrl;
+
+  /// 封面版本号，每次上传 +1；URL 里的 ?v= 据此变化，从而刷新本地缓存。
+  final int coverVersion;
+
+  bool get hasCover => coverUrl != null && coverUrl!.isNotEmpty;
+
+  factory Recipe.fromJson(Map<String, dynamic> j) => Recipe(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '🍳',
+        category: j['category'] as String? ?? '',
+        minutes: (j['minutes'] as num?)?.toInt() ?? 0,
+        difficulty: (j['difficulty'] as num?)?.toInt() ?? 1,
+        servings: (j['servings'] as num?)?.toInt(),
+        note: j['note'] as String?,
+        ingredients: ((j['ingredients'] as List?) ?? const [])
+            .map((e) => RecipeIngredient.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        steps: ((j['steps'] as List?) ?? const [])
+            .map((e) => e as String)
+            .toList(),
+        createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        createdAt: _parseDate(j['created_at']),
+        coverUrl: j['cover_url'] as String?,
+        coverVersion: (j['cover_version'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class InvitationPreview {
   const InvitationPreview({
     required this.familyName,

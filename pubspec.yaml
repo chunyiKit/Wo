@@ -17,6 +17,10 @@ dependencies:
   jpush_flutter: ^3.0.0
   # Android 13+ 运行时通知权限（POST_NOTIFICATIONS）申请。
   permission_handler: ^11.3.0
+  # 菜谱封面：相册选图 + 上传前压缩 + 带版本的本地缓存。
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

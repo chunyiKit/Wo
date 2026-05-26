@@ -268,6 +268,139 @@ class WoApi {
   Future<void> deleteAnniversary(String familyId, String id) =>
       _client.delete('/families/$familyId/plugins/anniversary/dates/$id');
 
+  // ── 菜谱插件 ────────────────────────────────────────────────
+  Future<List<Recipe>> recipes(String familyId, {String? category}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/recipe/recipes',
+      query: (category != null && category.isNotEmpty)
+          ? {'category': category}
+          : null,
+    ) as List;
+    return data.map((e) => Recipe.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Recipe> recipe(String familyId, String id) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/recipe/recipes/$id');
+    return Recipe.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Recipe> createRecipe(
+    String familyId, {
+    required String name,
+    required String emoji,
+    required String category,
+    required int minutes,
+    required int difficulty,
+    int? servings,
+    String? note,
+    List<RecipeIngredient> ingredients = const [],
+    List<String> steps = const [],
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/recipe/recipes',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'category': category,
+        'minutes': minutes,
+        'difficulty': difficulty,
+        if (servings != null) 'servings': servings,
+        if (note != null && note.isNotEmpty) 'note': note,
+        'ingredients': ingredients.map((e) => e.toJson()).toList(),
+        'steps': steps,
+      },
+    );
+    return Recipe.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Recipe> updateRecipe(
+    String familyId,
+    String id, {
+    required String name,
+    required String emoji,
+    required String category,
+    required int minutes,
+    required int difficulty,
+    int? servings,
+    String? note,
+    List<RecipeIngredient> ingredients = const [],
+    List<String> steps = const [],
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/recipe/recipes/$id',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'category': category,
+        'minutes': minutes,
+        'difficulty': difficulty,
+        'servings': servings,
+        'note': note,
+        'ingredients': ingredients.map((e) => e.toJson()).toList(),
+        'steps': steps,
+      },
+    );
+    return Recipe.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteRecipe(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/recipe/recipes/$id');
+
+  /// 上传/替换菜谱封面照片。返回更新后的菜谱（cover_version 已 +1）。
+  Future<Recipe> uploadRecipeCover(
+    String familyId,
+    String id, {
+    required List<int> bytes,
+    String filename = 'cover.jpg',
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/plugins/recipe/recipes/$id/cover',
+      bytes: bytes,
+      filename: filename,
+    );
+    return Recipe.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 移除封面照片，菜谱回退到 emoji。返回更新后的菜谱。
+  Future<Recipe> deleteRecipeCover(String familyId, String id) async {
+    final data = await _client
+        .delete('/families/$familyId/plugins/recipe/recipes/$id/cover');
+    return Recipe.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 菜谱封面原图的完整地址（含 host）。没封面返回 null。
+  String? recipeCoverUrl(Recipe r) =>
+      r.hasCover ? '${_client.baseUrl}${r.coverUrl}' : null;
+
+  /// 加载封面原图要带的鉴权头。
+  Map<String, String> get imageHeaders => _client.imageHeaders;
+
+  // ── 菜谱标签（家庭共享的分类清单）──────────────────────────
+  Future<List<String>> recipeTags(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/recipe/tags') as List;
+    return data.map((e) => e as String).toList();
+  }
+
+  /// 新建标签，返回更新后的完整标签列表。
+  Future<List<String>> addRecipeTag(String familyId, String name) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/recipe/tags',
+      body: {'name': name},
+    ) as List;
+    return data.map((e) => e as String).toList();
+  }
+
+  /// 删除标签，返回更新后的完整标签列表。
+  Future<List<String>> deleteRecipeTag(String familyId, String name) async {
+    final data = await _client.delete(
+      '/families/$familyId/plugins/recipe/tags',
+      query: {'name': name},
+    ) as List;
+    return data.map((e) => e as String).toList();
+  }
+
   // ── 记账插件 ────────────────────────────────────────────────
   Future<List<Expense>> expenses(
     String familyId, {
