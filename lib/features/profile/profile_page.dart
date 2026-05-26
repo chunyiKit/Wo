@@ -1,6 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/image_pick.dart';
 import '../../data/models.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
@@ -17,6 +19,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   bool _switching = false;
+  bool _avatarBusy = false;
 
   @override
   void initState() {
@@ -81,6 +84,66 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _editAvatar(WoUser user) async {
+    if (_avatarBusy) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('从相册选择'),
+              onTap: () => Navigator.of(ctx).pop('pick'),
+            ),
+            if (user.hasAvatar)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('移除头像', style: TextStyle(color: Colors.redAccent)),
+                onTap: () => Navigator.of(ctx).pop('remove'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'pick') {
+      await _uploadAvatar();
+    } else if (action == 'remove') {
+      await _removeAvatar();
+    }
+  }
+
+  Future<void> _uploadAvatar() async {
+    final session = WoScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _avatarBusy = true);
+    try {
+      final bytes = await pickAndCompressImage(maxEdge: 640);
+      if (bytes == null) return; // 用户取消
+      await session.api.uploadMyAvatar(bytes: bytes);
+      await session.refresh();
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('头像上传失败，请稍后再试')));
+    } finally {
+      if (mounted) setState(() => _avatarBusy = false);
+    }
+  }
+
+  Future<void> _removeAvatar() async {
+    final session = WoScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _avatarBusy = true);
+    try {
+      await session.api.deleteMyAvatar();
+      await session.refresh();
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('移除失败，请稍后再试')));
+    } finally {
+      if (mounted) setState(() => _avatarBusy = false);
+    }
+  }
+
   Future<void> _logout() async {
     final session = WoScope.of(context);
     final router = GoRouter.of(context);
@@ -117,19 +180,7 @@ class _ProfilePageState extends State<ProfilePage> {
               padding: const EdgeInsets.all(WoTokens.space6),
               child: Row(
                 children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: wo.bgElev,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      user.avatarEmoji,
-                      style: const TextStyle(fontSize: 32),
-                    ),
-                  ),
+                  _avatar(context, user),
                   const SizedBox(width: WoTokens.space4),
                   Expanded(
                     child: Column(
@@ -207,6 +258,75 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _avatar(BuildContext context, WoUser user) {
+    final wo = context.wo;
+    final api = WoScope.api(context);
+
+    Widget content;
+    final url = api.userAvatarUrl(user);
+    if (url != null) {
+      content = CachedNetworkImage(
+        imageUrl: url,
+        httpHeaders: api.imageHeaders,
+        fit: BoxFit.cover,
+        width: 64,
+        height: 64,
+        // 完整 URL（含 ?v=）即缓存键，无需自定义 cacheKey。
+        placeholder: (_, __) => _emojiAvatar(user, wo.bgElev),
+        errorWidget: (_, __, ___) => _emojiAvatar(user, wo.bgElev),
+      );
+    } else {
+      content = _emojiAvatar(user, wo.bgElev);
+    }
+
+    return GestureDetector(
+      onTap: _avatarBusy ? null : () => _editAvatar(user),
+      child: Stack(
+        children: [
+          ClipOval(child: SizedBox(width: 64, height: 64, child: content)),
+          if (_avatarBusy)
+            Positioned.fill(
+              child: ClipOval(
+                child: ColoredBox(
+                  color: Colors.black26,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: wo.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: wo.bgElev, width: 1.5),
+              ),
+              child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emojiAvatar(WoUser user, Color bg) {
+    return Container(
+      width: 64,
+      height: 64,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Text(user.avatarEmoji, style: const TextStyle(fontSize: 32)),
     );
   }
 

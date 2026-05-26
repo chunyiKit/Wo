@@ -23,6 +23,8 @@ class WoUser {
     required this.avatarEmoji,
     required this.level,
     this.createdAt,
+    this.avatarVersion = 0,
+    this.avatarUrl,
   });
 
   final String id;
@@ -32,6 +34,13 @@ class WoUser {
   final int level;
   final DateTime? createdAt;
 
+  /// 头像图片：版本号（0=未设置）+ 带 `?v=` 缓存键的相对地址。
+  /// [avatarUrl] 为 null 时回退到 [avatarEmoji]。
+  final int avatarVersion;
+  final String? avatarUrl;
+
+  bool get hasAvatar => avatarUrl != null;
+
   factory WoUser.fromJson(Map<String, dynamic> j) => WoUser(
         id: j['id'] as String,
         username: j['username'] as String? ?? '',
@@ -39,6 +48,8 @@ class WoUser {
         avatarEmoji: j['avatar_emoji'] as String? ?? '👤',
         level: (j['level'] as num?)?.toInt() ?? 1,
         createdAt: _parseDate(j['created_at']),
+        avatarVersion: (j['avatar_version'] as num?)?.toInt() ?? 0,
+        avatarUrl: j['avatar_url'] as String?,
       );
 }
 

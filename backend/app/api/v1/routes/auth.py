@@ -64,7 +64,7 @@ async def login(
     user, is_new = await auth_service.login_or_register(session, phone)
     return ok(
         AuthResponse(
-            user=UserRead.model_validate(user, from_attributes=True),
+            user=UserRead.from_user(user),
             token=str(user.id),
             is_new=is_new,
         )

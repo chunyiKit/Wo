@@ -41,6 +41,29 @@ class WoApi {
     return WoUser.fromJson(data as Map<String, dynamic>);
   }
 
+  /// 上传/替换当前用户头像。返回更新后的用户（avatar_version 已 +1）。
+  Future<WoUser> uploadMyAvatar({
+    required List<int> bytes,
+    String filename = 'avatar.jpg',
+  }) async {
+    final data = await _client.uploadFile(
+      '/me/avatar',
+      bytes: bytes,
+      filename: filename,
+    );
+    return WoUser.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 移除头像，回退到 emoji。返回更新后的用户。
+  Future<WoUser> deleteMyAvatar() async {
+    final data = await _client.delete('/me/avatar');
+    return WoUser.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 用户头像原图的完整地址（含 host）。没头像返回 null。
+  String? userAvatarUrl(WoUser u) =>
+      u.hasAvatar ? '${_client.baseUrl}${u.avatarUrl}' : null;
+
   // ── 家庭 ────────────────────────────────────────────────────
   Future<Family> createFamily({
     required String name,

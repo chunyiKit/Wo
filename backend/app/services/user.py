@@ -14,11 +14,18 @@ NOTE: when per-family alias editing is added, this should become conditional
 (only sync memberships the user hasn't customized).
 """
 
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.models.membership import Membership
 from app.models.user import User, UserUpdate
+
+
+def build_avatar_storage_key(user_id: UUID, ext: str) -> str:
+    """头像按用户命名空间存放，便于备份/清理。"""
+    return f"avatars/{user_id}.{ext}"
 
 
 async def update_me(session: AsyncSession, user: User, payload: UserUpdate) -> User:
