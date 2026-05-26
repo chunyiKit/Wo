@@ -4,6 +4,11 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- 扫码加入家庭：相机扫二维码、相册选图识别二维码。 -->
+	<key>NSCameraUsageDescription</key>
+	<string>扫描邀请二维码以加入家庭</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>从相册选择含邀请二维码的图片</string>
 	<!-- Backend is plain HTTP for now (no TLS yet); allow cleartext until a
 	     domain + certs land. Tighten to per-domain exceptions afterwards. -->
 	<key>NSAppTransportSecurity</key>

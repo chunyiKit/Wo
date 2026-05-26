@@ -21,6 +21,10 @@ dependencies:
   image_picker: ^1.1.2
   flutter_image_compress: ^2.3.0
   cached_network_image: ^3.4.1
+  # 邀请二维码：把 qr_payload 渲染成二维码图。
+  qr_flutter: ^4.1.0
+  # 扫码加入：相机扫描邀请二维码。
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:

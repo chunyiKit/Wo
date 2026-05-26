@@ -107,7 +107,7 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                   ],
                 ),
                 const SizedBox(height: WoTokens.space2),
-                for (final m in members) _member(context, m),
+                for (final m in members) _member(context, family, m),
                 const SizedBox(height: WoTokens.space5),
                 Text('设置', style: t.titleMedium),
                 const SizedBox(height: WoTokens.space2),
@@ -152,7 +152,7 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                 const SizedBox(height: WoTokens.space5),
                 if (family.myRole != 'owner')
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () => _leave(family),
                     style:
                         TextButton.styleFrom(foregroundColor: Colors.redAccent),
                     child: const Text('离开家庭'),
@@ -277,6 +277,152 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
     return result;
   }
 
+  Future<void> _leave(Family family) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('离开家庭'),
+        content: Text('确定要离开「${family.name}」吗？离开后将看不到这个家的内容。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('离开'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final session = WoScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+    try {
+      await session.api.leaveFamily(family.id);
+      await session.refresh(); // 重新拉 bootstrap：当前家庭/家庭列表随之更新
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('已离开「${family.name}」')));
+      // 还有其他家庭去首页，否则回到加入/创建入口。
+      router.go(
+        session.currentFamilyId == null ? WoRoutes.joinLanding : WoRoutes.home,
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(e is ApiException ? e.message : '离开失败')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openMemberActions(Family family, Member m) async {
+    final isOwner = family.myRole == 'owner';
+    final isSelf = WoScope.of(context).user?.id == m.userId;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        final t = Theme.of(ctx).textTheme;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(WoTokens.space4),
+                child: Row(
+                  children: [
+                    Text(m.avatarEmoji, style: const TextStyle(fontSize: 24)),
+                    const SizedBox(width: WoTokens.space2),
+                    Expanded(child: Text(m.displayName, style: t.titleMedium)),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              for (final r in _assignableRoles)
+                ListTile(
+                  title: Text('设为${r.$2}'),
+                  trailing:
+                      m.role == r.$1 ? const Icon(Icons.check) : null,
+                  onTap: m.role == r.$1
+                      ? null
+                      : () {
+                          Navigator.of(ctx).pop();
+                          _changeRole(family, m, r.$1);
+                        },
+                ),
+              if (isOwner && !isSelf) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Text('👑', style: TextStyle(fontSize: 20)),
+                  title: const Text('转为主理人'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _transfer(family, m);
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _changeRole(Family family, Member m, String role) async {
+    final session = WoScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await session.api.updateMemberRole(family.id, m.userId, role);
+      await session.refresh();
+      if (mounted) setState(() => _future = _load(family.id));
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e is ApiException ? e.message : '修改失败')),
+      );
+    }
+  }
+
+  Future<void> _transfer(Family family, Member m) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('转让主理人'),
+        content: Text('确定把「${family.name}」的主理人转给${m.displayName}吗？转让后你将变为管理员。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('转让'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final session = WoScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await session.api.transferOwnership(family.id, m.userId);
+      await session.refresh();
+      if (mounted) {
+        setState(() => _future = _load(family.id));
+        messenger.showSnackBar(
+          SnackBar(content: Text('已把主理人转给${m.displayName}')),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e is ApiException ? e.message : '转让失败')),
+      );
+    }
+  }
+
   Future<void> _save(
     Family family, {
     String? name,
@@ -302,13 +448,24 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
     }
   }
 
-  Widget _member(BuildContext context, Member m) {
+  static const _assignableRoles = <(String, String)>[
+    ('member', '家人'),
+    ('admin', '管理员'),
+    ('child', '孩子'),
+    ('pet', '宠物'),
+  ];
+
+  Widget _member(BuildContext context, Family family, Member m) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     final pending = m.status == 'pending';
+    // owner/admin 可管理；但不能改主理人那一行（主理人变更走转让）。
+    final canManage = family.myRole == 'owner' || family.myRole == 'admin';
+    final tappable = canManage && m.role != 'owner';
     return Padding(
       padding: const EdgeInsets.only(bottom: WoTokens.space2),
       child: WoCard(
+        onTap: tappable ? () => _openMemberActions(family, m) : null,
         padding: const EdgeInsets.symmetric(
           horizontal: WoTokens.space4,
           vertical: WoTokens.space3,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../data/models.dart';
 import '../../data/wo_session.dart';
@@ -20,8 +21,21 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
   int _seg = 0;
   static const _tabs = ['面对面', '链接', '邀请码'];
 
+  // 可邀请的加入身份（owner 不可邀请，需通过转移接管）。
+  static const _roles = <(String, String)>[
+    ('member', '家人'),
+    ('admin', '管理员'),
+    ('child', '孩子'),
+    ('pet', '宠物'),
+  ];
+
   Future<InvitationResult>? _future;
   String? _familyId;
+  String _role = 'member';
+
+  void _regen(BuildContext context, String familyId) {
+    _future = WoScope.api(context).createInvitation(familyId, role: _role);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +53,7 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
     }
     if (_familyId != familyId) {
       _familyId = familyId;
-      _future = WoScope.api(context).createInvitation(familyId);
+      _regen(context, familyId);
     }
 
     return Scaffold(
@@ -48,9 +62,7 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
         top: false,
         child: AsyncView<InvitationResult>(
           future: _future!,
-          onRetry: () => setState(
-            () => _future = WoScope.api(context).createInvitation(familyId),
-          ),
+          onRetry: () => setState(() => _regen(context, familyId)),
           builder: (context, inv) => ListView(
             padding: const EdgeInsets.all(WoTokens.space5),
             children: [
@@ -75,8 +87,26 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
                     Text('加入身份', style: t.titleMedium),
                     const SizedBox(height: WoTokens.space2),
                     Text(
-                      '通过邀请加入的成员默认身份为「家人」，可在「家庭管理」里调整为管理员。',
+                      '选择对方加入后的身份，换身份会重新生成邀请。',
                       style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                    ),
+                    const SizedBox(height: WoTokens.space3),
+                    Wrap(
+                      spacing: WoTokens.space2,
+                      children: [
+                        for (final r in _roles)
+                          ChoiceChip(
+                            label: Text(r.$2),
+                            selected: _role == r.$1,
+                            onSelected: (_) {
+                              if (_role == r.$1) return;
+                              setState(() {
+                                _role = r.$1;
+                                _regen(context, familyId);
+                              });
+                            },
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -108,11 +138,17 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
             width: 200,
             height: 200,
             alignment: Alignment.center,
+            padding: const EdgeInsets.all(WoTokens.space3),
             decoration: BoxDecoration(
-              color: wo.bgTint,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(Icons.qr_code_2, size: 160),
+            child: QrImageView(
+              data: inv.qrPayload,
+              size: 176,
+              padding: EdgeInsets.zero,
+              backgroundColor: Colors.white,
+            ),
           ),
           const SizedBox(height: WoTokens.space4),
           Text('请对方扫码加入', style: t.titleMedium),
