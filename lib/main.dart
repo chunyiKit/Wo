@@ -30,6 +30,9 @@ Future<void> main() async {
   push.onInboxShouldRefresh = session.requestMessagesRefresh;
   unawaited(push.init());
 
+  // 先读出外观偏好，确保首帧就用对主题（不闪）。
+  await session.loadThemeMode();
+
   runApp(WoApp(session: session));
 }
 
@@ -71,13 +74,16 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return WoScope(
       session: widget.session,
-      child: MaterialApp.router(
-        title: '窝',
-        debugShowCheckedModeBanner: false,
-        theme: WoTheme.light(),
-        darkTheme: WoTheme.dark(),
-        themeMode: ThemeMode.system,
-        routerConfig: _router,
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: widget.session.themeMode,
+        builder: (context, mode, _) => MaterialApp.router(
+          title: '窝',
+          debugShowCheckedModeBanner: false,
+          theme: WoTheme.light(),
+          darkTheme: WoTheme.dark(),
+          themeMode: mode,
+          routerConfig: _router,
+        ),
       ),
     );
   }
