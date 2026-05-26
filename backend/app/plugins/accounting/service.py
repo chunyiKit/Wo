@@ -19,19 +19,30 @@ _WARNING_RATIO = 0.4
 _DANGER_RATIO = 0.1
 
 
-def _month_start(today: date) -> datetime:
-    """First instant of the current calendar month (UTC, tz-aware)."""
-    return datetime(today.year, today.month, 1, tzinfo=UTC)
+def month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
+    """[start, end) UTC instants spanning the given calendar month."""
+    start = datetime(year, month, 1, tzinfo=UTC)
+    end = (
+        datetime(year + 1, 1, 1, tzinfo=UTC)
+        if month == 12
+        else datetime(year, month + 1, 1, tzinfo=UTC)
+    )
+    return start, end
 
 
 async def month_total(
-    session: AsyncSession, family_id: UUID, today: date | None = None
+    session: AsyncSession,
+    family_id: UUID,
+    year: int | None = None,
+    month: int | None = None,
 ) -> Decimal:
-    """Sum of this family's expenses recorded in the current month."""
-    today = today or date.today()
+    """Sum of this family's expenses in the given month (defaults to current)."""
+    today = date.today()
+    start, end = month_bounds(year or today.year, month or today.month)
     stmt = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
         Transaction.family_id == family_id,
-        Transaction.created_at >= _month_start(today),
+        Transaction.created_at >= start,
+        Transaction.created_at < end,
     )
     return Decimal((await session.execute(stmt)).scalar_one())
 

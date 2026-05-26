@@ -25,6 +25,21 @@ class _AccountingPageState extends State<AccountingPage> {
 
   bool _loaded = false;
 
+  // 当前查看的月份，默认进入时为本月。
+  late ({int year, int month}) _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selected = (year: now.year, month: now.month);
+  }
+
+  bool get _isCurrentMonth {
+    final now = DateTime.now();
+    return _selected.year == now.year && _selected.month == now.month;
+  }
+
   // 首次加载放在 didChangeDependencies 而非 initState：_reload 通过
   // WoScope.of(context) 依赖 InheritedWidget，在 initState 阶段访问会抛异常。
   @override
@@ -48,9 +63,25 @@ class _AccountingPageState extends State<AccountingPage> {
   }
 
   Future<_AccountingData> _load(WoSession session, String familyId) async {
-    final summary = await session.api.accountingSummary(familyId);
-    final expenses = await session.api.expenses(familyId);
+    final summary = await session.api.accountingSummary(
+      familyId,
+      year: _selected.year,
+      month: _selected.month,
+    );
+    final expenses = await session.api.expenses(
+      familyId,
+      year: _selected.year,
+      month: _selected.month,
+    );
     return (summary: summary, expenses: expenses);
+  }
+
+  void _selectMonth(({int year, int month}) m) {
+    if (m == _selected) return;
+    setState(() {
+      _selected = m;
+      _reload();
+    });
   }
 
   Future<void> _refreshAll() async {
@@ -210,13 +241,23 @@ class _AccountingPageState extends State<AccountingPage> {
                 100,
               ),
               children: [
+                _MonthSelector(
+                  selected: _selected,
+                  onSelect: _selectMonth,
+                ),
+                const SizedBox(height: WoTokens.space4),
                 _SummaryCard(
                   summary: data.summary,
+                  monthLabel: _selected.month,
+                  isCurrentMonth: _isCurrentMonth,
                   onEditBudget: () => _editBudget(data.summary.budget),
                 ),
                 const SizedBox(height: WoTokens.space5),
                 if (data.expenses.isEmpty)
-                  _EmptyExpenses(onAdd: _addExpense)
+                  _EmptyExpenses(
+                    onAdd: _addExpense,
+                    isCurrentMonth: _isCurrentMonth,
+                  )
                 else ...[
                   for (final e in data.expenses) ...[
                     _ExpenseTile(
@@ -241,9 +282,16 @@ String _money(double v) {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.summary, required this.onEditBudget});
+  const _SummaryCard({
+    required this.summary,
+    required this.monthLabel,
+    required this.isCurrentMonth,
+    required this.onEditBudget,
+  });
 
   final AccountingSummary summary;
+  final int monthLabel;
+  final bool isCurrentMonth;
   final VoidCallback onEditBudget;
 
   @override
@@ -269,7 +317,10 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('本月支出', style: t.labelMedium?.copyWith(color: wo.fgMid)),
+          Text(
+            isCurrentMonth ? '本月支出' : '$monthLabel月支出',
+            style: t.labelMedium?.copyWith(color: wo.fgMid),
+          ),
           const SizedBox(height: WoTokens.space1),
           Text(
             _money(summary.monthTotal),
@@ -289,7 +340,7 @@ class _SummaryCard extends StatelessWidget {
               ),
               Expanded(
                 child: _StatItem(
-                  label: '本月剩余',
+                  label: isCurrentMonth ? '本月剩余' : '$monthLabel月剩余',
                   value: remaining == null ? '—' : _money(remaining),
                   valueColor: remainingColor,
                 ),
@@ -412,8 +463,9 @@ class _ExpenseTile extends StatelessWidget {
 }
 
 class _EmptyExpenses extends StatelessWidget {
-  const _EmptyExpenses({required this.onAdd});
+  const _EmptyExpenses({required this.onAdd, required this.isCurrentMonth});
   final VoidCallback onAdd;
+  final bool isCurrentMonth;
 
   @override
   Widget build(BuildContext context) {
@@ -425,16 +477,78 @@ class _EmptyExpenses extends StatelessWidget {
         children: [
           const Text('💰', style: TextStyle(fontSize: 48)),
           const SizedBox(height: WoTokens.space4),
-          Text('还没有支出记录', style: t.titleMedium),
-          const SizedBox(height: WoTokens.space2),
-          Text(
-            '记下家里的第一笔开销吧。',
-            style: t.bodyMedium?.copyWith(color: wo.fgMid),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: WoTokens.space5),
-          FilledButton(onPressed: onAdd, child: const Text('记一笔')),
+          Text(isCurrentMonth ? '还没有支出记录' : '这个月没有支出记录', style: t.titleMedium),
+          if (isCurrentMonth) ...[
+            const SizedBox(height: WoTokens.space2),
+            Text(
+              '记下家里的第一笔开销吧。',
+              style: t.bodyMedium?.copyWith(color: wo.fgMid),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: WoTokens.space5),
+            FilledButton(onPressed: onAdd, child: const Text('记一笔')),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// 月份筛选下拉：默认本月，可向前回看最近 12 个月。
+class _MonthSelector extends StatelessWidget {
+  const _MonthSelector({required this.selected, required this.onSelect});
+
+  static const int _monthsBack = 12;
+
+  final ({int year, int month}) selected;
+  final ValueChanged<({int year, int month})> onSelect;
+
+  List<({int year, int month})> _months() {
+    final now = DateTime.now();
+    // 本月在最前，向前回溯。
+    return [
+      for (var i = 0; i < _monthsBack; i++)
+        (
+          year: DateTime(now.year, now.month - i, 1).year,
+          month: DateTime(now.year, now.month - i, 1).month,
+        ),
+    ];
+  }
+
+  String _label(({int year, int month}) m) => '${m.year}年${m.month}月';
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: WoTokens.space3),
+        decoration: BoxDecoration(
+          color: wo.bgElev,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: wo.hairline),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<({int year, int month})>(
+            value: selected,
+            isDense: true,
+            borderRadius: BorderRadius.circular(12),
+            icon: Icon(Icons.keyboard_arrow_down, color: wo.fgMid),
+            style: t.titleSmall?.copyWith(
+              color: wo.fg,
+              fontWeight: FontWeight.w600,
+            ),
+            items: [
+              for (final m in _months())
+                DropdownMenuItem(value: m, child: Text(_label(m))),
+            ],
+            onChanged: (m) {
+              if (m != null) onSelect(m);
+            },
+          ),
+        ),
       ),
     );
   }

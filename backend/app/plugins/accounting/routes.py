@@ -30,6 +30,7 @@ from app.plugins.accounting.service import (
     build_read,
     get_budget,
     member_map,
+    month_bounds,
     month_total,
 )
 
@@ -54,13 +55,18 @@ async def list_transactions(
     family_id: UUID,
     session: SessionDep,
     current_user: CurrentUserDep,
+    year: int | None = None,
+    month: int | None = None,
 ) -> ApiResponse[list[TransactionRead]]:
     await require_membership(session, current_user.id, family_id)
-    stmt = (
-        select(Transaction)
-        .where(Transaction.family_id == family_id)
-        .order_by(Transaction.created_at.desc())
-    )
+    stmt = select(Transaction).where(Transaction.family_id == family_id)
+    if year is not None and month is not None:
+        start, end = month_bounds(year, month)
+        stmt = stmt.where(
+            Transaction.created_at >= start,
+            Transaction.created_at < end,
+        )
+    stmt = stmt.order_by(Transaction.created_at.desc())
     rows = (await session.execute(stmt)).scalars().all()
     members = await member_map(session, family_id)
     return ok([build_read(r, members) for r in rows])
@@ -175,9 +181,11 @@ async def read_summary(
     family_id: UUID,
     session: SessionDep,
     current_user: CurrentUserDep,
+    year: int | None = None,
+    month: int | None = None,
 ) -> ApiResponse[SummaryRead]:
     await require_membership(session, current_user.id, family_id)
-    total = await month_total(session, family_id)
+    total = await month_total(session, family_id, year=year, month=month)
     budget = await get_budget(session, family_id)
     remaining = (budget - total) if budget is not None else None
     return ok(SummaryRead(month_total=total, budget=budget, remaining=remaining))

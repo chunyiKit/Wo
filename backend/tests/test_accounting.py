@@ -134,6 +134,49 @@ async def test_budget_set_and_summary(client: AsyncClient) -> None:
     assert float(summary["remaining"]) == 700.0
 
 
+async def test_month_filter_scopes_transactions_and_summary(
+    client: AsyncClient,
+) -> None:
+    from datetime import date
+
+    fid = await _create_family(client)
+    await _add_expense(client, fid, amount="120.00")
+
+    today = date.today()
+    # A month with no expenses (two months back) should be empty / zero.
+    past = date(today.year, today.month, 1)
+    prev_month = 12 if past.month <= 2 else past.month - 2
+    prev_year = past.year - 1 if past.month <= 2 else past.year
+
+    empty = await client.get(
+        f"/api/v1/families/{fid}/plugins/accounting/transactions"
+        f"?year={prev_year}&month={prev_month}"
+    )
+    assert empty.json()["data"] == []
+
+    empty_summary = (
+        await client.get(
+            f"/api/v1/families/{fid}/plugins/accounting/summary"
+            f"?year={prev_year}&month={prev_month}"
+        )
+    ).json()["data"]
+    assert float(empty_summary["month_total"]) == 0.0
+
+    # The current month sees the expense.
+    current = await client.get(
+        f"/api/v1/families/{fid}/plugins/accounting/transactions"
+        f"?year={today.year}&month={today.month}"
+    )
+    assert len(current.json()["data"]) == 1
+    current_summary = (
+        await client.get(
+            f"/api/v1/families/{fid}/plugins/accounting/summary"
+            f"?year={today.year}&month={today.month}"
+        )
+    ).json()["data"]
+    assert float(current_summary["month_total"]) == 120.0
+
+
 async def test_preview_compact_shows_only_total(client: AsyncClient) -> None:
     fid = await _create_family(client)
     # Install as a 2×1 compact card.

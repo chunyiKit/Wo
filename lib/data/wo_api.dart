@@ -269,9 +269,14 @@ class WoApi {
       _client.delete('/families/$familyId/plugins/anniversary/dates/$id');
 
   // ── 记账插件 ────────────────────────────────────────────────
-  Future<List<Expense>> expenses(String familyId) async {
+  Future<List<Expense>> expenses(
+    String familyId, {
+    int? year,
+    int? month,
+  }) async {
+    final q = (year != null && month != null) ? '?year=$year&month=$month' : '';
     final data = await _client
-        .get('/families/$familyId/plugins/accounting/transactions') as List;
+        .get('/families/$familyId/plugins/accounting/transactions$q') as List;
     return data.map((e) => Expense.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -313,9 +318,14 @@ class WoApi {
   Future<void> deleteExpense(String familyId, String id) =>
       _client.delete('/families/$familyId/plugins/accounting/transactions/$id');
 
-  Future<AccountingSummary> accountingSummary(String familyId) async {
+  Future<AccountingSummary> accountingSummary(
+    String familyId, {
+    int? year,
+    int? month,
+  }) async {
+    final q = (year != null && month != null) ? '?year=$year&month=$month' : '';
     final data = await _client
-        .get('/families/$familyId/plugins/accounting/summary');
+        .get('/families/$familyId/plugins/accounting/summary$q');
     return AccountingSummary.fromJson(data as Map<String, dynamic>);
   }
 
