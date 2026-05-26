@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/api_client.dart';
 import '../../data/models.dart';
 import '../../data/wo_session.dart';
+import '../../navigation/notification_nav.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/placeholder_screen.dart';
 import '../../widgets/wo_card.dart';
@@ -90,6 +93,12 @@ class _MessagesPageState extends State<MessagesPage> {
       await session.api.markNotificationRead(n.id);
       await _reload();
     } catch (_) {/* 标记失败不阻断浏览 */}
+  }
+
+  /// 点击一条通知：标记已读（后台）并按 deeplink 跳到对应页面（无法识别则只读不跳）。
+  void _onTap(WoNotification n) {
+    unawaited(_markRead(n));
+    unawaited(openNotificationTarget(context, n));
   }
 
   Future<void> _markAll() async {
@@ -227,7 +236,7 @@ class _MessagesPageState extends State<MessagesPage> {
     final t = Theme.of(context).textTheme;
     return WoCard(
       color: n.isRead ? null : wo.accentSoft,
-      onTap: () => _markRead(n),
+      onTap: () => _onTap(n),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
