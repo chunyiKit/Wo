@@ -71,6 +71,8 @@ class TransactionRead(TransactionBase):
     # so the timeline can render avatar + name without an extra round-trip.
     creator_name: str | None = None
     creator_emoji: str | None = None
+    # Member-avatar URL when the recorder uploaded a real photo; None → emoji.
+    creator_avatar_url: str | None = None
 
 
 class Budget(SQLModel, table=True):

@@ -4,6 +4,7 @@ import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
+import '../../../widgets/member_avatar.dart';
 import '../../../widgets/wo_card.dart';
 import 'recipe_edit_page.dart';
 import 'recipe_style.dart';
@@ -181,9 +182,21 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
               if (r.creatorName != null) ...[
                 const SizedBox(height: WoTokens.space4),
                 Center(
-                  child: Text(
-                    '由 ${r.creatorEmoji ?? '👤'} ${r.creatorName} 添加',
-                    style: t.bodySmall?.copyWith(color: wo.fgDim),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('由 ', style: t.bodySmall?.copyWith(color: wo.fgDim)),
+                      MemberAvatar(
+                        url: r.creatorAvatarUrl,
+                        emoji: r.creatorEmoji ?? '👤',
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${r.creatorName} 添加',
+                        style: t.bodySmall?.copyWith(color: wo.fgDim),
+                      ),
+                    ],
                   ),
                 ),
               ],

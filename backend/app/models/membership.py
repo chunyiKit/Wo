@@ -53,5 +53,8 @@ class MembershipRead(BaseModel):
     role: Role
     display_name: str
     avatar_emoji: str
+    # Member-avatar URL when this user uploaded a real photo; None → emoji.
+    # Injected server-side (see members route) since it lives on User, not here.
+    avatar_url: str | None = None
     joined_at: datetime
     status: MembershipStatus

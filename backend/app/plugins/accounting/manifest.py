@@ -18,4 +18,5 @@ MANIFEST = PluginManifest(
     default_layout=DefaultLayout(cw=2, ch=2),
     permissions=(Permission(code="members.read", label="读取家庭成员列表"),),
     multi_instance=False,
+    notification_types=("accounting_month_end",),
 )

@@ -17,8 +17,10 @@ from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
 from app.models.user import User
 from app.plugins.chore.models import Chore, ChoreCreate, ChoreRead, ChoreUpdate
-from app.plugins.chore.service import build_read, member_map
+from app.plugins.chore.service import build_read
 from app.services import notification as notification_service
+from app.services.membership import MemberInfo
+from app.services.membership import member_info_map as member_map
 
 router = APIRouter(
     prefix="/families/{family_id}/plugins/chore",
@@ -45,9 +47,10 @@ async def _validate_assignee(session: SessionDep, family_id: UUID, assignee: UUI
         ) from exc
 
 
-def _actor_name(members: dict[UUID, tuple[str, str]], actor: User) -> str:
+def _actor_name(members: dict[UUID, MemberInfo], actor: User) -> str:
     """The actor's family display name, falling back to their global name."""
-    return members.get(actor.id, (actor.display_name, ""))[0]
+    info = members.get(actor.id)
+    return info.name if info else actor.display_name
 
 
 async def _notify_newly_assigned(

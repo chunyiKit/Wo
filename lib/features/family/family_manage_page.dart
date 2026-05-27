@@ -7,6 +7,7 @@ import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/async_view.dart';
+import '../../widgets/member_avatar.dart';
 import '../../widgets/wo_card.dart';
 
 /// 家庭管理：GET /families/{id} + /families/{id}/members。
@@ -334,7 +335,11 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                 padding: const EdgeInsets.all(WoTokens.space4),
                 child: Row(
                   children: [
-                    Text(m.avatarEmoji, style: const TextStyle(fontSize: 24)),
+                    MemberAvatar(
+                      url: m.avatarUrl,
+                      emoji: m.avatarEmoji,
+                      size: 28,
+                    ),
                     const SizedBox(width: WoTokens.space2),
                     Expanded(child: Text(m.displayName, style: t.titleMedium)),
                   ],
@@ -472,7 +477,7 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         ),
         child: Row(
           children: [
-            Text(m.avatarEmoji, style: const TextStyle(fontSize: 28)),
+            MemberAvatar(url: m.avatarUrl, emoji: m.avatarEmoji, size: 36),
             const SizedBox(width: WoTokens.space3),
             Expanded(
               child: Row(

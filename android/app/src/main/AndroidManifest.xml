@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 扫码加入家庭：mobile_scanner 用相机识别邀请二维码。运行时申请。 -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 应用内更新：下载最新 APK 后调起系统安装器（Android 8+ 运行时申请）。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="wo"
         android:name="${applicationName}"

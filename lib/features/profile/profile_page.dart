@@ -239,10 +239,11 @@ class _ProfilePageState extends State<ProfilePage> {
                     trailing: Icon(Icons.chevron_right),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
-                  const ListTile(
-                    leading: Icon(Icons.info_outline),
-                    title: Text('关于「窝」'),
-                    trailing: Icon(Icons.chevron_right),
+                  ListTile(
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('关于「窝」'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push(WoRoutes.about),
                   ),
                 ],
               ),

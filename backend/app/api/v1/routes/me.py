@@ -27,6 +27,7 @@ from app.models.user import UserRead, UserUpdate
 from app.plugins.views import InstalledPluginRead, to_installed_read
 from app.services import family as family_service
 from app.services import notification as notification_service
+from app.services import notification_prefs as notification_prefs_service
 from app.services import user as user_service
 from app.services.user import build_avatar_storage_key
 
@@ -146,6 +147,84 @@ async def bootstrap(
             unread_count=unread,
         )
     )
+
+
+# ---- Notification preferences --------------------------------------------
+
+
+class NotificationSourceRead(BaseModel):
+    """One toggleable notification source on the 通知偏好 page."""
+
+    key: str
+    label: str
+    emoji: str
+    enabled: bool
+
+
+class NotificationPreferencesRead(BaseModel):
+    # 总开关：是否把通知推送到手机系统通知栏。
+    push_enabled: bool
+    # 各来源（家庭动态 + 有通知机制的已安装插件）的单独开关。
+    sources: list[NotificationSourceRead]
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    """PATCH body — 仅更新提供的字段；sources 为按 key 的部分更新。"""
+
+    push_enabled: bool | None = None
+    sources: dict[str, bool] | None = None
+
+
+async def _build_prefs_read(session, user) -> NotificationPreferencesRead:
+    prefs = user.notification_prefs or {}
+    push_enabled = bool(prefs.get("push_enabled", True))
+    source_prefs = prefs.get("sources") or {}
+    sources = await notification_prefs_service.list_sources(session, user)
+    return NotificationPreferencesRead(
+        push_enabled=push_enabled,
+        sources=[
+            NotificationSourceRead(
+                key=key,
+                label=label,
+                emoji=emoji,
+                enabled=bool(source_prefs.get(key, True)),
+            )
+            for (key, label, emoji) in sources
+        ],
+    )
+
+
+@router.get(
+    "/me/notification-preferences",
+    response_model=ApiResponse[NotificationPreferencesRead],
+)
+async def get_notification_preferences(
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[NotificationPreferencesRead]:
+    """当前用户的通知偏好：总推送开关 + 各来源开关（含其可选列表）。"""
+    return ok(await _build_prefs_read(session, current_user))
+
+
+@router.patch(
+    "/me/notification-preferences",
+    response_model=ApiResponse[NotificationPreferencesRead],
+)
+async def update_notification_preferences(
+    payload: NotificationPreferencesUpdate,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[NotificationPreferencesRead]:
+    """部分更新通知偏好。仅影响系统推送，站内消息中心仍记录所有通知。"""
+    current_user.notification_prefs = notification_prefs_service.merge_prefs(
+        current_user.notification_prefs,
+        push_enabled=payload.push_enabled,
+        sources=payload.sources,
+    )
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
+    return ok(await _build_prefs_read(session, current_user))
 
 
 # ---- Avatar --------------------------------------------------------------

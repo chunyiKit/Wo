@@ -13,7 +13,9 @@ import '../features/marketplace/marketplace_page.dart';
 import '../features/marketplace/plugin_detail_page.dart';
 import '../features/messages/messages_page.dart';
 import '../features/onboarding/onboarding_page.dart';
+import '../features/profile/about_page.dart';
 import '../features/profile/appearance_page.dart';
+import '../features/profile/notification_prefs_page.dart';
 import '../features/profile/profile_page.dart';
 import '../features/profile/settings_page.dart';
 import '../features/splash/splash_page.dart';
@@ -134,7 +136,15 @@ GoRouter buildRouter() {
                         path: 'appearance',
                         builder: (_, __) => const AppearancePage(),
                       ),
+                      GoRoute(
+                        path: 'notifications',
+                        builder: (_, __) => const NotificationPrefsPage(),
+                      ),
                     ],
+                  ),
+                  GoRoute(
+                    path: 'about',
+                    builder: (_, __) => const AboutPage(),
                   ),
                 ],
               ),

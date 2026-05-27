@@ -28,6 +28,15 @@ def build_avatar_storage_key(user_id: UUID, ext: str) -> str:
     return f"avatars/{user_id}.{ext}"
 
 
+def build_member_avatar_url(family_id: UUID, user_id: UUID, version: int) -> str:
+    """某个家庭成员头像原图的相对地址（家庭内成员互相可见）。
+
+    带 `?v=版本号` 做缓存键——头像每次重传 version +1，URL 随之变化，客户端缓存
+    自动失效。`/me/avatar` 只能取自己的，这个端点用于在动态里展示「是谁」。
+    """
+    return f"/api/v1/families/{family_id}/members/{user_id}/avatar?v={version}"
+
+
 async def update_me(session: AsyncSession, user: User, payload: UserUpdate) -> User:
     """Apply the provided fields to `user`, syncing membership display names."""
     data = payload.model_dump(exclude_unset=True)

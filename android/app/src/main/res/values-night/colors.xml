@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色：启动屏 ink 背景。注意：应用图标固定用浅色，不在此提供 night 覆盖。 -->
+    <color name="wo_splash_bg">#1F2733</color>
+</resources>

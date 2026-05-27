@@ -4,6 +4,7 @@ import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
+import '../../../widgets/member_avatar.dart';
 
 /// 家务新增 / 编辑页。
 ///
@@ -213,7 +214,11 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                     ),
                     for (final m in _members)
                       ChoiceChip(
-                        avatar: Text(m.avatarEmoji),
+                        avatar: MemberAvatar(
+                          url: m.avatarUrl,
+                          emoji: m.avatarEmoji,
+                          size: 20,
+                        ),
                         label: Text(m.displayName),
                         selected: _assignedTo == m.userId,
                         onSelected: (_) =>

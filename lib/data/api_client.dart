@@ -94,18 +94,21 @@ class ApiClient {
         ),
       );
 
-  /// 上传单个文件（multipart/form-data）。不声明文件 content-type——后端用
-  /// Pillow 探测真实格式，不信任客户端声明的类型。
+  /// 上传单个文件（multipart/form-data）。不声明文件 content-type——后端
+  /// 自行探测真实格式，不信任客户端声明的类型。[fields] 是随文件一起带上的
+  /// 额外表单字段（如视频时长 duration_ms）。
   Future<dynamic> uploadFile(
     String path, {
     required List<int> bytes,
     required String filename,
     String field = 'file',
+    Map<String, String>? fields,
   }) =>
       _send(() async {
         final req = http.MultipartRequest('POST', _uri(path));
         if (userId.isNotEmpty) req.headers['X-User-Id'] = userId;
         req.headers['Accept'] = 'application/json';
+        if (fields != null) req.fields.addAll(fields);
         req.files.add(
           http.MultipartFile.fromBytes(field, bytes, filename: filename),
         );

@@ -33,8 +33,8 @@ from app.plugins.recipe.service import (
     build_read,
     delete_tag,
     list_tags,
-    member_map,
 )
+from app.services.membership import member_info_map as member_map
 
 router = APIRouter(
     prefix="/families/{family_id}/plugins/recipe",

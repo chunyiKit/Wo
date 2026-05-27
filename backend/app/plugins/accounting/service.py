@@ -8,10 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.models.membership import Membership
 from app.models.plugin import InstalledPlugin
 from app.plugins.accounting.models import Budget, Transaction, TransactionRead
 from app.plugins.registry import PluginPreview
+from app.services.membership import MemberInfo, author_avatar_url
 
 # Below this fraction of budget remaining the card warns; below the second it
 # alarms. Matches the product spec: <40% yellow, <10% red.
@@ -53,24 +53,19 @@ async def get_budget(session: AsyncSession, family_id: UUID) -> Decimal | None:
     return row.monthly_amount if row is not None else None
 
 
-async def member_map(
-    session: AsyncSession, family_id: UUID
-) -> dict[UUID, tuple[str, str]]:
-    """Map user_id → (display_name, avatar_emoji) for a family's members."""
-    stmt = select(Membership).where(Membership.family_id == family_id)
-    rows = (await session.execute(stmt)).scalars().all()
-    return {m.user_id: (m.display_name, m.avatar_emoji) for m in rows}
-
-
-def build_read(
-    row: Transaction, members: dict[UUID, tuple[str, str]]
-) -> TransactionRead:
+def build_read(row: Transaction, members: dict[UUID, MemberInfo]) -> TransactionRead:
     """Serialize a row, injecting recorder display info (immutable copy)."""
     read = TransactionRead.model_validate(row, from_attributes=True)
-    name, emoji = (None, None)
-    if row.created_by is not None and row.created_by in members:
-        name, emoji = members[row.created_by]
-    return read.model_copy(update={"creator_name": name, "creator_emoji": emoji})
+    info = members.get(row.created_by) if row.created_by is not None else None
+    return read.model_copy(
+        update={
+            "creator_name": info.name if info else None,
+            "creator_emoji": info.emoji if info else None,
+            "creator_avatar_url": author_avatar_url(
+                row.family_id, row.created_by, info
+            ),
+        }
+    )
 
 
 def _fmt(amount: Decimal) -> str:

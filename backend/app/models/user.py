@@ -18,6 +18,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import Column, DateTime
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.core.ids import new_uuid7
@@ -48,6 +49,14 @@ class User(UserBase, table=True):
         foreign_key="families.id",
         ondelete="SET NULL",
         nullable=True,
+    )
+    # 通知偏好（系统推送层面）。形如：
+    #   {"push_enabled": bool, "sources": {"<source_key>": bool, ...}}
+    # 缺省键视为开启（opt-out），所以老用户在显式关闭前照常收到全部推送。
+    # 仅影响是否推送到手机系统通知栏；站内消息中心始终记录。
+    notification_prefs: dict = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default="{}"),
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

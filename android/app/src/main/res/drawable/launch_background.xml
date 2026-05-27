@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- 启动屏：品牌背景 + 居中 Wo 标记。背景色与标记各自有 -night 变体，随系统深色模式切换。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <item android:drawable="@color/wo_splash_bg" />
+    <item
+        android:drawable="@drawable/wo_splash_mark"
+        android:gravity="center" />
 </layer-list>

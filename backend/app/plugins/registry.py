@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 PluginCategory = Literal["life", "finance", "health", "education", "entertainment"]
-ColorToken = Literal["photo", "money", "anniv", "chore", "pet", "accent"]
+ColorToken = Literal["photo", "money", "anniv", "chore", "pet", "memory", "stock", "accent"]
 # Optional emphasis applied to a card's `secondary` text. None = normal color.
 SecondaryTone = Literal["warning", "danger"]
 
@@ -60,6 +60,10 @@ class PluginManifest:
     # be configured independently via InstalledPlugin.config). Defaults to
     # single-install.
     multi_instance: bool = False
+    # Notification `type` values this plugin can emit (see app.services
+    # .notification). Non-empty means the plugin has a notification mechanism,
+    # so it shows up as a toggleable source on the user's 通知偏好 page.
+    notification_types: tuple[str, ...] = ()
 
 
 class PluginPreview(BaseModel):

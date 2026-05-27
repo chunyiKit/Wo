@@ -44,6 +44,17 @@ class WoTokens {
   static const choreDark = Color(0xFF2C3026);
   static const petDark = Color(0xFF3A2E36);
 
+  // 囤货：柔雾蓝，区别于其它暖色插件，呼应「货架 / 仓库」的清爽感。
+  static const stockLight = Color(0xFFC8D2E0);
+  static const stockDark = Color(0xFF262C33);
+
+  // 回忆：暖玫瑰灰，落在 photo / anniv 之间，色温更复古。
+  // ink 是在 memory tint 底色上可读的强调文字色。
+  static const memoryLight = Color(0xFFDDCFC0);
+  static const memoryDark = Color(0xFF34291F);
+  static const memoryInkLight = Color(0xFF8B5A3C);
+  static const memoryInkDark = Color(0xFFE6B89A);
+
   // 语义强调色（预算见底等）：黄=warning，红=danger。需在卡片底色上可读。
   static const warningLight = Color(0xFFC98A00);
   static const dangerLight = Color(0xFFC0392B);
@@ -95,6 +106,9 @@ class WoColors extends ThemeExtension<WoColors> {
     required this.anniv,
     required this.chore,
     required this.pet,
+    required this.memory,
+    required this.memoryInk,
+    required this.stock,
     required this.warning,
     required this.danger,
   });
@@ -116,6 +130,9 @@ class WoColors extends ThemeExtension<WoColors> {
   final Color anniv;
   final Color chore;
   final Color pet;
+  final Color memory;
+  final Color memoryInk;
+  final Color stock;
   final Color warning;
   final Color danger;
 
@@ -135,6 +152,9 @@ class WoColors extends ThemeExtension<WoColors> {
     anniv: WoTokens.annivLight,
     chore: WoTokens.choreLight,
     pet: WoTokens.petLight,
+    memory: WoTokens.memoryLight,
+    memoryInk: WoTokens.memoryInkLight,
+    stock: WoTokens.stockLight,
     warning: WoTokens.warningLight,
     danger: WoTokens.dangerLight,
   );
@@ -155,6 +175,9 @@ class WoColors extends ThemeExtension<WoColors> {
     anniv: WoTokens.annivDark,
     chore: WoTokens.choreDark,
     pet: WoTokens.petDark,
+    memory: WoTokens.memoryDark,
+    memoryInk: WoTokens.memoryInkDark,
+    stock: WoTokens.stockDark,
     warning: WoTokens.warningDark,
     danger: WoTokens.dangerDark,
   );
@@ -176,6 +199,9 @@ class WoColors extends ThemeExtension<WoColors> {
     Color? anniv,
     Color? chore,
     Color? pet,
+    Color? memory,
+    Color? memoryInk,
+    Color? stock,
     Color? warning,
     Color? danger,
   }) {
@@ -195,6 +221,9 @@ class WoColors extends ThemeExtension<WoColors> {
       anniv: anniv ?? this.anniv,
       chore: chore ?? this.chore,
       pet: pet ?? this.pet,
+      memory: memory ?? this.memory,
+      memoryInk: memoryInk ?? this.memoryInk,
+      stock: stock ?? this.stock,
       warning: warning ?? this.warning,
       danger: danger ?? this.danger,
     );
@@ -219,6 +248,9 @@ class WoColors extends ThemeExtension<WoColors> {
       anniv: Color.lerp(anniv, other.anniv, t)!,
       chore: Color.lerp(chore, other.chore, t)!,
       pet: Color.lerp(pet, other.pet, t)!,
+      memory: Color.lerp(memory, other.memory, t)!,
+      memoryInk: Color.lerp(memoryInk, other.memoryInk, t)!,
+      stock: Color.lerp(stock, other.stock, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
     );

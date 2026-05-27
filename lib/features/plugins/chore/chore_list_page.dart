@@ -5,6 +5,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
+import '../../../widgets/member_avatar.dart';
 import '../../../widgets/wo_card.dart';
 import 'chore_edit_page.dart';
 
@@ -321,7 +322,11 @@ class _AssigneeLine extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(chore.assigneeEmoji ?? '👤', style: const TextStyle(fontSize: 13)),
+        MemberAvatar(
+          url: chore.assigneeAvatarUrl,
+          emoji: chore.assigneeEmoji ?? '👤',
+          size: 16,
+        ),
         const SizedBox(width: 4),
         Text(
           isMine ? '${chore.assigneeName}（我）' : chore.assigneeName!,
