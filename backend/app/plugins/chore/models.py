@@ -96,3 +96,5 @@ class ChoreRead(ChoreBase):
     # (see service.build_read). Null when unassigned or the member left.
     assignee_name: str | None = None
     assignee_emoji: str | None = None
+    # Member-avatar URL when the assignee uploaded a real photo; None → emoji.
+    assignee_avatar_url: str | None = None

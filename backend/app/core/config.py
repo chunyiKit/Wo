@@ -25,6 +25,19 @@ class Settings(BaseSettings):
     # Per-upload size cap, bytes. 20 MB covers reasonable family photos.
     max_upload_bytes: int = 20 * 1024 * 1024
 
+    # Memory plugin accepts short videos alongside photos; clips run larger than
+    # stills, so video media gets its own (more generous) cap.
+    memory_video_max_bytes: int = 100 * 1024 * 1024
+
+    # ---- In-app update (Android APK) --------------------------------------
+    # Shared secret guarding `POST /app/release`. Empty = publishing disabled
+    # (the endpoint 403s). Set it in /etc/wo/app.env on the server; the publish
+    # script sends it as the `X-Release-Token` header.
+    app_release_token: str = ""
+    # Upload cap for the published APK. Release builds run larger than photos,
+    # so this gets its own (generous) limit, separate from max_upload_bytes.
+    app_release_max_bytes: int = 200 * 1024 * 1024
+
     # Login throttling within the window (seconds). Per-IP guards against
     # enumeration/bulk registration; per-phone guards a single number against
     # targeting (and SMS bombing once P5 adds codes).

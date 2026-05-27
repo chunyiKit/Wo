@@ -129,6 +129,7 @@ class Member {
     required this.role,
     required this.displayName,
     required this.avatarEmoji,
+    this.avatarUrl,
     this.joinedAt,
     required this.status,
   });
@@ -138,6 +139,9 @@ class Member {
   final String role;
   final String displayName;
   final String avatarEmoji;
+
+  /// 成员真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [avatarEmoji]。
+  final String? avatarUrl;
   final DateTime? joinedAt;
   final String status; // active | pending
 
@@ -147,6 +151,7 @@ class Member {
         role: j['role'] as String? ?? 'member',
         displayName: j['display_name'] as String? ?? '',
         avatarEmoji: j['avatar_emoji'] as String? ?? '👤',
+        avatarUrl: j['avatar_url'] as String?,
         joinedAt: _parseDate(j['joined_at']),
         status: j['status'] as String? ?? 'active',
       );
@@ -496,6 +501,7 @@ class Expense {
     this.createdBy,
     this.creatorName,
     this.creatorEmoji,
+    this.creatorAvatarUrl,
     this.createdAt,
   });
 
@@ -507,6 +513,9 @@ class Expense {
   final String? createdBy;
   final String? creatorName;
   final String? creatorEmoji;
+
+  /// 记录人真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [creatorEmoji]。
+  final String? creatorAvatarUrl;
   final DateTime? createdAt;
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
@@ -518,6 +527,7 @@ class Expense {
         createdBy: j['created_by'] as String?,
         creatorName: j['creator_name'] as String?,
         creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
         createdAt: _parseDate(j['created_at']),
       );
 }
@@ -571,6 +581,7 @@ class Recipe {
     this.createdBy,
     this.creatorName,
     this.creatorEmoji,
+    this.creatorAvatarUrl,
     this.createdAt,
     this.coverUrl,
     this.coverVersion = 0,
@@ -597,6 +608,9 @@ class Recipe {
   final String? createdBy;
   final String? creatorName;
   final String? creatorEmoji;
+
+  /// 作者真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [creatorEmoji]。
+  final String? creatorAvatarUrl;
   final DateTime? createdAt;
 
   /// 封面照片的相对地址（已含 /api/v1，带 ?v= 版本号）。为空表示没传过照片，用 emoji。
@@ -626,6 +640,7 @@ class Recipe {
         createdBy: j['created_by'] as String?,
         creatorName: j['creator_name'] as String?,
         creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
         createdAt: _parseDate(j['created_at']),
         coverUrl: j['cover_url'] as String?,
         coverVersion: (j['cover_version'] as num?)?.toInt() ?? 0,
@@ -648,6 +663,7 @@ class Chore {
     this.createdBy,
     this.assigneeName,
     this.assigneeEmoji,
+    this.assigneeAvatarUrl,
   });
 
   final String id;
@@ -670,6 +686,9 @@ class Chore {
   final String? assigneeName;
   final String? assigneeEmoji;
 
+  /// 负责人真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [assigneeEmoji]。
+  final String? assigneeAvatarUrl;
+
   bool get isAssigned => assignedTo != null && assignedTo!.isNotEmpty;
 
   factory Chore.fromJson(Map<String, dynamic> j) => Chore(
@@ -686,6 +705,103 @@ class Chore {
         createdBy: j['created_by'] as String?,
         assigneeName: j['assignee_name'] as String?,
         assigneeEmoji: j['assignee_emoji'] as String?,
+        assigneeAvatarUrl: j['assignee_avatar_url'] as String?,
+      );
+}
+
+/// 囤货铺插件 · 一条家庭囤货（对应后端 stock_items 表 / StockItemRead）。
+class StockItem {
+  const StockItem({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.emoji,
+    required this.qty,
+    this.unit,
+    this.lowAt,
+    this.note,
+    required this.isLow,
+    this.createdAt,
+    this.createdBy,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+  final int qty;
+
+  /// 单位，可空（如「瓶」「卷」）。
+  final String? unit;
+
+  /// 低量阈值，可空；为空表示永不告急。
+  final int? lowAt;
+  final String? note;
+
+  /// 后端算好的「告急」标记：设了阈值且 qty <= lowAt。
+  final bool isLow;
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  factory StockItem.fromJson(Map<String, dynamic> j) => StockItem(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '📦',
+        qty: (j['qty'] as num?)?.toInt() ?? 0,
+        unit: j['unit'] as String?,
+        lowAt: (j['low_at'] as num?)?.toInt(),
+        note: j['note'] as String?,
+        isLow: j['is_low'] as bool? ?? false,
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+      );
+}
+
+/// 囤货铺插件 · 一条采买待买（对应后端 stock_buys 表 / BuyItemRead）。
+class BuyItem {
+  const BuyItem({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.emoji,
+    this.wantQty,
+    this.note,
+    this.stockItemId,
+    required this.bought,
+    this.boughtAt,
+    this.createdAt,
+    this.createdBy,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+
+  /// 想买多少，自由文本（如「2 瓶」「一大袋」），可空。
+  final String? wantQty;
+  final String? note;
+
+  /// 这条待买关联的囤货项 id，可空（手动添加的零散待买无关联）。
+  final String? stockItemId;
+  final bool bought;
+  final DateTime? boughtAt;
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  factory BuyItem.fromJson(Map<String, dynamic> j) => BuyItem(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '🛒',
+        wantQty: j['want_qty'] as String?,
+        note: j['note'] as String?,
+        stockItemId: j['stock_item_id'] as String?,
+        bought: j['bought'] as bool? ?? false,
+        boughtAt: _parseDate(j['bought_at']),
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
       );
 }
 
@@ -718,4 +834,204 @@ class InvitationPreview {
       expiresAt: _parseDate(j['expires_at']),
     );
   }
+}
+
+/// 单个可开关的通知来源（家庭动态 / 某个有通知机制的插件）。
+class NotificationSource {
+  const NotificationSource({
+    required this.key,
+    required this.label,
+    required this.emoji,
+    required this.enabled,
+  });
+
+  final String key;
+  final String label;
+  final String emoji;
+  final bool enabled;
+
+  NotificationSource copyWith({bool? enabled}) => NotificationSource(
+        key: key,
+        label: label,
+        emoji: emoji,
+        enabled: enabled ?? this.enabled,
+      );
+
+  factory NotificationSource.fromJson(Map<String, dynamic> j) => NotificationSource(
+        key: j['key'] as String,
+        label: j['label'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '🔔',
+        enabled: j['enabled'] as bool? ?? true,
+      );
+}
+
+/// 通知偏好：总推送开关 + 各来源开关。仅影响是否推送到手机系统通知栏。
+class NotificationPreferences {
+  const NotificationPreferences({
+    required this.pushEnabled,
+    required this.sources,
+  });
+
+  final bool pushEnabled;
+  final List<NotificationSource> sources;
+
+  factory NotificationPreferences.fromJson(Map<String, dynamic> j) =>
+      NotificationPreferences(
+        pushEnabled: j['push_enabled'] as bool? ?? true,
+        sources: ((j['sources'] as List?) ?? const [])
+            .map((e) => NotificationSource.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+// ── 回忆插件 ──────────────────────────────────────────────────────────────
+
+/// 一段回忆挂的一张照片或一段视频。`url` 已含 /api/v1，加载时拼上 host + 鉴权头。
+class MemoryMedia {
+  const MemoryMedia({
+    required this.id,
+    required this.memoryId,
+    required this.kind,
+    required this.url,
+    required this.contentType,
+    required this.sizeBytes,
+    this.width,
+    this.height,
+    this.durationMs,
+    this.sortOrder = 0,
+  });
+
+  final String id;
+  final String memoryId;
+  final String kind; // photo | video
+  final String url;
+  final String contentType;
+  final int sizeBytes;
+  final int? width;
+  final int? height;
+  final int? durationMs;
+  final int sortOrder;
+
+  bool get isVideo => kind == 'video';
+
+  /// 视频时长格式化成 m:ss（用于角标）；非视频或缺时长返回 null。
+  String? get durationLabel {
+    if (durationMs == null || durationMs! <= 0) return null;
+    final totalSec = (durationMs! / 1000).round();
+    final m = totalSec ~/ 60;
+    final s = totalSec % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  factory MemoryMedia.fromJson(Map<String, dynamic> j) => MemoryMedia(
+        id: j['id'] as String,
+        memoryId: j['memory_id'] as String? ?? '',
+        kind: j['kind'] as String? ?? 'photo',
+        url: j['url'] as String? ?? '',
+        contentType: j['content_type'] as String? ?? '',
+        sizeBytes: (j['size_bytes'] as num?)?.toInt() ?? 0,
+        width: (j['width'] as num?)?.toInt(),
+        height: (j['height'] as num?)?.toInt(),
+        durationMs: (j['duration_ms'] as num?)?.toInt(),
+        sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 另一半在回忆下的一条留言。
+class MemoryComment {
+  const MemoryComment({
+    required this.id,
+    required this.body,
+    this.authorId,
+    this.authorName,
+    this.authorEmoji,
+    this.authorAvatarUrl,
+    this.createdAt,
+  });
+
+  final String id;
+  final String body;
+  final String? authorId;
+  final String? authorName;
+  final String? authorEmoji;
+
+  /// 作者真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [authorEmoji]。
+  final String? authorAvatarUrl;
+  final DateTime? createdAt;
+
+  factory MemoryComment.fromJson(Map<String, dynamic> j) => MemoryComment(
+        id: j['id'] as String,
+        body: j['body'] as String? ?? '',
+        authorId: j['author_id'] as String?,
+        authorName: j['author_name'] as String?,
+        authorEmoji: j['author_emoji'] as String?,
+        authorAvatarUrl: j['author_avatar_url'] as String?,
+        createdAt: _parseDate(j['created_at']),
+      );
+}
+
+/// 时间线上的一段回忆：标题 + 文案 + 媒体 + 元信息 + 留言。
+class Memory {
+  const Memory({
+    required this.id,
+    required this.familyId,
+    required this.title,
+    this.body,
+    this.mood,
+    this.location,
+    this.visibility = 'family',
+    required this.eventDate,
+    this.createdBy,
+    this.authorName,
+    this.authorEmoji,
+    this.authorAvatarUrl,
+    this.createdAt,
+    this.media = const [],
+    this.commentCount = 0,
+    this.comments = const [],
+  });
+
+  final String id;
+  final String familyId;
+  final String title;
+  final String? body;
+  final String? mood;
+  final String? location;
+  final String visibility; // family | couple | private
+  final DateTime eventDate;
+  final String? createdBy;
+  final String? authorName;
+  final String? authorEmoji;
+
+  /// 创建者真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [authorEmoji]。
+  final String? authorAvatarUrl;
+  final DateTime? createdAt;
+  final List<MemoryMedia> media;
+  final int commentCount;
+  final List<MemoryComment> comments;
+
+  bool get hasMedia => media.isNotEmpty;
+
+  factory Memory.fromJson(Map<String, dynamic> j) => Memory(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        title: j['title'] as String? ?? '',
+        body: j['body'] as String?,
+        mood: j['mood'] as String?,
+        location: j['location'] as String?,
+        visibility: j['visibility'] as String? ?? 'family',
+        eventDate: _parseDate(j['event_date']) ?? DateTime.now(),
+        createdBy: j['created_by'] as String?,
+        authorName: j['author_name'] as String?,
+        authorEmoji: j['author_emoji'] as String?,
+        authorAvatarUrl: j['author_avatar_url'] as String?,
+        createdAt: _parseDate(j['created_at']),
+        media: ((j['media'] as List?) ?? const [])
+            .map((e) => MemoryMedia.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        commentCount: (j['comment_count'] as num?)?.toInt() ?? 0,
+        comments: ((j['comments'] as List?) ?? const [])
+            .map((e) => MemoryComment.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
 }

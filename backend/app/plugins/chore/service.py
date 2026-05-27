@@ -6,26 +6,25 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.models.membership import Membership
 from app.models.plugin import InstalledPlugin
 from app.plugins.chore.models import Chore, ChoreRead
 from app.plugins.registry import PluginPreview
+from app.services.membership import MemberInfo, author_avatar_url
 
 
-async def member_map(session: AsyncSession, family_id: UUID) -> dict[UUID, tuple[str, str]]:
-    """Map user_id → (display_name, avatar_emoji) for a family's members."""
-    stmt = select(Membership).where(Membership.family_id == family_id)
-    rows = (await session.execute(stmt)).scalars().all()
-    return {m.user_id: (m.display_name, m.avatar_emoji) for m in rows}
-
-
-def build_read(row: Chore, members: dict[UUID, tuple[str, str]]) -> ChoreRead:
+def build_read(row: Chore, members: dict[UUID, MemberInfo]) -> ChoreRead:
     """Serialize a row, injecting assignee display info (immutable copy)."""
     read = ChoreRead.model_validate(row, from_attributes=True)
-    name, emoji = (None, None)
-    if row.assigned_to is not None and row.assigned_to in members:
-        name, emoji = members[row.assigned_to]
-    return read.model_copy(update={"assignee_name": name, "assignee_emoji": emoji})
+    info = members.get(row.assigned_to) if row.assigned_to is not None else None
+    return read.model_copy(
+        update={
+            "assignee_name": info.name if info else None,
+            "assignee_emoji": info.emoji if info else None,
+            "assignee_avatar_url": author_avatar_url(
+                row.family_id, row.assigned_to, info
+            ),
+        }
+    )
 
 
 async def _open_count_for(session: AsyncSession, family_id: UUID, user_id: UUID) -> int:

@@ -1,7 +1,7 @@
-"""p15 chore recurring
+"""p18 chore recurring
 
 Revision ID: c5d6e7f8a9b0
-Revises: b7c1e2d9a4f3
+Revises: 7a1b2c3d4e5f
 Create Date: 2026-05-27 10:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'c5d6e7f8a9b0'
-down_revision: str | None = 'b7c1e2d9a4f3'
+down_revision: str | None = '7a1b2c3d4e5f'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

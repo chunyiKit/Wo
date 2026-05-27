@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ 使用 SplashScreen API：不再读 windowBackground，
+         改用下面这些专属属性来渲染系统启动屏。颜色/标记各自有 -night 变体。 -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/wo_splash_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/wo_splash_mark</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/wo_splash_bg</item>
+    </style>
+</resources>

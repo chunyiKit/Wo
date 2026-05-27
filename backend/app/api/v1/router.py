@@ -13,6 +13,7 @@ from fastapi import APIRouter
 
 import app.plugins  # noqa: F401  triggers every plugin's registration side effect
 from app.api.v1.routes import (
+    app_release,
     auth,
     devices,
     families,
@@ -39,6 +40,7 @@ api_router.include_router(plugins.marketplace_router)
 api_router.include_router(plugins.installed_router)
 api_router.include_router(notifications.router)
 api_router.include_router(devices.router)
+api_router.include_router(app_release.router)
 
 # Per-plugin routes (each registered via its own __init__.py).
 for _reg in registry.list_registrations():

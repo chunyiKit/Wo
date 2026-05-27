@@ -18,4 +18,5 @@ MANIFEST = PluginManifest(
     publisher="Wo Studio",
     default_layout=DefaultLayout(cw=2, ch=2),
     permissions=(Permission(code="members.read", label="读取家庭成员列表"),),
+    notification_types=("chore_assigned", "chore_reminder"),
 )

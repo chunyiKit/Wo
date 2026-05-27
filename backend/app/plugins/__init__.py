@@ -13,8 +13,10 @@ from app.plugins import (  # noqa: F401
     accounting,
     anniversary,
     chore,
+    memory,
     photo,
     recipe,
+    stock,
 )
 from app.plugins.registry import registry  # noqa: F401  re-export for convenience
 

@@ -21,6 +21,7 @@ from app.models.membership import Membership
 from app.models.notification import Notification
 from app.models.push_outbox import PushOutbox
 from app.models.user import User
+from app.services.notification_prefs import push_allowed
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
@@ -144,7 +145,7 @@ async def notify_family(
     transaction does, keeping the notification atomic with its trigger.
     """
     recipients = await _active_member_ids(session, family_id)
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=recipients,
         notification_type=notification_type,
@@ -173,7 +174,7 @@ async def notify_users(
     transaction does. Lets plugins emit notifications (e.g. a chore reminder to
     its assignee) without each duplicating the push-outbox staging logic.
     """
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=recipients,
         notification_type=notification_type,
@@ -198,7 +199,7 @@ async def notify_member_joined(
     so they don't get pinged about their own action.
     """
     recipients = await _other_active_member_ids(session, family.id, joining_user.id)
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=recipients,
         notification_type="member_joined",
@@ -223,7 +224,7 @@ async def notify_member_left(
     suspenders. Like the other notifiers it does NOT commit.
     """
     recipients = await _other_active_member_ids(session, family.id, leaving_user.id)
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=recipients,
         notification_type="member_left",
@@ -243,7 +244,7 @@ async def notify_role_changed(
     role_label: str,
 ) -> None:
     """Tell a member their role in this family changed. Does NOT commit."""
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=[target_user_id],
         notification_type="role_changed",
@@ -266,7 +267,7 @@ async def notify_ownership_transferred(
 
     Call AFTER role rows are updated. Does NOT commit.
     """
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=[new_owner.id],
         notification_type="ownership_received",
@@ -277,7 +278,7 @@ async def notify_ownership_transferred(
         deeplink=f"wo://family/{family.id}/members",
     )
     others = [uid for uid in await _active_member_ids(session, family.id) if uid != new_owner.id]
-    _add_for_recipients(
+    await _add_for_recipients(
         session,
         recipients=others,
         notification_type="ownership_transferred",
@@ -289,7 +290,7 @@ async def notify_ownership_transferred(
     )
 
 
-def _add_for_recipients(
+async def _add_for_recipients(
     session: AsyncSession,
     *,
     recipients: Sequence[UUID],
@@ -300,6 +301,26 @@ def _add_for_recipients(
     icon_emoji: str = "🔔",
     deeplink: str | None = None,
 ) -> None:
+    # Decide per-recipient whether to *push* (vs. just record in-app). Each
+    # recipient's notification_prefs gate the system push for this source; the
+    # in-app Notification row is always written. Only relevant when push is on
+    # globally — otherwise no outbox rows are created at all.
+    push_targets: set[UUID] = set()
+    if settings.push_enabled and recipients:
+        rows = (
+            await session.execute(
+                select(User.id, User.notification_prefs).where(
+                    User.id.in_(list(recipients))
+                )
+            )
+        ).all()
+        prefs_by_id = {uid: prefs for uid, prefs in rows}
+        push_targets = {
+            uid
+            for uid in recipients
+            if push_allowed(prefs_by_id.get(uid), notification_type)
+        }
+
     for uid in recipients:
         notif = Notification(
             user_id=uid,
@@ -314,7 +335,7 @@ def _add_for_recipients(
         # Stage the push intent in the *same* transaction (id is available now
         # via the UUIDv7 default_factory). The caller's commit makes notification
         # + outbox atomic; the dispatcher drains it after commit, so a rolled-back
-        # transaction never produces a ghost push. Gated so push-disabled
-        # deployments don't accumulate dead outbox rows.
-        if settings.push_enabled:
+        # transaction never produces a ghost push. Gated on the recipient's prefs
+        # so a user who muted this source (or all push) gets no system push.
+        if uid in push_targets:
             session.add(PushOutbox(notification_id=notif.id))

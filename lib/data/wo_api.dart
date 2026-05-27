@@ -1,4 +1,5 @@
 import 'api_client.dart';
+import 'app_update.dart';
 import 'models.dart';
 
 /// 业务仓库：把后端端点封装成带类型的方法。页面只跟它打交道。
@@ -9,6 +10,17 @@ class WoApi {
 
   String get userId => _client.userId;
   set userId(String value) => _client.userId = value;
+
+  /// 后端 host（不含 /api/v1）。下载 APK 等需要拼完整地址时用。
+  String get baseUrl => _client.baseUrl;
+
+  // ── 应用内更新 ───────────────────────────────────────────────
+  /// 取后端最新发布版本；尚未发布任何版本时返回 null。
+  Future<AppRelease?> latestRelease() async {
+    final data = await _client.get('/app/version');
+    if (data == null) return null;
+    return AppRelease.fromJson(data as Map<String, dynamic>);
+  }
 
   // ── 认证 ────────────────────────────────────────────────────
   /// 手机号登录/注册。号码已存在则登录，不存在则注册（暂无短信验证码）。
@@ -52,6 +64,29 @@ class WoApi {
       filename: filename,
     );
     return WoUser.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ── 通知偏好 ─────────────────────────────────────────────────
+  /// 读取当前用户的通知偏好（总推送开关 + 各来源开关）。
+  Future<NotificationPreferences> notificationPreferences() async =>
+      NotificationPreferences.fromJson(
+        await _client.get('/me/notification-preferences')
+            as Map<String, dynamic>,
+      );
+
+  /// 部分更新通知偏好：仅传需要变更的字段。返回更新后的完整偏好。
+  Future<NotificationPreferences> updateNotificationPreferences({
+    bool? pushEnabled,
+    Map<String, bool>? sources,
+  }) async {
+    final data = await _client.patch(
+      '/me/notification-preferences',
+      body: {
+        if (pushEnabled != null) 'push_enabled': pushEnabled,
+        if (sources != null && sources.isNotEmpty) 'sources': sources,
+      },
+    );
+    return NotificationPreferences.fromJson(data as Map<String, dynamic>);
   }
 
   /// 移除头像，回退到 emoji。返回更新后的用户。
@@ -534,6 +569,148 @@ class WoApi {
     return (data as Map<String, dynamic>)['reset'] as int? ?? 0;
   }
 
+  // ── 囤货铺插件 · 囤货库存 ──────────────────────────────────────
+  /// 拉取囤货列表。[low] 为 true 时只取告急（数量见底）的项。
+  Future<List<StockItem>> stockItems(String familyId, {bool? low}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/stock/items',
+      query: low != null ? {'low': low} : null,
+    ) as List;
+    return data
+        .map((e) => StockItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<StockItem> createStockItem(
+    String familyId, {
+    required String name,
+    required String emoji,
+    required int qty,
+    String? unit,
+    int? lowAt,
+    String? note,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/stock/items',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'qty': qty,
+        if (unit != null && unit.isNotEmpty) 'unit': unit,
+        if (lowAt != null) 'low_at': lowAt,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
+    return StockItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 更新囤货项。编辑页一次性提交完整状态，[unit]/[lowAt]/[note] 传 null 即清除。
+  Future<StockItem> updateStockItem(
+    String familyId,
+    String id, {
+    required String name,
+    required String emoji,
+    required int qty,
+    String? unit,
+    int? lowAt,
+    String? note,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/stock/items/$id',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'qty': qty,
+        'unit': (unit != null && unit.isNotEmpty) ? unit : null,
+        'low_at': lowAt,
+        'note': (note != null && note.isNotEmpty) ? note : null,
+      },
+    );
+    return StockItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteStockItem(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/stock/items/$id');
+
+  /// 把一个囤货项加进采买清单（关联回该项）；已有未买的同项时返回那一条。
+  Future<BuyItem> stockItemToBuy(String familyId, String id) async {
+    final data =
+        await _client.post('/families/$familyId/plugins/stock/items/$id/to-buy');
+    return BuyItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ── 囤货铺插件 · 采买待买清单 ──────────────────────────────────
+  /// 拉取采买清单。[bought] 为空取全部，false 取待买，true 取已买。
+  Future<List<BuyItem>> buyItems(String familyId, {bool? bought}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/stock/buys',
+      query: bought != null ? {'bought': bought} : null,
+    ) as List;
+    return data.map((e) => BuyItem.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<BuyItem> createBuyItem(
+    String familyId, {
+    required String name,
+    required String emoji,
+    String? wantQty,
+    String? note,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/stock/buys',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        if (wantQty != null && wantQty.isNotEmpty) 'want_qty': wantQty,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
+    return BuyItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<BuyItem> updateBuyItem(
+    String familyId,
+    String id, {
+    required String name,
+    required String emoji,
+    String? wantQty,
+    String? note,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/stock/buys/$id',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'want_qty': (wantQty != null && wantQty.isNotEmpty) ? wantQty : null,
+        'note': (note != null && note.isNotEmpty) ? note : null,
+      },
+    );
+    return BuyItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteBuyItem(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/stock/buys/$id');
+
+  /// 标记买到。[intoStockQty] 非空时把这些数量入库：关联项直接累加，
+  /// 未关联则以这条待买新建一个囤货项。只在第一次确认时传数量。
+  Future<BuyItem> markBuyBought(
+    String familyId,
+    String id, {
+    int? intoStockQty,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/stock/buys/$id/bought',
+      body: intoStockQty != null ? {'into_stock_qty': intoStockQty} : null,
+    );
+    return BuyItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<BuyItem> reopenBuyItem(String familyId, String id) async {
+    final data =
+        await _client.post('/families/$familyId/plugins/stock/buys/$id/reopen');
+    return BuyItem.fromJson(data as Map<String, dynamic>);
+  }
+
   // ── 记账插件 ────────────────────────────────────────────────
   Future<List<Expense>> expenses(
     String familyId, {
@@ -609,6 +786,125 @@ class WoApi {
         '/families/$familyId/plugins/accounting/budget',
         body: {'monthly_amount': amount},
       );
+
+  // ── 回忆插件 ────────────────────────────────────────────────
+  /// 时间线列表（按 event_date 倒序，含每条的媒体与留言数）。
+  Future<List<Memory>> memories(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/memory/memories') as List;
+    return data
+        .map((e) => Memory.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 单条回忆详情（含媒体与全部留言）。
+  Future<Memory> memory(String familyId, String id) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/memory/memories/$id');
+    return Memory.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Memory> createMemory(
+    String familyId, {
+    required String title,
+    String? body,
+    String? mood,
+    String? location,
+    String visibility = 'family',
+    required DateTime eventDate,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/memory/memories',
+      body: {
+        'title': title,
+        if (body != null && body.isNotEmpty) 'body': body,
+        if (mood != null && mood.isNotEmpty) 'mood': mood,
+        if (location != null && location.isNotEmpty) 'location': location,
+        'visibility': visibility,
+        'event_date': _formatDate(eventDate),
+      },
+    );
+    return Memory.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 更新回忆本体。可空字段传 null 表示清除（后端按 exclude_unset 处理，
+  /// 这里所有键都显式带上，所以 null 会真正清掉旧值）。
+  Future<Memory> updateMemory(
+    String familyId,
+    String id, {
+    required String title,
+    String? body,
+    String? mood,
+    String? location,
+    required String visibility,
+    required DateTime eventDate,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/memory/memories/$id',
+      body: {
+        'title': title,
+        'body': (body != null && body.isNotEmpty) ? body : null,
+        'mood': (mood != null && mood.isNotEmpty) ? mood : null,
+        'location': (location != null && location.isNotEmpty) ? location : null,
+        'visibility': visibility,
+        'event_date': _formatDate(eventDate),
+      },
+    );
+    return Memory.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteMemory(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/memory/memories/$id');
+
+  /// 给回忆挂一张照片或一段视频。[durationMs] 仅视频需要。
+  Future<MemoryMedia> uploadMemoryMedia(
+    String familyId,
+    String memoryId, {
+    required List<int> bytes,
+    required String filename,
+    int? durationMs,
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/plugins/memory/memories/$memoryId/media',
+      bytes: bytes,
+      filename: filename,
+      fields: durationMs != null ? {'duration_ms': '$durationMs'} : null,
+    );
+    return MemoryMedia.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteMemoryMedia(
+    String familyId,
+    String memoryId,
+    String mediaId,
+  ) =>
+      _client.delete(
+        '/families/$familyId/plugins/memory/memories/$memoryId/media/$mediaId',
+      );
+
+  Future<MemoryComment> addMemoryComment(
+    String familyId,
+    String memoryId,
+    String body,
+  ) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/memory/memories/$memoryId/comments',
+      body: {'body': body},
+    );
+    return MemoryComment.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteMemoryComment(
+    String familyId,
+    String memoryId,
+    String commentId,
+  ) =>
+      _client.delete(
+        '/families/$familyId/plugins/memory/memories/$memoryId/comments/$commentId',
+      );
+
+  /// 回忆媒体原图/视频的完整地址（含 host）。
+  String memoryMediaUrl(MemoryMedia m) => '${_client.baseUrl}${m.url}';
 
   static String _formatDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

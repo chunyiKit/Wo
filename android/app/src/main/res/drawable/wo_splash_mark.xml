@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动屏 Wo 标记（浅色：clay） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="140dp"
+    android:height="140dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <path
+        android:strokeColor="#A8462E"
+        android:strokeWidth="40"
+        android:fillColor="#00000000"
+        android:pathData="M192,512 a320,320 0 1,0 640,0 a320,320 0 1,0 -640,0" />
+    <path
+        android:fillColor="#A8462E"
+        android:pathData="M394,520 a46,46 0 1,0 92,0 a46,46 0 1,0 -92,0" />
+    <path
+        android:fillColor="#A8462E"
+        android:pathData="M554,500 a46,46 0 1,0 92,0 a46,46 0 1,0 -92,0" />
+</vector>

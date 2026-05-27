@@ -296,6 +296,7 @@ class _HomePageState extends State<HomePage> {
                       children: [
                         for (var i = 0; i < plugins.length; i++)
                           WoWidgetGridTile(
+                            tileKey: ValueKey(plugins[i].id),
                             cw: plugins[i].layout.cw.clamp(1, 4),
                             ch: plugins[i].layout.ch.clamp(1, 4),
                             child: _editing
@@ -318,11 +319,6 @@ class _HomePageState extends State<HomePage> {
                                     onRemove: () => _remove(plugins[i]),
                                   ),
                           ),
-                        WoWidgetGridTile(
-                          cw: 4,
-                          ch: 1,
-                          child: _AddPluginEntry(onTap: _openAddPluginSheet),
-                        ),
                       ],
                     ),
             ),
@@ -906,38 +902,6 @@ class _BindRow extends StatelessWidget {
   }
 }
 
-/// 「+ 添加插件」入口（4×1 矮条）。
-class _AddPluginEntry extends StatelessWidget {
-  const _AddPluginEntry({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final wo = context.wo;
-    final t = Theme.of(context).textTheme;
-    return DottedBorder(
-      color: wo.hairline,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(WoTokens.cardRadius),
-          onTap: onTap,
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add, color: wo.fgMid, size: 18),
-                const SizedBox(width: 6),
-                Text('添加插件', style: t.labelMedium?.copyWith(color: wo.fgMid)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 空网格：还没装任何插件。
 class _EmptyGrid extends StatelessWidget {
   const _EmptyGrid({required this.onAdd});
@@ -999,62 +963,6 @@ class _NoFamily extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 简单的虚线边框（避免额外依赖 dotted_border 包）
-class DottedBorder extends StatelessWidget {
-  const DottedBorder({super.key, required this.child, required this.color});
-
-  final Widget child;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _DashedBorderPainter(color: color, radius: WoTokens.cardRadius),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(WoTokens.cardRadius),
-        child: child,
-      ),
-    );
-  }
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  _DashedBorderPainter({required this.color, required this.radius});
-  final Color color;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    final rect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      Radius.circular(radius),
-    );
-    final path = Path()..addRRect(rect);
-
-    const dash = 6.0;
-    const gap = 4.0;
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final next = distance + dash;
-        canvas.drawPath(
-          metric.extractPath(distance, next.clamp(0, metric.length)),
-          paint,
-        );
-        distance = next + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedBorderPainter old) =>
-      old.color != color || old.radius != radius;
 }
 
 // ── 家庭切换 Sheet ───────────────────────────────────────────────────

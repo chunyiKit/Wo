@@ -145,6 +145,8 @@ class RecipeRead(RecipeBase):
     # (see service.build_read). Null when the author left the family.
     creator_name: str | None = None
     creator_emoji: str | None = None
+    # Member-avatar URL when the author uploaded a real photo; None → emoji.
+    creator_avatar_url: str | None = None
     # Cover photo: version (0 = none) + a relative raw-bytes URL with a `?v=`
     # cache-buster. `cover_url` is None when no photo has been uploaded, in
     # which case clients render the emoji.

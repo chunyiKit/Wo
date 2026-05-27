@@ -20,9 +20,10 @@ class SettingsPage extends StatelessWidget {
               title: Text('账号与安全'),
               trailing: Icon(Icons.chevron_right),
             ),
-            const ListTile(
-              title: Text('通知偏好'),
-              trailing: Icon(Icons.chevron_right),
+            ListTile(
+              title: const Text('通知偏好'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(WoRoutes.notificationPrefs),
             ),
             ValueListenableBuilder<ThemeMode>(
               valueListenable: session.themeMode,

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
 import 'api_config.dart';
+import 'app_update.dart';
 import 'models.dart';
 import 'push_service.dart';
 import 'wo_api.dart';
@@ -21,6 +22,13 @@ class WoSession extends ChangeNotifier {
   static const _kThemeMode = 'wo.themeMode';
 
   final WoApi api;
+
+  /// 应用内更新的全局状态机。挂在会话上（与 App 同生命周期），使「关于」页的
+  /// 下载进度在离开/重进页面时不丢失、不重复下载。
+  late final AppUpdateController appUpdate = AppUpdateController(
+    service: AppUpdateService(baseUrl: api.baseUrl),
+    fetchLatest: api.latestRelease,
+  );
 
   /// 外观主题：浅色 / 深色 / 跟随系统（默认）。本地持久化，启动时由
   /// [loadThemeMode] 读出。用 ValueNotifier 单独承载，避免主题切换牵动其他 UI。
@@ -192,6 +200,7 @@ class WoSession extends ChangeNotifier {
   void dispose() {
     messagesRefreshSignal.dispose();
     themeMode.dispose();
+    appUpdate.dispose();
     super.dispose();
   }
 }

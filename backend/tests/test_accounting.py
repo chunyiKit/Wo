@@ -1,8 +1,10 @@
 """Accounting plugin tests — expenses, budget, summary, and preview coloring."""
 
 import uuid
+from io import BytesIO
 
 from httpx import AsyncClient
+from PIL import Image
 
 XIAOBAO = {"X-User-Id": "019000a0-1100-7000-8000-000000000003"}
 
@@ -36,12 +38,34 @@ async def test_create_and_list_expense(client: AsyncClient) -> None:
     # Recorder display info is embedded for the timeline.
     assert created["creator_name"] is not None
     assert created["creator_emoji"] is not None
+    # `creator_avatar_url` carries the field (positive case covered separately);
+    # don't assert its value here since the shared seed user's avatar state can
+    # vary across the suite.
+    assert "creator_avatar_url" in created
 
     listing = await client.get(
         f"/api/v1/families/{fid}/plugins/accounting/transactions"
     )
     assert listing.status_code == 200
     assert len(listing.json()["data"]) == 1
+
+
+async def test_creator_avatar_url_when_recorder_has_avatar(
+    client: AsyncClient,
+) -> None:
+    """A recorder with a real uploaded avatar surfaces a member-avatar URL."""
+    img = Image.new("RGB", (40, 40), color=(200, 120, 40))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    await client.post(
+        "/api/v1/me/avatar",
+        files={"file": ("a.png", buf.getvalue(), "image/png")},
+    )
+    fid = await _create_family(client)
+    created = await _add_expense(client, fid, amount="12.00", category="dining")
+    url = created["creator_avatar_url"]
+    assert url is not None
+    assert f"/families/{fid}/members/" in url and "/avatar" in url
 
 
 async def test_list_is_time_desc(client: AsyncClient) -> None:

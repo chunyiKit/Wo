@@ -6,6 +6,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
+import '../../../widgets/member_avatar.dart';
 import '../../../widgets/wo_card.dart';
 import 'accounting_entry_sheet.dart';
 import 'expense_categories.dart';
@@ -401,8 +402,9 @@ class _ExpenseTile extends StatelessWidget {
     final whoEmoji = expense.creatorEmoji ?? '👤';
     final created = expense.createdAt;
     final timeText = created == null ? '' : _timeLabel(created);
+    // 记录人头像单独用真实头像展示，其余（名字 / 时间 / 备注）拼成一行小字。
     final subtitle = [
-      '$whoEmoji $who',
+      who,
       if (timeText.isNotEmpty) timeText,
       if (expense.note != null && expense.note!.isNotEmpty) expense.note!,
     ].join(' · ');
@@ -431,12 +433,24 @@ class _ExpenseTile extends StatelessWidget {
                   cat.label,
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: t.bodySmall?.copyWith(color: wo.fgMid),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    MemberAvatar(
+                      url: expense.creatorAvatarUrl,
+                      emoji: whoEmoji,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        subtitle,
+                        style: t.bodySmall?.copyWith(color: wo.fgMid),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

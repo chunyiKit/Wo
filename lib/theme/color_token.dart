@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'wo_tokens.dart';
 
-/// 把后端返回的 `color_token`（photo / money / anniv / chore / pet / accent）
+/// 把后端返回的 `color_token`（photo / money / anniv / chore / pet / memory / stock / accent）
 /// 映射成本地设计色。见 docs/backend-contract.md §5.6。
 extension WoColorTokenX on WoColors {
   Color colorForToken(String token) {
@@ -17,6 +17,10 @@ extension WoColorTokenX on WoColors {
         return chore;
       case 'pet':
         return pet;
+      case 'memory':
+        return memory;
+      case 'stock':
+        return stock;
       case 'accent':
       default:
         return accent;

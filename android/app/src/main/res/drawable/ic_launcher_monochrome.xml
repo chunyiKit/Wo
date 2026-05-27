@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ 主题图标(themed icon)单色层，系统按壁纸着色 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="3.76"
+        android:fillColor="#00000000"
+        android:pathData="M23.9,54 a30.1,30.1 0 1,0 60.2,0 a30.1,30.1 0 1,0 -60.2,0" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M42.87,54.75 a4.33,4.33 0 1,0 8.66,0 a4.33,4.33 0 1,0 -8.66,0" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M57.97,52.87 a4.33,4.33 0 1,0 8.66,0 a4.33,4.33 0 1,0 -8.66,0" />
+</vector>

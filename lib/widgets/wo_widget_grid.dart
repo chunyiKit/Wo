@@ -28,6 +28,8 @@ class WoWidgetGrid extends StatelessWidget {
     required this.children,
     this.gap = 12,
     this.cellAspectRatio = 1.0,
+    this.animationDuration = const Duration(milliseconds: 260),
+    this.animationCurve = Curves.easeOutCubic,
   })  : assert(crossAxisCount > 0),
         assert(gap >= 0),
         assert(cellAspectRatio > 0);
@@ -40,6 +42,12 @@ class WoWidgetGrid extends StatelessWidget {
 
   /// cell 宽高比（默认 1 表示正方形）
   final double cellAspectRatio;
+
+  /// 重排 / 改尺寸后，卡片平滑移动到新位置的动画时长与曲线。
+  /// 要让动画生效，每个 [WoWidgetGridTile] 必须带稳定的 [WoWidgetGridTile.tileKey]，
+  /// 这样列表顺序变化时同一张卡能被 Flutter 识别为「移动」而非「替换」。
+  final Duration animationDuration;
+  final Curve animationCurve;
 
   /// tile 列表。会按声明顺序贪心放入栅格。
   final List<WoWidgetGridTile> children;
@@ -66,7 +74,12 @@ class WoWidgetGrid extends StatelessWidget {
           child: Stack(
             children: [
               for (var i = 0; i < children.length; i++)
-                Positioned(
+                AnimatedPositioned(
+                  // 用稳定 key 让重排后同一张卡被识别为「移动」，从而平滑过渡到
+                  // 新位置；缺省回退到下标（不动画，仅保证可用）。
+                  key: children[i].tileKey ?? ValueKey(i),
+                  duration: animationDuration,
+                  curve: animationCurve,
                   left: placements[i].col * (cellWidth + gap),
                   top: placements[i].row * (cellHeight + gap),
                   width: placements[i].cw * cellWidth +
@@ -90,12 +103,17 @@ class WoWidgetGridTile {
     required this.cw,
     required this.ch,
     required this.child,
+    this.tileKey,
   })  : assert(cw > 0),
         assert(ch > 0);
 
   final int cw;
   final int ch;
   final Widget child;
+
+  /// 这一格的稳定标识。重排时用它把同一张卡跨帧匹配上，配合
+  /// [WoWidgetGrid] 的 [AnimatedPositioned] 实现平滑移动。建议传卡片的业务 id。
+  final Key? tileKey;
 }
 
 @immutable
