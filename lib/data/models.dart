@@ -642,6 +642,7 @@ class Chore {
     required this.emoji,
     this.assignedTo,
     required this.done,
+    this.recurring = false,
     this.completedAt,
     this.createdAt,
     this.createdBy,
@@ -658,6 +659,9 @@ class Chore {
   /// 负责人 user id，可空（未指派）。
   final String? assignedTo;
   final bool done;
+
+  /// 是否每周重复。重复家务可被「一键重新匹配」批量重置为待做。
+  final bool recurring;
   final DateTime? completedAt;
   final DateTime? createdAt;
   final String? createdBy;
@@ -676,6 +680,7 @@ class Chore {
         emoji: j['emoji'] as String? ?? '🧹',
         assignedTo: j['assigned_to'] as String?,
         done: j['done'] as bool? ?? false,
+        recurring: j['recurring'] as bool? ?? false,
         completedAt: _parseDate(j['completed_at']),
         createdAt: _parseDate(j['created_at']),
         createdBy: j['created_by'] as String?,

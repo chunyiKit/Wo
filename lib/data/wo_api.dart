@@ -466,12 +466,14 @@ class WoApi {
     required String emoji,
     String? note,
     String? assignedTo,
+    bool recurring = false,
   }) async {
     final data = await _client.post(
       '/families/$familyId/plugins/chore/chores',
       body: {
         'title': title,
         'emoji': emoji,
+        'recurring': recurring,
         if (note != null && note.isNotEmpty) 'note': note,
         if (assignedTo != null && assignedTo.isNotEmpty)
           'assigned_to': assignedTo,
@@ -489,6 +491,7 @@ class WoApi {
     required String emoji,
     String? note,
     String? assignedTo,
+    bool? recurring,
   }) async {
     final data = await _client.put(
       '/families/$familyId/plugins/chore/chores/$id',
@@ -498,6 +501,7 @@ class WoApi {
         'note': note,
         'assigned_to':
             (assignedTo != null && assignedTo.isNotEmpty) ? assignedTo : null,
+        if (recurring != null) 'recurring': recurring,
       },
     );
     return Chore.fromJson(data as Map<String, dynamic>);
@@ -521,6 +525,14 @@ class WoApi {
   /// 手动提醒负责人（给 TA 发一条通知）。家务须已指派且未完成。
   Future<void> remindChore(String familyId, String id) =>
       _client.post('/families/$familyId/plugins/chore/chores/$id/remind');
+
+  /// 一键重新匹配：把所有「每周重复」且已完成的家务重置为待做，负责人不变。
+  /// 返回被重置的数量。
+  Future<int> resetRecurringChores(String familyId) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/chore/chores/reset-recurring');
+    return (data as Map<String, dynamic>)['reset'] as int? ?? 0;
+  }
 
   // ── 记账插件 ────────────────────────────────────────────────
   Future<List<Expense>> expenses(

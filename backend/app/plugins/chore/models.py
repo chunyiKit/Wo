@@ -46,6 +46,9 @@ class Chore(ChoreBase, table=True):
         index=True,
     )
     done: bool = Field(default=False)
+    # Weekly-recurring chores can be reset in bulk for a fresh week (keeping the
+    # same assignee) — see the reset-recurring route. One-off chores stay False.
+    recurring: bool = Field(default=False)
     completed_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
@@ -66,6 +69,7 @@ class ChoreCreate(ChoreBase):
     """POST request body."""
 
     assigned_to: UUID | None = None
+    recurring: bool = False
 
 
 class ChoreUpdate(SQLModel):
@@ -76,6 +80,7 @@ class ChoreUpdate(SQLModel):
     emoji: str | None = Field(default=None, max_length=16)
     assigned_to: UUID | None = None
     done: bool | None = None
+    recurring: bool | None = None
 
 
 class ChoreRead(ChoreBase):
@@ -83,6 +88,7 @@ class ChoreRead(ChoreBase):
     family_id: UUID
     assigned_to: UUID | None
     done: bool
+    recurring: bool
     completed_at: datetime | None
     created_at: datetime
     created_by: UUID | None

@@ -30,6 +30,9 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
   // 当前选中的负责人 user id；null = 未指派。
   String? _assignedTo;
 
+  // 是否每周重复。开启后可在列表页「一键重新匹配」批量重置。
+  bool _recurring = false;
+
   List<Member> _members = const [];
   bool _membersLoading = true;
   bool _membersLoaded = false;
@@ -44,6 +47,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
     final c = widget.existing;
     _emoji = c?.emoji ?? '🧹';
     _assignedTo = c?.assignedTo;
+    _recurring = c?.recurring ?? false;
     _title = TextEditingController(text: c?.title ?? '');
     _note = TextEditingController(text: c?.note ?? '');
   }
@@ -104,6 +108,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
           emoji: _emoji,
           note: note.isEmpty ? null : note,
           assignedTo: _assignedTo,
+          recurring: _recurring,
         );
       } else {
         await session.api.createChore(
@@ -112,6 +117,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
           emoji: _emoji,
           note: note.isEmpty ? null : note,
           assignedTo: _assignedTo,
+          recurring: _recurring,
         );
       }
       if (mounted) nav.pop(true);
@@ -221,6 +227,18 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                       ),
                   ],
                 ),
+              const SizedBox(height: WoTokens.space3),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _recurring,
+                onChanged: (v) => setState(() => _recurring = v),
+                activeColor: wo.chore,
+                title: Text('每周重复', style: t.titleSmall),
+                subtitle: Text(
+                  '每周固定要做的家务。新一周可在列表页「一键重新匹配」，把它们一起重置为待做。',
+                  style: t.labelSmall?.copyWith(color: wo.fgMid),
+                ),
+              ),
               const SizedBox(height: WoTokens.space4),
               TextField(
                 controller: _note,

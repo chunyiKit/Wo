@@ -86,6 +86,47 @@ class _ChoreListPageState extends State<ChoreListPage> {
     }
   }
 
+  Future<void> _resetRecurring() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('一键重新匹配'),
+        content: const Text(
+          '把所有「每周重复」的家务重新打开为待做，负责人保持不变，开启新一周。确定吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('重新匹配'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    try {
+      final count = await session.api.resetRecurringChores(familyId);
+      await _refreshAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              count > 0 ? '已重新匹配 $count 件重复家务' : '重复家务都已是待做状态',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) _toast(e);
+    }
+  }
+
   Future<void> _delete(Chore c) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -147,11 +188,13 @@ class _ChoreListPageState extends State<ChoreListPage> {
           builder: (context, all) {
             if (all.isEmpty) return _Empty(onAdd: _openEditor);
             final items = _filter(all);
+            final hasRecurring = all.any((c) => c.recurring);
             return Column(
               children: [
                 _FilterBar(
                   selected: _done,
                   onSelect: (v) => setState(() => _done = v),
+                  onResetRecurring: hasRecurring ? _resetRecurring : null,
                 ),
                 Expanded(
                   child: items.isEmpty
@@ -186,15 +229,23 @@ class _ChoreListPageState extends State<ChoreListPage> {
   }
 }
 
-/// 待做 / 已完成 / 全部 三段筛选。
+/// 待做 / 已完成 / 全部 三段筛选；有重复家务时右侧显示「一键重新匹配」。
 class _FilterBar extends StatelessWidget {
-  const _FilterBar({required this.selected, required this.onSelect});
+  const _FilterBar({
+    required this.selected,
+    required this.onSelect,
+    this.onResetRecurring,
+  });
 
   final bool? selected;
   final ValueChanged<bool?> onSelect;
 
+  /// 为空时不显示一键重新匹配按钮（家庭里没有重复家务）。
+  final VoidCallback? onResetRecurring;
+
   @override
   Widget build(BuildContext context) {
+    final wo = context.wo;
     final options = <(bool?, String)>[
       (false, '待做'),
       (true, '已完成'),
@@ -215,6 +266,14 @@ class _FilterBar extends StatelessWidget {
             ),
             const SizedBox(width: WoTokens.space2),
           ],
+          const Spacer(),
+          if (onResetRecurring != null)
+            TextButton.icon(
+              onPressed: onResetRecurring,
+              style: TextButton.styleFrom(foregroundColor: wo.chore),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('重新匹配'),
+            ),
         ],
       ),
     );
@@ -274,7 +333,15 @@ class _ChoreTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 3),
-                _AssigneeLine(chore: chore, isMine: isMine),
+                Row(
+                  children: [
+                    Flexible(child: _AssigneeLine(chore: chore, isMine: isMine)),
+                    if (chore.recurring) ...[
+                      const SizedBox(width: WoTokens.space2),
+                      const _RecurringBadge(),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -295,6 +362,38 @@ class _ChoreTile extends StatelessWidget {
               PopupMenuItem(value: 'edit', child: Text('编辑')),
               PopupMenuItem(value: 'delete', child: Text('删除')),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 「每周」重复标记，提示这条家务参与一键重新匹配。
+class _RecurringBadge extends StatelessWidget {
+  const _RecurringBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: wo.chore.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.refresh, size: 11, color: wo.chore),
+          const SizedBox(width: 2),
+          Text(
+            '每周',
+            style: t.labelSmall?.copyWith(
+              color: wo.chore,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

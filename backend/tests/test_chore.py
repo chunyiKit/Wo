@@ -253,6 +253,78 @@ async def test_delete_chore(client: AsyncClient) -> None:
     assert all(c["id"] != cid for c in remaining)
 
 
+async def test_create_recurring_flag(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    create = await client.post(
+        CHORE_BASE.format(fid=fid),
+        json={"title": "倒垃圾", "recurring": True},
+    )
+    assert create.status_code == 201, create.text
+    assert create.json()["data"]["recurring"] is True
+
+    # Defaults to one-off when the flag is omitted.
+    other = await client.post(CHORE_BASE.format(fid=fid), json={"title": "修灯"})
+    assert other.json()["data"]["recurring"] is False
+
+
+async def test_update_toggles_recurring(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    base = CHORE_BASE.format(fid=fid)
+    cid = (await client.post(base, json={"title": "拖地"})).json()["data"]["id"]
+
+    updated = await client.put(
+        f"{base}/{cid}",
+        json={"title": "拖地", "emoji": "🧹", "recurring": True},
+    )
+    assert updated.json()["data"]["recurring"] is True
+
+
+async def test_reset_recurring_reopens_only_done_recurring(client: AsyncClient) -> None:
+    fid = await _family_with_xiaolin(client)
+    base = CHORE_BASE.format(fid=fid)
+
+    # A done recurring chore (assigned to 小林) — should be reopened, assignee kept.
+    rec = (
+        await client.post(
+            base,
+            json={"title": "洗碗", "recurring": True, "assigned_to": XIAOLIN["X-User-Id"]},
+        )
+    ).json()["data"]["id"]
+    await client.post(f"{base}/{rec}/complete")
+
+    # A done one-off chore — should stay done.
+    once = (await client.post(base, json={"title": "修灯"})).json()["data"]["id"]
+    await client.post(f"{base}/{once}/complete")
+
+    # An open recurring chore — already待做, untouched.
+    open_rec = (
+        await client.post(base, json={"title": "扫地", "recurring": True})
+    ).json()["data"]["id"]
+
+    reset = await client.post(f"{base}/reset-recurring")
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["data"]["reset"] == 1
+
+    by_id = {c["id"]: c for c in (await client.get(base)).json()["data"]}
+    # Done recurring → reopened, completed_at cleared, assignee preserved.
+    assert by_id[rec]["done"] is False
+    assert by_id[rec]["completed_at"] is None
+    assert by_id[rec]["assigned_to"] == XIAOLIN["X-User-Id"]
+    # One-off stays done; open recurring stays open.
+    assert by_id[once]["done"] is True
+    assert by_id[open_rec]["done"] is False
+
+
+async def test_reset_recurring_no_match_returns_zero(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    base = CHORE_BASE.format(fid=fid)
+    await client.post(base, json={"title": "买菜"})  # one-off, open
+
+    reset = await client.post(f"{base}/reset-recurring")
+    assert reset.status_code == 200
+    assert reset.json()["data"]["reset"] == 0
+
+
 async def test_non_member_forbidden(client: AsyncClient) -> None:
     fid = await _create_family(client)
     # 小宝 is not a member → family is hidden (404).

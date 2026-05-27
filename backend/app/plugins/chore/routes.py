@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter
+from sqlalchemy import update
 from sqlmodel import select
 
 from app.api.deps import SessionDep
@@ -120,6 +121,30 @@ async def create_chore(
     await session.commit()
     await session.refresh(row)
     return ok(build_read(row, members))
+
+
+@router.post("/chores/reset-recurring", response_model=ApiResponse[dict])
+async def reset_recurring_chores(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[dict]:
+    """Start a fresh week: reopen every recurring chore in the family that was
+    marked done, keeping its assignee. Already-open recurring chores are left as
+    they are. Returns how many were reset."""
+    await require_membership(session, current_user.id, family_id)
+    stmt = (
+        update(Chore)
+        .where(
+            Chore.family_id == family_id,
+            Chore.recurring.is_(True),
+            Chore.done.is_(True),
+        )
+        .values(done=False, completed_at=None)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return ok({"reset": result.rowcount})
 
 
 @router.put("/chores/{chore_id}", response_model=ApiResponse[ChoreRead])
