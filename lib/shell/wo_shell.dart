@@ -30,6 +30,9 @@ class WoShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
+    // 订阅会话：未读数变化时（拉取 bootstrap / 收到推送）重建底 Tab 角标。
+    final session = WoScope.of(context);
+    final unread = session.unreadCount;
     return Scaffold(
       body: shell,
       bottomNavigationBar: DecoratedBox(
@@ -54,7 +57,16 @@ class WoShell extends StatelessWidget {
             destinations: [
               for (final tab in _tabs)
                 NavigationDestination(
-                  icon: Text(tab.emoji, style: const TextStyle(fontSize: 22)),
+                  icon: tab.route == WoRoutes.messages
+                      ? Badge(
+                          isLabelVisible: unread > 0,
+                          label: Text('$unread'),
+                          child: Text(
+                            tab.emoji,
+                            style: const TextStyle(fontSize: 22),
+                          ),
+                        )
+                      : Text(tab.emoji, style: const TextStyle(fontSize: 22)),
                   label: tab.label,
                 ),
             ],
