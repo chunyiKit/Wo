@@ -18,7 +18,10 @@ class ChoreListPage extends StatefulWidget {
 }
 
 class _ChoreListPageState extends State<ChoreListPage> {
+  // `_future` 只驱动首屏 spinner;数据缓存进 `_items`,之后的增删改静默就地替换,
+  // 不闪——见 CLAUDE.md「列表页刷新不能闪一下」。
   late Future<List<Chore>> _future;
+  List<Chore>? _items;
   bool _loaded = false;
 
   // null = 全部；false = 待做；true = 已完成。默认看待做。
@@ -29,30 +32,46 @@ class _ChoreListPageState extends State<ChoreListPage> {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<List<Chore>> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value(const <Chore>[])
         : session.api.chores(familyId);
   }
 
-  Future<void> _refreshAll() async {
-    if (!mounted) return;
-    setState(_reload);
-    // 列表变化会影响首页卡片预览，刷新一次 bootstrap。
-    await WoScope.of(context).refresh();
+  void _store(List<Chore> list) {
+    if (mounted) setState(() => _items = list);
+  }
+
+  Future<void> _retry() {
+    setState(() {
+      _items = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  Future<void> _refreshSilently() async {
+    try {
+      final list = await _fetch();
+      if (mounted) setState(() => _items = list);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据,不打断操作。
+    }
+    // 列表变化会影响首页卡片预览,刷新一次 bootstrap。
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _openEditor([Chore? existing]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ChoreEditPage(existing: existing)),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _toggleDone(Chore c) async {
@@ -65,7 +84,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
       } else {
         await session.api.completeChore(familyId, c.id);
       }
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -113,7 +132,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
     if (familyId == null) return;
     try {
       final count = await session.api.resetRecurringChores(familyId);
-      await _refreshAll();
+      await _refreshSilently();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -152,7 +171,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
     if (familyId == null) return;
     try {
       await session.api.deleteChore(familyId, c.id);
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -173,7 +192,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    final myId = WoScope.of(context).user?.id;
+    final cached = _items;
     return Scaffold(
       backgroundColor: wo.bg,
       appBar: AppBar(title: const Text('家务活')),
@@ -183,49 +202,54 @@ class _ChoreListPageState extends State<ChoreListPage> {
         label: const Text('加家务'),
       ),
       body: SafeArea(
-        child: AsyncView<List<Chore>>(
-          future: _future,
-          onRetry: () => setState(_reload),
-          builder: (context, all) {
-            if (all.isEmpty) return _Empty(onAdd: _openEditor);
-            final items = _filter(all);
-            final hasRecurring = all.any((c) => c.recurring);
-            return Column(
-              children: [
-                _FilterBar(
-                  selected: _done,
-                  onSelect: (v) => setState(() => _done = v),
-                  onResetRecurring: hasRecurring ? _resetRecurring : null,
-                ),
-                Expanded(
-                  child: items.isEmpty
-                      ? const _EmptyFilter()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(
-                            WoTokens.space4,
-                            WoTokens.space2,
-                            WoTokens.space4,
-                            100,
-                          ),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: WoTokens.space3),
-                          itemBuilder: (_, i) => _ChoreTile(
-                            chore: items[i],
-                            isMine: items[i].assignedTo != null &&
-                                items[i].assignedTo == myId,
-                            onToggle: () => _toggleDone(items[i]),
-                            onRemind: () => _remind(items[i]),
-                            onEdit: () => _openEditor(items[i]),
-                            onDelete: () => _delete(items[i]),
-                          ),
-                        ),
-                ),
-              ],
-            );
-          },
-        ),
+        child: cached != null
+            ? _buildBody(context, cached)
+            : AsyncView<List<Chore>>(
+                future: _future,
+                onRetry: _retry,
+                builder: _buildBody,
+              ),
       ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, List<Chore> all) {
+    if (all.isEmpty) return _Empty(onAdd: _openEditor);
+    final myId = WoScope.of(context).user?.id;
+    final items = _filter(all);
+    final hasRecurring = all.any((c) => c.recurring);
+    return Column(
+      children: [
+        _FilterBar(
+          selected: _done,
+          onSelect: (v) => setState(() => _done = v),
+          onResetRecurring: hasRecurring ? _resetRecurring : null,
+        ),
+        Expanded(
+          child: items.isEmpty
+              ? const _EmptyFilter()
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    WoTokens.space4,
+                    WoTokens.space2,
+                    WoTokens.space4,
+                    100,
+                  ),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: WoTokens.space3),
+                  itemBuilder: (_, i) => _ChoreTile(
+                    chore: items[i],
+                    isMine: items[i].assignedTo != null &&
+                        items[i].assignedTo == myId,
+                    onToggle: () => _toggleDone(items[i]),
+                    onRemind: () => _remind(items[i]),
+                    onEdit: () => _openEditor(items[i]),
+                    onDelete: () => _delete(items[i]),
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }
@@ -336,7 +360,8 @@ class _ChoreTile extends StatelessWidget {
                 const SizedBox(height: 3),
                 Row(
                   children: [
-                    Flexible(child: _AssigneeLine(chore: chore, isMine: isMine)),
+                    Flexible(
+                        child: _AssigneeLine(chore: chore, isMine: isMine)),
                     if (chore.recurring) ...[
                       const SizedBox(width: WoTokens.space2),
                       const _RecurringBadge(),

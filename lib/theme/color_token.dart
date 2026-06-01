@@ -21,6 +21,14 @@ extension WoColorTokenX on WoColors {
         return memory;
       case 'stock':
         return stock;
+      case 'movie':
+        return movie;
+      case 'calendar':
+        return calendar;
+      case 'subscribe':
+        return subscribe;
+      case 'plant':
+        return plant;
       case 'accent':
       default:
         return accent;

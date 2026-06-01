@@ -38,7 +38,11 @@ installed_router = APIRouter(prefix="/families", tags=["plugins"])
 
 @marketplace_router.get("", response_model=ApiResponse[list[PluginRead]])
 async def list_plugins(session: SessionDep) -> ApiResponse[list[PluginRead]]:
-    manifests = registry.list_manifests()
+    # Marketplace hides `published=False` manifests so half-baked plugins
+    # (routes exist but UI not wired) don't lure new installs. Already-
+    # installed families keep working — bootstrap and the per-family install
+    # endpoints don't filter on published.
+    manifests = [m for m in registry.list_manifests() if m.published]
     if not manifests:
         return ok([])
     stmt = select(Plugin).where(Plugin.id.in_([m.id for m in manifests]))

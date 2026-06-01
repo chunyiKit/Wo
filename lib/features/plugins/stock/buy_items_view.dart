@@ -18,7 +18,10 @@ class BuyItemsView extends StatefulWidget {
 }
 
 class _BuyItemsViewState extends State<BuyItemsView> {
+  // `_future` 只驱动首屏 spinner;拉到的数据缓存进 `_items`,之后的增删改只
+  // 静默后台拉取并就地替换,不再把整列换成 spinner——否则每次操作整页会闪一下。
   late Future<List<BuyItem>> _future;
+  List<BuyItem>? _items;
   bool _loaded = false;
 
   // null = 全部；false = 待买；true = 已买。默认看待买。
@@ -29,29 +32,48 @@ class _BuyItemsViewState extends State<BuyItemsView> {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<List<BuyItem>> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value(const <BuyItem>[])
         : session.api.buyItems(familyId);
   }
 
-  Future<void> _refreshAll() async {
-    if (!mounted) return;
-    setState(_reload);
-    await WoScope.of(context).refresh();
+  void _store(List<BuyItem> list) {
+    if (mounted) setState(() => _items = list);
+  }
+
+  /// 首屏加载失败后的重试:清空数据,回到 spinner 重新拉。
+  Future<void> _retry() {
+    setState(() {
+      _items = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  /// 增删改后刷新:保留当前列表,后台静默拉取后就地替换,不闪 spinner。
+  Future<void> _refreshSilently() async {
+    try {
+      final list = await _fetch();
+      if (mounted) setState(() => _items = list);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据,不打断操作。
+    }
+    // 列表变化会影响首页卡片预览,刷新一次 bootstrap。
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _openEditor([BuyItem? existing]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => BuyItemEditPage(existing: existing)),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _toggle(BuyItem b) async {
@@ -61,7 +83,7 @@ class _BuyItemsViewState extends State<BuyItemsView> {
     if (b.bought) {
       try {
         await session.api.reopenBuyItem(familyId, b.id);
-        await _refreshAll();
+        await _refreshSilently();
       } catch (e) {
         if (mounted) _toast(e);
       }
@@ -76,7 +98,7 @@ class _BuyItemsViewState extends State<BuyItemsView> {
         b.id,
         intoStockQty: qty > 0 ? qty : null,
       );
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -151,7 +173,7 @@ class _BuyItemsViewState extends State<BuyItemsView> {
     if (familyId == null) return;
     try {
       await session.api.deleteBuyItem(familyId, b.id);
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -171,6 +193,7 @@ class _BuyItemsViewState extends State<BuyItemsView> {
 
   @override
   Widget build(BuildContext context) {
+    final cached = _items;
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
@@ -179,43 +202,48 @@ class _BuyItemsViewState extends State<BuyItemsView> {
         icon: const Icon(Icons.add),
         label: const Text('加采买'),
       ),
-      body: AsyncView<List<BuyItem>>(
-        future: _future,
-        onRetry: () => setState(_reload),
-        builder: (context, all) {
-          if (all.isEmpty) return _EmptyBuy(onAdd: _openEditor);
-          final items = _filter(all);
-          return Column(
-            children: [
-              _FilterBar(
-                selected: _bought,
-                onSelect: (v) => setState(() => _bought = v),
-              ),
-              Expanded(
-                child: items.isEmpty
-                    ? const _EmptyFilter()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(
-                          WoTokens.space4,
-                          WoTokens.space2,
-                          WoTokens.space4,
-                          100,
-                        ),
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: WoTokens.space3),
-                        itemBuilder: (_, i) => _BuyTile(
-                          buy: items[i],
-                          onToggle: () => _toggle(items[i]),
-                          onEdit: () => _openEditor(items[i]),
-                          onDelete: () => _delete(items[i]),
-                        ),
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
+      // 有缓存数据就直接渲染列表(刷新时就地替换、不闪);仅首屏走 AsyncView 转圈。
+      body: cached != null
+          ? _buildBody(context, cached)
+          : AsyncView<List<BuyItem>>(
+              future: _future,
+              onRetry: _retry,
+              builder: _buildBody,
+            ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, List<BuyItem> all) {
+    if (all.isEmpty) return _EmptyBuy(onAdd: _openEditor);
+    final items = _filter(all);
+    return Column(
+      children: [
+        _FilterBar(
+          selected: _bought,
+          onSelect: (v) => setState(() => _bought = v),
+        ),
+        Expanded(
+          child: items.isEmpty
+              ? const _EmptyFilter()
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    WoTokens.space4,
+                    WoTokens.space2,
+                    WoTokens.space4,
+                    100,
+                  ),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: WoTokens.space3),
+                  itemBuilder: (_, i) => _BuyTile(
+                    buy: items[i],
+                    onToggle: () => _toggle(items[i]),
+                    onEdit: () => _openEditor(items[i]),
+                    onDelete: () => _delete(items[i]),
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }

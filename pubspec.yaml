@@ -1,7 +1,7 @@
 name: wo
 description: 窝（Wo）— 插件化家庭事务 App
 publish_to: "none"
-version: 0.1.0+6
+version: 0.3.0+15
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -21,10 +21,14 @@ dependencies:
   image_picker: ^1.1.2
   flutter_image_compress: ^2.3.0
   cached_network_image: ^3.4.1
+  # cached_network_image 用的底层缓存管理器;回忆大图长按保存时直接捞它已下好的本地文件。
+  flutter_cache_manager: ^3.4.1
   # 回忆插件：播放上传的短视频（详情页全屏播放）。
   video_player: ^2.9.2
   # 回忆插件：新建时读第一张照片的 EXIF 拍摄日期，自动填进日期。
   exif: ^3.3.0
+  # 回忆插件：大图页长按把图片存进系统相册（Android 走 MediaStore，iOS 走 Photos）。
+  gal: ^2.3.0
   # 邀请二维码：把 qr_payload 渲染成二维码图。
   qr_flutter: ^4.1.0
   # 扫码加入：相机扫描邀请二维码。
@@ -33,6 +37,10 @@ dependencies:
   package_info_plus: ^8.0.0
   path_provider: ^2.1.0
   open_filex: ^4.5.0
+  # 家历：把带日期的日程弹到手机自带「添加事件」页，用户在系统页里自定义提醒后存入本地日历。
+  add_2_calendar: ^3.0.1
+  # 植物日记：读取设备定位，作为家庭默认环境拉取当地天气（安卓优先，iOS 兼容）。
+  geolocator: ^13.0.1
 
 dev_dependencies:
   flutter_test:

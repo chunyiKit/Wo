@@ -22,7 +22,10 @@ class AccountingPage extends StatefulWidget {
 }
 
 class _AccountingPageState extends State<AccountingPage> {
+  // `_future` 只驱动首屏 spinner;数据缓存进 `_data`,之后的增删改 / 切月静默
+  // 就地替换,不闪——见 CLAUDE.md「列表页刷新不能闪一下」。
   late Future<_AccountingData> _future;
+  _AccountingData? _data;
 
   bool _loaded = false;
 
@@ -41,21 +44,21 @@ class _AccountingPageState extends State<AccountingPage> {
     return _selected.year == now.year && _selected.month == now.month;
   }
 
-  // 首次加载放在 didChangeDependencies 而非 initState：_reload 通过
+  // 首次加载放在 didChangeDependencies 而非 initState：_fetch 通过
   // WoScope.of(context) 依赖 InheritedWidget，在 initState 阶段访问会抛异常。
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<_AccountingData> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value((
             summary: const AccountingSummary(monthTotal: 0),
             expenses: const <Expense>[],
@@ -77,28 +80,43 @@ class _AccountingPageState extends State<AccountingPage> {
     return (summary: summary, expenses: expenses);
   }
 
-  void _selectMonth(({int year, int month}) m) {
-    if (m == _selected) return;
-    setState(() {
-      _selected = m;
-      _reload();
-    });
+  void _store(_AccountingData data) {
+    if (mounted) setState(() => _data = data);
   }
 
-  Future<void> _refreshAll() async {
-    if (!mounted) return;
-    setState(_reload);
-    await WoScope.of(context).refresh();
+  Future<void> _retry() {
+    setState(() {
+      _data = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  void _selectMonth(({int year, int month}) m) {
+    if (m == _selected) return;
+    // 切月:立即高亮新月份,数据静默拉取后就地替换(不闪、不回到 spinner)。
+    setState(() => _selected = m);
+    _refreshSilently();
+  }
+
+  Future<void> _refreshSilently() async {
+    try {
+      final data = await _fetch();
+      if (mounted) setState(() => _data = data);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据,不打断操作。
+    }
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _addExpense() async {
     final changed = await showExpenseEntrySheet(context);
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _editExpense(Expense e) async {
     final changed = await showExpenseEntrySheet(context, existing: e);
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _onLongPress(Expense e) async {
@@ -153,7 +171,7 @@ class _AccountingPageState extends State<AccountingPage> {
     if (familyId == null) return;
     try {
       await session.api.deleteExpense(familyId, e.id);
-      await _refreshAll();
+      await _refreshSilently();
     } catch (err) {
       if (mounted) _toast(err);
     }
@@ -204,7 +222,7 @@ class _AccountingPageState extends State<AccountingPage> {
     if (saved == null) return;
     try {
       await session.api.setBudget(familyId, saved);
-      await _refreshAll();
+      await _refreshSilently();
     } catch (err) {
       if (mounted) _toast(err);
     }
@@ -230,49 +248,44 @@ class _AccountingPageState extends State<AccountingPage> {
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
-        child: AsyncView<_AccountingData>(
-          future: _future,
-          onRetry: () => setState(_reload),
-          builder: (context, data) {
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(
-                WoTokens.space4,
-                WoTokens.space4,
-                WoTokens.space4,
-                100,
+        child: _data != null
+            ? _buildContent(context, _data!)
+            : AsyncView<_AccountingData>(
+                future: _future,
+                onRetry: _retry,
+                builder: _buildContent,
               ),
-              children: [
-                _MonthSelector(
-                  selected: _selected,
-                  onSelect: _selectMonth,
-                ),
-                const SizedBox(height: WoTokens.space4),
-                _SummaryCard(
-                  summary: data.summary,
-                  monthLabel: _selected.month,
-                  isCurrentMonth: _isCurrentMonth,
-                  onEditBudget: () => _editBudget(data.summary.budget),
-                ),
-                const SizedBox(height: WoTokens.space5),
-                if (data.expenses.isEmpty)
-                  _EmptyExpenses(
-                    onAdd: _addExpense,
-                    isCurrentMonth: _isCurrentMonth,
-                  )
-                else ...[
-                  for (final e in data.expenses) ...[
-                    _ExpenseTile(
-                      expense: e,
-                      onLongPress: () => _onLongPress(e),
-                    ),
-                    const SizedBox(height: WoTokens.space3),
-                  ],
-                ],
-              ],
-            );
-          },
-        ),
       ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, _AccountingData data) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        WoTokens.space4,
+        WoTokens.space4,
+        WoTokens.space4,
+        100,
+      ),
+      children: [
+        _MonthSelector(selected: _selected, onSelect: _selectMonth),
+        const SizedBox(height: WoTokens.space4),
+        _SummaryCard(
+          summary: data.summary,
+          monthLabel: _selected.month,
+          isCurrentMonth: _isCurrentMonth,
+          onEditBudget: () => _editBudget(data.summary.budget),
+        ),
+        const SizedBox(height: WoTokens.space5),
+        if (data.expenses.isEmpty)
+          _EmptyExpenses(onAdd: _addExpense, isCurrentMonth: _isCurrentMonth)
+        else ...[
+          for (final e in data.expenses) ...[
+            _ExpenseTile(expense: e, onLongPress: () => _onLongPress(e)),
+            const SizedBox(height: WoTokens.space3),
+          ],
+        ],
+      ],
     );
   }
 }

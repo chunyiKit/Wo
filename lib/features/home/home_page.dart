@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +14,7 @@ import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
 import '../../widgets/wo_widget_grid.dart';
 import '../plugins/plugin_pages.dart';
+import '../plugins/stock/stock_page.dart';
 
 /// 家庭首页（Direction A · 温润日常 + 异形 Widget 网格）。
 ///
@@ -33,6 +37,20 @@ class _HomePageState extends State<HomePage> {
 
   /// 上次按返回键的时刻，用于「再按一次返回退出」。
   DateTime? _lastBackAt;
+
+  /// 当前有未完成项的采买清单来源；空列表 → 不展示 banner。
+  ///
+  /// 当前所有采买条目都落在囤货铺一张表里，按 note 是否以「来自菜谱」开头切
+  /// 成「食材采买 / 囤货采买」两组——0 / 1 / 2 三种情况都涵盖：
+  /// - 0 组 → 没东西要买，banner 隐藏
+  /// - 1 组 → 点 banner 直接进囤货铺采买 tab
+  /// - 2 组 → 点 banner 弹气泡，分别可点
+  ///
+  /// 未来如果更多插件有自己的待办清单，加新条目就行；UI 自动按上面规则切换。
+  List<_ShoppingSource> _shoppingSources = const [];
+
+  /// 当前是否在拉采买计数；用于防抖。
+  bool _shoppingLoading = false;
 
   /// 拦截系统返回键：编辑态先退出编辑（布局已在每次改动时即时保存），
   /// 否则需要 2 秒内连按两次才真正退出应用，避免误触退出。
@@ -173,7 +191,156 @@ class _HomePageState extends State<HomePage> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(builder: (_) => page),
     );
-    if (mounted) await WoScope.of(context).refresh();
+    if (mounted) {
+      // 进过任何插件回来都顺手刷一下采买计数：囤货铺里勾掉一项 / 菜谱里加新
+      // 食材入采买 / 别的任何会改 stock_buys 的路径都涵盖了。
+      await Future.wait([
+        WoScope.of(context).refresh(),
+        _refreshShoppingSources(),
+      ]);
+    }
+  }
+
+  /// 进 [StockPage] 并直接定位到指定 tab（0 囤货 / 1 采买）。供采买 banner 用。
+  Future<void> _openStock({int initialTabIndex = 0}) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => StockPage(initialTabIndex: initialTabIndex),
+      ),
+    );
+    if (mounted) {
+      await Future.wait([
+        WoScope.of(context).refresh(),
+        _refreshShoppingSources(),
+      ]);
+    }
+  }
+
+  /// 拉一次未完成的采买条目,按来源切成「食材采买 / 囤货采买」两组并写进 state。
+  ///
+  /// 没装囤货铺(没有 stock 插件)直接清空——这种情况下 stock_buys 端点理论上
+  /// 仍会接受调用,但既然用户没装它,也不该展示这个 banner。
+  Future<void> _refreshShoppingSources() async {
+    if (_shoppingLoading) return;
+    _shoppingLoading = true;
+    try {
+      final session = WoScope.of(context);
+      final familyId = session.currentFamilyId;
+      if (familyId == null) {
+        if (mounted) setState(() => _shoppingSources = const []);
+        return;
+      }
+      final installed = session.bootstrap?.installedPlugins ?? const [];
+      final hasStock = installed.any((p) => p.pluginId == 'stock');
+      if (!hasStock) {
+        if (mounted) setState(() => _shoppingSources = const []);
+        return;
+      }
+
+      List<BuyItem> rows;
+      try {
+        rows = await session.api.buyItems(familyId, bought: false);
+      } catch (_) {
+        // 后端临时挂掉时静默——下次刷新会再试,没必要打扰用户。
+        return;
+      }
+      final fromRecipe = <BuyItem>[];
+      final fromStock = <BuyItem>[];
+      for (final r in rows) {
+        if ((r.note ?? '').startsWith('来自菜谱')) {
+          fromRecipe.add(r);
+        } else {
+          fromStock.add(r);
+        }
+      }
+      final next = <_ShoppingSource>[
+        if (fromRecipe.isNotEmpty)
+          _ShoppingSource(
+            label: '食材采买',
+            emoji: '🍳',
+            count: fromRecipe.length,
+          ),
+        if (fromStock.isNotEmpty)
+          _ShoppingSource(
+            label: '囤货采买',
+            emoji: '📦',
+            count: fromStock.length,
+          ),
+      ];
+      if (mounted) setState(() => _shoppingSources = next);
+    } finally {
+      _shoppingLoading = false;
+    }
+  }
+
+  /// 点采买 banner:只一个来源就直接进囤货铺采买 tab;多个来源弹气泡选。
+  Future<void> _onShoppingBannerTap(GlobalKey anchorKey) async {
+    if (_shoppingSources.isEmpty) return;
+    if (_shoppingSources.length == 1) {
+      await _openStock(initialTabIndex: 1);
+      return;
+    }
+    final picked = await _showShoppingPopup(anchorKey);
+    if (picked == null || !mounted) return;
+    // 暂时所有来源都落到同一个囤货铺采买 tab——以后如果加了按来源过滤,可以
+    // 在这里根据 picked 传不同 filter。
+    await _openStock(initialTabIndex: 1);
+  }
+
+  /// 在 banner 下方弹一个 PopupMenu,展示各采买来源。
+  Future<_ShoppingSource?> _showShoppingPopup(GlobalKey anchorKey) async {
+    final ctx = anchorKey.currentContext;
+    if (ctx == null) return null;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return null;
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = box.localToGlobal(
+      box.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final position = RelativeRect.fromLTRB(
+      topLeft.dx,
+      bottomRight.dy,
+      overlay.size.width - bottomRight.dx,
+      0,
+    );
+    return showMenu<_ShoppingSource>(
+      context: context,
+      position: position,
+      items: [
+        for (final s in _shoppingSources)
+          PopupMenuItem<_ShoppingSource>(
+            value: s,
+            child: Row(
+              children: [
+                Text(s.emoji, style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: WoTokens.space2),
+                Text(s.label),
+                const SizedBox(width: WoTokens.space2),
+                Text(
+                  '${s.count} 项',
+                  style: TextStyle(
+                    color: context.wo.fgMid,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // initState 里拿不到 InheritedWidget,延迟到第一帧后再去 WoScope 拉数据。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshShoppingSources();
+    });
   }
 
   /// 编辑态下给纪念日卡绑定某个纪念日（或切回总览）。
@@ -279,7 +446,13 @@ class _HomePageState extends State<HomePage> {
         body: SafeArea(
           top: false,
           child: RefreshIndicator(
-            onRefresh: session.refresh,
+            // 下拉刷新同时拉 bootstrap 和采买计数,两者独立失败都不互相影响。
+            onRefresh: () async {
+              await Future.wait([
+                session.refresh(),
+                _refreshShoppingSources(),
+              ]);
+            },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(
@@ -288,12 +461,22 @@ class _HomePageState extends State<HomePage> {
                 WoTokens.space4,
                 100,
               ),
-              child: plugins.isEmpty
-                  ? _EmptyGrid(onAdd: _openAddPluginSheet)
-                  : WoWidgetGrid(
-                      crossAxisCount: 4,
-                      gap: WoTokens.space3,
-                      children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_shoppingSources.isNotEmpty && !_editing) ...[
+                    _ShoppingBanner(
+                      sources: _shoppingSources,
+                      onTap: _onShoppingBannerTap,
+                    ),
+                    const SizedBox(height: WoTokens.space3),
+                  ],
+                  plugins.isEmpty
+                      ? _EmptyGrid(onAdd: _openAddPluginSheet)
+                      : WoWidgetGrid(
+                          crossAxisCount: 4,
+                          gap: WoTokens.space3,
+                          children: [
                         for (var i = 0; i < plugins.length; i++)
                           WoWidgetGridTile(
                             tileKey: ValueKey(plugins[i].id),
@@ -321,6 +504,8 @@ class _HomePageState extends State<HomePage> {
                           ),
                       ],
                     ),
+                ],
+              ),
             ),
           ),
         ),
@@ -384,6 +569,52 @@ class _WidgetCard extends StatelessWidget {
     // secondary 可带强调色（如预算见底），为空回退到 fgMid。
     final secondaryColor = wo.colorForTone(preview.secondaryTone) ?? fgMid;
     final isCompact = installed.layout.ch <= 1;
+    // 4×2 大卡且 preview 带了缩略图（目前只有回忆插件返回）时，右半边塞一个
+    // 淡入淡出的轮播；其它 4×2 卡（如纪念日）仍走纯文字 Column 布局。
+    final showImageCarousel = !isCompact &&
+        installed.layout.cw >= 4 &&
+        preview.imageUrls.isNotEmpty;
+
+    // 大卡的文字栏（emoji + 插件名 + primary + secondary）抽出来,大卡 + 带轮播
+    // 时它放在 Row 左半 Expanded 里，否则就是整张卡的 Column。
+    Widget buildBigTextColumn() => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              emoji,
+              style: const TextStyle(fontSize: 26),
+            ),
+            const Spacer(),
+            Text(
+              installed.plugin.name,
+              style: t.labelMedium?.copyWith(color: fgMid),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              preview.primary,
+              style: (emphasized ? t.headlineMedium : t.titleMedium)?.copyWith(
+                color: fg,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (preview.secondary != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                preview.secondary!,
+                style: t.bodySmall?.copyWith(
+                  color: secondaryColor,
+                  fontWeight:
+                      preview.secondaryTone != null ? FontWeight.w700 : null,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
+        );
 
     return Stack(
       children: [
@@ -432,46 +663,24 @@ class _WidgetCard extends StatelessWidget {
                       ),
                     ],
                   )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        emoji,
-                        style: const TextStyle(fontSize: 26),
-                      ),
-                      const Spacer(),
-                      Text(
-                        installed.plugin.name,
-                        style: t.labelMedium?.copyWith(color: fgMid),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        preview.primary,
-                        style: (emphasized ? t.headlineMedium : t.titleMedium)
-                            ?.copyWith(
-                          color: fg,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (preview.secondary != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          preview.secondary!,
-                          style: t.bodySmall?.copyWith(
-                            color: secondaryColor,
-                            fontWeight: preview.secondaryTone != null
-                                ? FontWeight.w700
-                                : null,
+                : showImageCarousel
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: buildBigTextColumn()),
+                          const SizedBox(width: WoTokens.space3),
+                          Expanded(
+                            child: _MemoryCarousel(
+                              urls: [
+                                for (final p in preview.imageUrls)
+                                  '${WoScope.api(context).baseUrl}$p',
+                              ],
+                              headers: WoScope.api(context).imageHeaders,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
+                        ],
+                      )
+                    : buildBigTextColumn(),
           ),
         ),
         if (editing && showRemove)
@@ -1235,6 +1444,209 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
                 : Text(installed ? '已安装' : '安装'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 4×2 卡片右半边的图片轮播：每 4 秒切下一张，淡入淡出。
+///
+/// 用 [AnimatedSwitcher] 而不是 PageView 是因为 PageView 的横向滑动跟卡片本身
+/// 的拖拽 / 进详情页冲突，而且左右切的动效在 home 这种紧凑卡片里太突兀。
+/// AnimatedSwitcher 的默认 layoutBuilder 是把 in/out 两个 child 叠在 Stack 里同时
+/// 渐变，所以淡入淡出是天然的——只需要给每个 [CachedNetworkImage] 套一个以 url
+/// 为 key 的 [ValueKey]，Switcher 才会识别出 child 变了。
+///
+/// 缓存复用：home 卡片走这里加载的图片，跟回忆详情页里的 [MemoryMediaTile] 同
+/// URL，所以走的是同一份 [DefaultCacheManager] 缓存——首次冷启动会拉网络，进
+/// 详情页时已经在内存里了。
+class _MemoryCarousel extends StatefulWidget {
+  const _MemoryCarousel({
+    required this.urls,
+    required this.headers,
+  });
+
+  final List<String> urls;
+  final Map<String, String> headers;
+
+  @override
+  State<_MemoryCarousel> createState() => _MemoryCarouselState();
+}
+
+class _MemoryCarouselState extends State<_MemoryCarousel> {
+  static const _switchInterval = Duration(seconds: 4);
+  static const _fadeDuration = Duration(milliseconds: 700);
+
+  int _idx = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _restart();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MemoryCarousel old) {
+    super.didUpdateWidget(old);
+    // URL 列表换了（preview 重新拉了）：把 index 收敛到合法范围并重置 timer。
+    if (widget.urls.length != old.urls.length ||
+        !_listEq(widget.urls, old.urls)) {
+      _idx = _idx.clamp(0, widget.urls.length - 1);
+      _restart();
+    }
+  }
+
+  bool _listEq(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _restart() {
+    _timer?.cancel();
+    if (widget.urls.length <= 1) return;
+    _timer = Timer.periodic(_switchInterval, (_) {
+      if (!mounted) return;
+      setState(() => _idx = (_idx + 1) % widget.urls.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.urls.isEmpty) return const SizedBox.shrink();
+    final url = widget.urls[_idx];
+    return ClipRRect(
+      // 比卡片自己 22 的圆角小一档，跟卡片是包含关系视觉上更顺。
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedSwitcher(
+        duration: _fadeDuration,
+        // 不需要 sizeTransition 包裹——子元素自己撑满父容器，AnimatedSwitcher 走
+        // 默认 layoutBuilder(Stack)，新旧 child 同时存在并各自 fade。
+        child: CachedNetworkImage(
+          key: ValueKey(url),
+          imageUrl: url,
+          httpHeaders: widget.headers,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          placeholder: (_, __) => Container(
+            color: Colors.black.withValues(alpha: 0.08),
+          ),
+          errorWidget: (_, __, ___) => Container(
+            color: Colors.black.withValues(alpha: 0.08),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 首页采买提醒的数据来源:一组「按来源分类的未完成采买条目」。
+///
+/// 当前两个固定来源（食材采买 / 囤货采买）按 BuyItem.note 是否「来自菜谱」前缀
+/// 切分,以后多了别的采买入口可以再加新的 _ShoppingSource。
+class _ShoppingSource {
+  const _ShoppingSource({
+    required this.label,
+    required this.emoji,
+    required this.count,
+  });
+
+  final String label;
+  final String emoji;
+  final int count;
+}
+
+/// 首页顶部的采买未完成提醒条。
+///
+/// 一行 banner:左侧购物车图标 + 文案,右侧箭头。点击行为由父级决定（[onTap] 接
+/// 收一个 [GlobalKey],父级用它定位 banner 的屏幕位置,在它下方弹气泡）。
+class _ShoppingBanner extends StatelessWidget {
+  _ShoppingBanner({required this.sources, required this.onTap});
+
+  final List<_ShoppingSource> sources;
+
+  /// 父级处理点击,会把 [GlobalKey] 用来定位气泡的锚点。
+  final Future<void> Function(GlobalKey anchor) onTap;
+
+  /// 给整条 banner 一个 key,父级靠它的 RenderBox 算气泡位置。
+  final GlobalKey _anchor = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    final total = sources.fold<int>(0, (sum, s) => sum + s.count);
+    final detail = sources.length > 1
+        // 多来源直接列出来:「食材 3 · 囤货 2」,顺便提示点开能展开。
+        ? sources.map((s) => '${s.label.replaceAll('采买', '')} ${s.count}').join(' · ')
+        : '${sources.first.label} $total 项';
+    return InkWell(
+      key: _anchor,
+      onTap: () => onTap(_anchor),
+      borderRadius: BorderRadius.circular(WoTokens.cardRadius),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(
+          horizontal: WoTokens.space4,
+          vertical: WoTokens.space3,
+        ),
+        decoration: BoxDecoration(
+          color: wo.accentSoft,
+          borderRadius: BorderRadius.circular(WoTokens.cardRadius),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: wo.accent.withValues(alpha: 0.18),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.shopping_cart_outlined,
+                color: wo.accentDeep,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: WoTokens.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '采买清单还有 $total 项未完成',
+                    style: t.titleSmall?.copyWith(
+                      color: wo.fg,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: t.bodySmall?.copyWith(color: wo.fgMid),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: wo.fgMid,
+              size: 22,
+            ),
+          ],
+        ),
       ),
     );
   }

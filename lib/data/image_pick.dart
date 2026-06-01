@@ -12,10 +12,11 @@ import 'package:image_picker/image_picker.dart';
 Future<Uint8List?> pickAndCompressImage({
   int maxEdge = 1280,
   int quality = 82,
+  ImageSource source = ImageSource.gallery,
 }) async {
   final picker = ImagePicker();
   final picked = await picker.pickImage(
-    source: ImageSource.gallery,
+    source: source,
     // image_picker 先做一次粗缩，降低后续压缩的内存峰值。
     maxWidth: 2400,
     maxHeight: 2400,

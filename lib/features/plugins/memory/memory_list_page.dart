@@ -23,7 +23,12 @@ class MemoryListPage extends StatefulWidget {
 }
 
 class _MemoryListPageState extends State<MemoryListPage> {
+  // `_future` 仅驱动「首次加载」的 spinner；拉到的数据缓存进 `_memories`，
+  // 之后的刷新(从详情/编辑返回、下拉)只静默更新 `_memories` 并就地替换，
+  // 不再把整条时间线换成 spinner——否则返回时间线会整屏闪一下、所有缩略图
+  // 跟着重新加载，观感很差。
   late Future<List<Memory>> _future;
+  List<Memory>? _memories;
   bool _loaded = false;
 
   @override
@@ -31,42 +36,61 @@ class _MemoryListPageState extends State<MemoryListPage> {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<List<Memory>> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value(const <Memory>[])
         : session.api.memories(familyId);
   }
 
-  Future<void> _refreshAll() async {
-    if (!mounted) return;
-    setState(_reload);
+  void _store(List<Memory> list) {
+    if (mounted) setState(() => _memories = list);
+  }
+
+  /// 首次加载失败后的重试：清空数据，回到 spinner 重新拉。
+  Future<void> _retry() {
+    setState(() {
+      _memories = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  /// 返回 / 下拉刷新：保留当前列表，后台静默拉取后就地替换，不闪 spinner。
+  Future<void> _refreshSilently() async {
+    try {
+      final list = await _fetch();
+      if (mounted) setState(() => _memories = list);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据，不打断浏览。
+    }
     // 列表变化会影响首页卡片预览，刷新一次 bootstrap。
-    await WoScope.of(context).refresh();
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _openEditor() async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const MemoryEditPage()),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _openDetail(Memory m) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => MemoryDetailPage(memory: m)),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
+    final memories = _memories;
     return Scaffold(
       backgroundColor: wo.bg,
       appBar: AppBar(title: const Text('回忆')),
@@ -76,14 +100,20 @@ class _MemoryListPageState extends State<MemoryListPage> {
         label: const Text('记一段'),
       ),
       body: SafeArea(
-        child: AsyncView<List<Memory>>(
-          future: _future,
-          onRetry: () => setState(_reload),
-          builder: (context, all) {
-            if (all.isEmpty) return _Empty(onAdd: _openEditor);
-            return _Timeline(memories: all, onTapMemory: _openDetail);
-          },
-        ),
+        child: memories != null
+            ? (memories.isEmpty
+                ? _Empty(onAdd: _openEditor)
+                : RefreshIndicator(
+                    onRefresh: _refreshSilently,
+                    child: _Timeline(memories: memories, onTapMemory: _openDetail),
+                  ))
+            : AsyncView<List<Memory>>(
+                future: _future,
+                onRetry: _retry,
+                builder: (context, all) => all.isEmpty
+                    ? _Empty(onAdd: _openEditor)
+                    : _Timeline(memories: all, onTapMemory: _openDetail),
+              ),
       ),
     );
   }
@@ -134,6 +164,7 @@ class _Timeline extends StatelessWidget {
     rows.add(_StartFooter());
 
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: WoTokens.space2, bottom: 100),
       child: Stack(
         children: [

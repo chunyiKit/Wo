@@ -25,8 +25,7 @@ const _tints = [
   Color(0xFFE8DCC8), // 奶咖
 ];
 
-Color recipeTintFor(String key) =>
-    _tints[key.hashCode.abs() % _tints.length];
+Color recipeTintFor(String key) => _tints[key.hashCode.abs() % _tints.length];
 
 Color recipeTint(Recipe r) =>
     recipeTintFor(r.name.isNotEmpty ? r.name : r.emoji);

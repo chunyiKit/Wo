@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel
 from sqlmodel import select
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 
 from app.api.deps import SessionDep
 from app.core.auth import CurrentUserDep
@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.images import validate_image
 from app.core.response import ApiResponse, ok
-from app.core.storage import storage
+from app.core.storage import PresignableStorage, storage
 from app.models.family import FamilyRead
 from app.models.plugin import InstalledPlugin
 from app.models.user import UserRead, UserUpdate
@@ -298,9 +298,18 @@ async def get_avatar_raw(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> Response:
-    """返回头像原始字节（非信封）。URL 带 `?v=` 版本号，故可长期缓存。"""
+    """返回头像原始字节（非信封）。URL 带 `?v=` 版本号，故可长期缓存。
+
+    COS 后端：302 到 1 小时预签名 URL，客户端直接从对象存储拉全量（与回忆 /raw
+    一致，避免经后端代发字节）。本地盘（dev/tests）回退为内联流。
+    """
     if current_user.avatar_storage_key is None:
         raise AppError(ErrorCode.NOT_FOUND, "尚未设置头像", status_code=404)
+    if isinstance(storage, PresignableStorage):
+        url = await storage.presigned_get_url(
+            current_user.avatar_storage_key, ttl_seconds=3600
+        )
+        return RedirectResponse(url, status_code=302)
     try:
         data = await storage.get(current_user.avatar_storage_key)
     except FileNotFoundError as exc:

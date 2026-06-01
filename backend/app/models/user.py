@@ -44,6 +44,10 @@ class User(UserBase, table=True):
     # Login identifier. Nullable + unique: pre-P5 rows may lack a phone, but no
     # two users can share one. Not exposed in UserRead (kept off public reads).
     phone: str | None = Field(default=None, max_length=20, unique=True, index=True)
+    # scrypt password hash (see app.core.password). Nullable: rows created before
+    # passwords landed have None until the owner's next login sets one. Never
+    # exposed in UserRead — passwords (even hashed) stay off public reads.
+    password_hash: str | None = Field(default=None, max_length=255)
     current_family_id: UUID | None = Field(
         default=None,
         foreign_key="families.id",

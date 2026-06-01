@@ -22,7 +22,20 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 PluginCategory = Literal["life", "finance", "health", "education", "entertainment"]
-ColorToken = Literal["photo", "money", "anniv", "chore", "pet", "memory", "stock", "accent"]
+ColorToken = Literal[
+    "photo",
+    "money",
+    "anniv",
+    "chore",
+    "pet",
+    "memory",
+    "stock",
+    "movie",
+    "calendar",
+    "subscribe",
+    "plant",
+    "accent",
+]
 # Optional emphasis applied to a card's `secondary` text. None = normal color.
 SecondaryTone = Literal["warning", "danger"]
 
@@ -60,6 +73,11 @@ class PluginManifest:
     # be configured independently via InstalledPlugin.config). Defaults to
     # single-install.
     multi_instance: bool = False
+    # When False, the plugin's routes / preview still work for any family that
+    # already had it installed, but the marketplace `/plugins` list hides it
+    # so no new install can be triggered. Use for half-finished plugins or
+    # plugins being retired — flip to True once the work is back on track.
+    published: bool = True
     # Notification `type` values this plugin can emit (see app.services
     # .notification). Non-empty means the plugin has a notification mechanism,
     # so it shows up as a toggleable source on the user's 通知偏好 page.
@@ -79,6 +97,12 @@ class PluginPreview(BaseModel):
     # plugin's manifest emoji. Lets a card reflect content-specific emoji
     # (e.g. the chosen anniversary emoji rather than the plugin's 🎂).
     emoji: str | None = None
+    # Optional thumbnails the home card can render in addition to the text
+    # block — e.g. the memory plugin's 4×2 card carousels the latest photos
+    # on its right half. Each entry is a host-relative URL (the client
+    # prepends baseUrl and uses image auth headers). Empty / None = no
+    # carousel; plugins that don't surface imagery just leave this unset.
+    image_urls: list[str] | None = None
 
 
 # A preview hook receives the session, the installed-plugin row (so it can read

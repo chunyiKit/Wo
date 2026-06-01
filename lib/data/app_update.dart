@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'api_client.dart';
+import 'wo_http_overrides.dart';
 
 /// 后端 `/app/version` 返回的最新发布信息。
 class AppRelease {
@@ -50,8 +51,10 @@ class AppRelease {
 
 /// 应用内更新：读当前版本、下载 APK、调起系统安装器。
 ///
-/// 下载走 dart:io 的 [HttpClient]，因此沿用 main.dart 里装好的全局
-/// [HttpOverrides]（信任自签 CA），无需额外处理 HTTPS 信任。
+/// 下载 APK 时使用 [WoHttpOverrides.inclusiveContext] 构造的 [HttpClient],
+/// 它同时信任**系统公共根证书 + 自签 CA**。这样无论 `download_url` 指向后端
+/// 自签 IP、腾讯云 COS 公共域名,还是从后端 302 跳到 COS,整条链路都能完成
+/// TLS 握手。其它 API 请求继续走全局 pin-only 信任链,不受影响。
 ///
 /// 关于「不需要重新登录」：APK 同包名、同签名的覆盖安装，Android 会保留应用
 /// 数据（含 SharedPreferences 里的登录 token），所以更新后自动保持登录态——
@@ -88,7 +91,7 @@ class AppUpdateService {
       return file;
     }
 
-    final client = HttpClient();
+    final client = HttpClient(context: WoHttpOverrides.inclusiveContext());
     try {
       final req = await client.getUrl(Uri.parse(_absoluteUrl(release.downloadUrl)));
       final resp = await req.close();

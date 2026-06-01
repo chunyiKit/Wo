@@ -6,16 +6,20 @@ spot, a known phone logs in. The `token` is the user id — the dev auth shim
 (`app.core.auth`) reads it from the `X-User-Id` header on later requests.
 """
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel
 
 from app.api.deps import SessionDep
+from app.core.auth import CurrentUserDep, parse_bearer
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.rate_limit import SlidingWindowRateLimiter, client_ip
 from app.core.response import ApiResponse, ok
 from app.models.user import UserRead
 from app.services import auth as auth_service
+from app.services import session as session_service
 
 router = APIRouter(tags=["auth"])
 
@@ -42,12 +46,20 @@ def _too_many() -> AppError:
 
 class LoginRequest(BaseModel):
     phone: str
+    password: str
 
 
 class AuthResponse(BaseModel):
     user: UserRead
-    token: str  # currently the user id; swap for a JWT when real auth lands
+    token: str  # opaque session bearer token (see app.services.session)
     is_new: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    # Empty allowed only for an account that has no password yet (shouldn't
+    # happen post-login, but kept lenient so a first set never dead-ends).
+    old_password: str = ""
+    new_password: str
 
 
 @router.post("/auth/login", response_model=ApiResponse[AuthResponse])
@@ -61,11 +73,41 @@ async def login(
     phone = auth_service.normalize_phone(payload.phone)
     if not _login_phone_limiter.check(phone):
         raise _too_many()
-    user, is_new = await auth_service.login_or_register(session, phone)
+    user, is_new = await auth_service.login_or_register(session, phone, payload.password)
+    token = await session_service.issue_session(
+        session, user.id, ttl_days=settings.session_ttl_days
+    )
     return ok(
         AuthResponse(
             user=UserRead.from_user(user),
-            token=str(user.id),
+            token=token,
             is_new=is_new,
         )
     )
+
+
+@router.post("/auth/logout", response_model=ApiResponse[dict])
+async def logout(
+    session: SessionDep,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> ApiResponse[dict]:
+    """Revoke the presented session token. Idempotent — always reports success
+    so a client can clear local state regardless."""
+    token = parse_bearer(authorization)
+    if token:
+        await session_service.revoke_session(session, token)
+    return ok({"logged_out": True})
+
+
+@router.post("/auth/change-password", response_model=ApiResponse[dict])
+async def change_password(
+    payload: ChangePasswordRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[dict]:
+    """Change the signed-in user's password. Verifies the old password when one
+    is set."""
+    await auth_service.change_password(
+        session, current_user, payload.old_password, payload.new_password
+    )
+    return ok({"changed": True})

@@ -70,11 +70,17 @@ class WoSession extends ChangeNotifier {
   Future<void> restore() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_kToken);
-    final token = (stored != null && stored.isNotEmpty)
-        ? stored
-        : (ApiConfig.devUserId.isNotEmpty ? ApiConfig.devUserId : null);
-    _token = token;
-    api.userId = token ?? '';
+    if (stored != null && stored.isNotEmpty) {
+      // 真实会话令牌走 Bearer。
+      _token = stored;
+      api.authToken = stored;
+    } else if (ApiConfig.devUserId.isNotEmpty) {
+      // 仅 dev：用 X-User-Id 调试通道免登录（生产后端已关闭）。
+      _token = ApiConfig.devUserId;
+      api.userId = ApiConfig.devUserId;
+    } else {
+      _token = null;
+    }
     notifyListeners();
     // 已登录则在后台补登设备 token（不阻塞启动流程）。
     if (isLoggedIn) unawaited(_syncPushRegistration());
@@ -117,11 +123,12 @@ class WoSession extends ChangeNotifier {
     }
   }
 
-  /// 手机号登录/注册：成功后持久化身份并拉取首屏数据。
-  Future<AuthResult> login(String phone) async {
-    final result = await api.login(phone);
+  /// 手机号 + 密码登录/注册：成功后持久化身份并拉取首屏数据。
+  Future<AuthResult> login(String phone, String password) async {
+    final result = await api.login(phone, password);
     _token = result.token;
-    api.userId = result.token;
+    api.authToken = result.token;
+    api.userId = '';
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kToken, result.token);
     await load();
@@ -132,15 +139,27 @@ class WoSession extends ChangeNotifier {
 
   /// 退出登录：清掉身份与缓存。
   Future<void> logout() async {
-    // 先注销设备 token（此时 X-User-Id 仍在，后端才能定位并删除）。
+    // 先注销设备 token（此时令牌仍在，后端才能定位并删除）。
     await _clearPushRegistration();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kToken);
-    _token = null;
-    api.userId = '';
+    // 撤销服务端会话令牌（失败也无妨，本地照常清理）。
+    try {
+      await api.logout();
+    } catch (_) {
+      // 尽力而为。
+    }
+    await _clearLocalAuth();
     _bootstrap = null;
     _error = null;
     notifyListeners();
+  }
+
+  /// 清掉本地登录态（持久化 token + 内存令牌/身份）。不发网络请求。
+  Future<void> _clearLocalAuth() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kToken);
+    _token = null;
+    api.authToken = '';
+    api.userId = '';
   }
 
   /// 取本机 registration id 并上报后端。任何失败都吞掉——推送注册是尽力而为，
@@ -180,6 +199,11 @@ class WoSession extends ChangeNotifier {
     try {
       _bootstrap = await api.bootstrap();
     } catch (e) {
+      // 令牌失效/过期（含旧版本遗留的非会话令牌）→ 清登录态，让路由回登录页。
+      if (e is ApiException && (e.statusCode == 401 || e.code == 'UNAUTHORIZED')) {
+        await _clearLocalAuth();
+        _bootstrap = null;
+      }
       _error = e;
     } finally {
       _loading = false;

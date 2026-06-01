@@ -47,17 +47,30 @@ class MemoryMediaTile extends StatelessWidget {
         ],
       );
     } else {
-      content = CachedNetworkImage(
-        imageUrl: url,
-        httpHeaders: api.imageHeaders,
-        fit: fit,
-        placeholder: (_, __) => ColoredBox(color: wo.memory),
-        errorWidget: (_, __, ___) => ColoredBox(
-          color: wo.memory,
-          child: const Center(
-            child: Icon(Icons.broken_image_outlined, color: Colors.white70),
-          ),
-        ),
+      // 关键:按缩略图实际显示尺寸解码(memCacheWidth),而不是把 2400px 原图
+      // 整张解进内存——否则一屏宫格就能撑爆 ImageCache,看完大图返回时缩略图
+      // 被挤掉、全部重新解码,非常卡。memCacheWidth 只影响本控件的内存解码尺寸,
+      // 不动磁盘缓存的原图(大图页仍按屏幕分辨率解码同一份原图,不受影响)。
+      content = LayoutBuilder(
+        builder: (context, constraints) {
+          final dpr = MediaQuery.of(context).devicePixelRatio;
+          final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+              ? (constraints.maxWidth * dpr).round()
+              : null;
+          return CachedNetworkImage(
+            imageUrl: url,
+            httpHeaders: api.imageHeaders,
+            fit: fit,
+            memCacheWidth: w,
+            placeholder: (_, __) => ColoredBox(color: wo.memory),
+            errorWidget: (_, __, ___) => ColoredBox(
+              color: wo.memory,
+              child: const Center(
+                child: Icon(Icons.broken_image_outlined, color: Colors.white70),
+              ),
+            ),
+          );
+        },
       );
     }
 

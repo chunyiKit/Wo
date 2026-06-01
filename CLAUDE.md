@@ -37,6 +37,28 @@
 
 > 头像 URL 带 `?v=版本号`，内容不可变，可长期缓存；换头像时 version 变化自动失效。
 
+## 列表页刷新不能「闪一下」（前端交互约束）
+
+任何展示列表的插件页，**增 / 删 / 改之后刷新时，绝不能把整页换成加载转圈**，否则
+列表会「闪一下」（列表 → spinner → 列表），观感很差。新页面默认遵守这条，无需用户提醒。
+
+**反模式（禁止）**：用 `AsyncView` / `FutureBuilder` 直接绑 `_future`，然后在每次操作后
+`setState(() => _future = api.xxx())`（常见封装成 `_refreshAll()` → `setState(_reload)`）。
+`_future` 一换成未完成的新 future，`FutureBuilder` 立刻进入 waiting 状态把整列换成转圈。
+
+**正确模式**（已在 `lib/features/plugins/memory/memory_list_page.dart`、`stock/*_view.dart`
+落地，照抄即可）：
+
+- `_future` **只驱动首屏 spinner**；拉到的数据缓存进一个 `List<T>? _items` 字段。
+- `build` 里：`_items != null` 就直接渲染列表；否则才走 `AsyncView`（仅首屏）。
+- 增删改后调 `_refreshSilently()`：后台 `await _fetch()` 后 `setState(() => _items = list)`
+  **就地替换**，列表全程在屏、不闪。拉取失败就继续显示旧数据，不打断操作。
+- 仅「首屏加载失败的重试」(`_retry`) 才清空 `_items` 回到 spinner——那时本就无数据可显示。
+- 轮询刷新（如 AI 补充中的定时拉取）同样走 `_refreshSilently()`，否则会周期性闪。
+
+> 单次结果页（详情、二维码、邀请等无列表增删的页面）在「重试 / 重新生成」时显示
+> 转圈是合理的，不在此约束内。约束针对的是「列表 + 频繁增删改」的页面。
+
 ## APK 发布流程（Claude Code 自己执行）
 
 当用户要求「发布新版本 / 发版 / 上线 App」时，按以下步骤自行完成，无需用户逐步操作：

@@ -9,6 +9,17 @@
 	<string>扫描邀请二维码以加入家庭</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>从相册选择含邀请二维码的图片</string>
+	<!-- 回忆大图长按保存到相册。 -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>把回忆中的图片保存到相册</string>
+	<!-- 家历：把日程添加到手机自带日历（弹系统添加事件页）。 -->
+	<key>NSCalendarsUsageDescription</key>
+	<string>把家历中的日程添加到你的手机日历</string>
+	<!-- 植物日记：读取定位作为默认环境，按当地天气分析植物状态。 -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>读取你的位置以获取当地天气，用于分析植物养护状态</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>把家历中的日程添加到你的手机日历</string>
 	<!-- Backend is plain HTTP for now (no TLS yet); allow cleartext until a
 	     domain + certs land. Tighten to per-domain exceptions afterwards. -->
 	<key>NSAppTransportSecurity</key>

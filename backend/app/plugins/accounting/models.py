@@ -20,7 +20,14 @@ from app.core.ids import new_uuid7
 
 # Built-in expense tags. Labels/emoji live on the client; the backend only
 # stores and validates these stable codes.
-ALLOWED_CATEGORIES: tuple[str, ...] = ("dining", "shopping", "utilities", "car")
+ALLOWED_CATEGORIES: tuple[str, ...] = (
+    "dining",
+    "snack",
+    "shopping",
+    "utilities",
+    "car",
+    "subscription",
+)
 
 
 class TransactionBase(SQLModel):

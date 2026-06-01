@@ -17,7 +17,10 @@ class StockItemsView extends StatefulWidget {
 }
 
 class _StockItemsViewState extends State<StockItemsView> {
+  // `_future` 只驱动首屏 spinner;拉到的数据缓存进 `_items`,之后的增删改只
+  // 静默后台拉取并就地替换,不再把整列换成 spinner——否则每次操作整页会闪一下。
   late Future<List<StockItem>> _future;
+  List<StockItem>? _items;
   bool _loaded = false;
   bool _lowOnly = false;
 
@@ -26,29 +29,48 @@ class _StockItemsViewState extends State<StockItemsView> {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<List<StockItem>> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value(const <StockItem>[])
         : session.api.stockItems(familyId);
   }
 
-  Future<void> _refreshAll() async {
-    if (!mounted) return;
-    setState(_reload);
-    await WoScope.of(context).refresh();
+  void _store(List<StockItem> list) {
+    if (mounted) setState(() => _items = list);
+  }
+
+  /// 首屏加载失败后的重试:清空数据,回到 spinner 重新拉。
+  Future<void> _retry() {
+    setState(() {
+      _items = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  /// 增删改后刷新:保留当前列表,后台静默拉取后就地替换,不闪 spinner。
+  Future<void> _refreshSilently() async {
+    try {
+      final list = await _fetch();
+      if (mounted) setState(() => _items = list);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据,不打断操作。
+    }
+    // 列表变化会影响首页卡片预览,刷新一次 bootstrap。
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _openEditor([StockItem? existing]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => StockItemEditPage(existing: existing)),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _bump(StockItem it, int delta) async {
@@ -68,7 +90,7 @@ class _StockItemsViewState extends State<StockItemsView> {
         lowAt: it.lowAt,
         note: it.note,
       );
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -85,7 +107,7 @@ class _StockItemsViewState extends State<StockItemsView> {
           SnackBar(content: Text('已把「${it.name}」加进采买清单')),
         );
       }
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -115,7 +137,7 @@ class _StockItemsViewState extends State<StockItemsView> {
     if (familyId == null) return;
     try {
       await session.api.deleteStockItem(familyId, it.id);
-      await _refreshAll();
+      await _refreshSilently();
     } catch (e) {
       if (mounted) _toast(e);
     }
@@ -132,6 +154,7 @@ class _StockItemsViewState extends State<StockItemsView> {
 
   @override
   Widget build(BuildContext context) {
+    final cached = _items;
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
@@ -140,64 +163,69 @@ class _StockItemsViewState extends State<StockItemsView> {
         icon: const Icon(Icons.add),
         label: const Text('加囤货'),
       ),
-      body: AsyncView<List<StockItem>>(
-        future: _future,
-        onRetry: () => setState(_reload),
-        builder: (context, all) {
-          if (all.isEmpty) return _EmptyStock(onAdd: _openEditor);
-          final items = _lowOnly ? all.where((i) => i.isLow).toList() : all;
-          final lowCount = all.where((i) => i.isLow).length;
-          return Column(
-            children: [
-              if (lowCount > 0)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: WoTokens.space4,
-                    vertical: WoTokens.space2,
+      // 有缓存数据就直接渲染列表(刷新时就地替换、不闪);仅首屏走 AsyncView 转圈。
+      body: cached != null
+          ? _buildBody(context, cached)
+          : AsyncView<List<StockItem>>(
+              future: _future,
+              onRetry: _retry,
+              builder: _buildBody,
+            ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, List<StockItem> all) {
+    if (all.isEmpty) return _EmptyStock(onAdd: _openEditor);
+    final items = _lowOnly ? all.where((i) => i.isLow).toList() : all;
+    final lowCount = all.where((i) => i.isLow).length;
+    return Column(
+      children: [
+        if (lowCount > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: WoTokens.space4,
+              vertical: WoTokens.space2,
+            ),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('全部'),
+                  selected: !_lowOnly,
+                  onSelected: (_) => setState(() => _lowOnly = false),
+                ),
+                const SizedBox(width: WoTokens.space2),
+                ChoiceChip(
+                  label: Text('告急 $lowCount'),
+                  selected: _lowOnly,
+                  onSelected: (_) => setState(() => _lowOnly = true),
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: items.isEmpty
+              ? const _EmptyFilter(text: '没有告急的囤货 ✨')
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    WoTokens.space4,
+                    WoTokens.space2,
+                    WoTokens.space4,
+                    100,
                   ),
-                  child: Row(
-                    children: [
-                      ChoiceChip(
-                        label: const Text('全部'),
-                        selected: !_lowOnly,
-                        onSelected: (_) => setState(() => _lowOnly = false),
-                      ),
-                      const SizedBox(width: WoTokens.space2),
-                      ChoiceChip(
-                        label: Text('告急 $lowCount'),
-                        selected: _lowOnly,
-                        onSelected: (_) => setState(() => _lowOnly = true),
-                      ),
-                    ],
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: WoTokens.space3),
+                  itemBuilder: (_, i) => _StockTile(
+                    item: items[i],
+                    onInc: () => _bump(items[i], 1),
+                    onDec: () => _bump(items[i], -1),
+                    onAddToBuy: () => _addToBuy(items[i]),
+                    onEdit: () => _openEditor(items[i]),
+                    onDelete: () => _delete(items[i]),
                   ),
                 ),
-              Expanded(
-                child: items.isEmpty
-                    ? const _EmptyFilter(text: '没有告急的囤货 ✨')
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(
-                          WoTokens.space4,
-                          WoTokens.space2,
-                          WoTokens.space4,
-                          100,
-                        ),
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: WoTokens.space3),
-                        itemBuilder: (_, i) => _StockTile(
-                          item: items[i],
-                          onInc: () => _bump(items[i], 1),
-                          onDec: () => _bump(items[i], -1),
-                          onAddToBuy: () => _addToBuy(items[i]),
-                          onEdit: () => _openEditor(items[i]),
-                          onDelete: () => _delete(items[i]),
-                        ),
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
+        ),
+      ],
     );
   }
 }

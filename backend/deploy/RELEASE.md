@@ -23,6 +23,31 @@
 2. 确认 nginx 已是仓库里的版本（`deploy.sh` 会自动安装）。`/api/v1/app/`
    放行了 200MB 上传与更长超时，APK 才能正常上传/下载。
 
+3. （可选但强烈建议）在 `/etc/wo/app.env` 配 COS，把 APK 下行带宽从本机移到
+   对象存储：
+
+   ```
+   COS_BUCKET=wo-app-1258101097
+   COS_REGION=ap-shanghai
+   COS_SECRET_ID=<CAM 子账号 SecretId>
+   COS_SECRET_KEY=<CAM 子账号 SecretKey>
+   ```
+
+   - Bucket 设为「公有读 / 私有写」。
+   - 密钥用 **CAM 子账号** 单独建一对，权限只给 `cos:PutObject` 到这个 bucket；
+     不要用主账号密钥。
+   - 留空 = 退化回本地盘 + `/app/download`（开发/测试默认即此）。
+   - 配置变更后 `sudo systemctl restart wo-backend` 生效。下一次 `release.sh`
+     发布即会把 APK 推到 COS。
+
+4. （插件相关，按需）在 `/etc/wo/app.env` 配第三方服务密钥，留空则对应功能自动降级、
+   不影响其它功能。完整清单见 `backend/deploy/env/app.env.example`：
+
+   ```
+   KIMI_API_KEY=<Moonshot Key>        # AI 能力（含植物日记看图分析，需 kimi-k2.6 多模态档）
+   QWEATHER_API_KEY=<和风天气 Key>     # 植物日记按定位取当地天气；留空则仅看图分析
+   ```
+
 ---
 
 ## 每次发布（推荐：一键脚本）
@@ -114,9 +139,9 @@ curl -k https://122.51.81.235/api/v1/app/version
 
 | 方法 | 路径 | 鉴权 | 用途 |
 |------|------|------|------|
-| GET  | `/api/v1/app/version`  | 无 | 取最新版本元信息；未发布时 `data` 为 `null` |
-| GET  | `/api/v1/app/download` | 无 | 下载最新 APK |
-| POST | `/api/v1/app/release`  | `X-Release-Token` | 发布/覆盖最新 release |
+| GET  | `/api/v1/app/version`  | 无 | 取最新版本元信息；未发布时 `data` 为 `null`。配了 COS 时 `download_url` 为 COS 公共直链 |
+| GET  | `/api/v1/app/download` | 无 | 本地模式：流式下载 APK；COS 模式：302 重定向到 COS（兼容旧版 App） |
+| POST | `/api/v1/app/release`  | `X-Release-Token` | 发布/覆盖最新 release。配了 COS 时直接传到对象存储 |
 
 ---
 

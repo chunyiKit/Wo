@@ -26,6 +26,19 @@ async def test_marketplace_lists_anniversary(client: AsyncClient) -> None:
     assert "anniversary" in ids
 
 
+async def test_marketplace_hides_unpublished_plugins(client: AsyncClient) -> None:
+    """`photo` is marked published=False (backend exists, App UI not wired)
+    so the marketplace must not surface it for new installs. The detail
+    endpoint stays accessible by id — for any family that already has it
+    installed, bootstrap still needs the manifest."""
+    response = await client.get("/api/v1/plugins")
+    ids = {p["id"] for p in response.json()["data"]}
+    assert "photo" not in ids
+    # Single-plugin detail endpoint is not gated — installed families need it.
+    detail = await client.get("/api/v1/plugins/photo")
+    assert detail.status_code == 200
+
+
 async def test_marketplace_plugin_detail(client: AsyncClient) -> None:
     response = await client.get("/api/v1/plugins/anniversary")
     assert response.status_code == 200

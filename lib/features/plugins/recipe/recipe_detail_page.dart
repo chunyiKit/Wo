@@ -91,6 +91,57 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 把当前菜谱的食材打包加入「囤货铺」的采买清单——选要加哪些 + 全选,然后一次
+  /// 性发 N 个 createBuyItem。即使用户没装囤货铺这条 API 也照样接受写入(只检查
+  /// 家庭成员身份),装上了就能看到。
+  Future<void> _openBuySheet() async {
+    final r = _recipe;
+    if (r.ingredients.isEmpty) return;
+    final picked = await showModalBottomSheet<List<int>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _BuySelectSheet(ingredients: r.ingredients),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('正在加入采买清单…'),
+        duration: Duration(seconds: 30),
+      ),
+    );
+
+    // 食材一般 ≤ 15 条,并发发出去比串行快;任一失败也不阻塞其它。
+    final note = '来自菜谱「${r.name}」';
+    int ok = 0;
+    int fail = 0;
+    await Future.wait(
+      picked.map((idx) async {
+        final ing = r.ingredients[idx];
+        try {
+          await session.api.createBuyItem(
+            familyId,
+            name: ing.name,
+            emoji: '🛒',
+            wantQty: ing.amount.isEmpty ? null : ing.amount,
+            note: note,
+          );
+          ok++;
+        } catch (_) {
+          fail++;
+        }
+      }),
+    );
+    messenger.hideCurrentSnackBar();
+    if (!mounted) return;
+    final text = fail == 0 ? '已加入采买清单($ok 项)' : '已加入 $ok 项,$fail 项失败';
+    messenger.showSnackBar(SnackBar(content: Text(text)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
@@ -154,6 +205,24 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                 icon: Icons.egg_alt_outlined,
                 title: '食材',
                 trailing: r.servings != null ? '${r.servings} 人份' : null,
+                // 有食材时才显示「加入采买」入口——空列表点了也没东西可挑。
+                action: r.ingredients.isEmpty
+                    ? null
+                    : TextButton.icon(
+                        onPressed: _openBuySheet,
+                        icon:
+                            const Icon(Icons.shopping_cart_outlined, size: 16),
+                        label: const Text('加入采买'),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: WoTokens.space2,
+                          ),
+                          minimumSize: const Size(0, 32),
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: wo.accentDeep,
+                        ),
+                      ),
               ),
               const SizedBox(height: WoTokens.space3),
               if (r.ingredients.isEmpty)
@@ -163,7 +232,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   child: Column(
                     children: [
                       for (var i = 0; i < r.ingredients.length; i++) ...[
-                        if (i > 0) Divider(height: WoTokens.space4, color: wo.hairline),
+                        if (i > 0)
+                          Divider(height: WoTokens.space4, color: wo.hairline),
                         _IngredientRow(item: r.ingredients[i]),
                       ],
                     ],
@@ -283,10 +353,19 @@ class _Pill extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.icon, required this.title, this.trailing});
+  const _SectionTitle({
+    required this.icon,
+    required this.title,
+    this.trailing,
+    this.action,
+  });
   final IconData icon;
   final String title;
   final String? trailing;
+
+  /// 可选的右侧动作按钮（如「加入采买」），跟 [trailing] 文字并存——文字在左、
+  /// 按钮在右——按钮为空时仅展示 [trailing]。
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -296,10 +375,15 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: wo.accentDeep),
         const SizedBox(width: WoTokens.space2),
-        Text(title, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text(title,
+            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         const Spacer(),
         if (trailing != null)
           Text(trailing!, style: t.bodySmall?.copyWith(color: wo.fgMid)),
+        if (action != null) ...[
+          if (trailing != null) const SizedBox(width: WoTokens.space2),
+          action!,
+        ],
       ],
     );
   }
@@ -374,5 +458,135 @@ class _EmptyHint extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     return Text(text, style: t.bodyMedium?.copyWith(color: wo.fgDim));
+  }
+}
+
+/// 选要加入采买清单的食材。用户取消返回 null;确认返回选中的下标列表。
+///
+/// 弹层自身限定最大高度为屏幕 75%——食材多的菜谱(20+ 条)需要滚动而不是挤死;
+/// 一行一个 CheckboxListTile 展示「名字 + 数量」,顶部一个「全选 / 全不选」按钮。
+class _BuySelectSheet extends StatefulWidget {
+  const _BuySelectSheet({required this.ingredients});
+  final List<RecipeIngredient> ingredients;
+
+  @override
+  State<_BuySelectSheet> createState() => _BuySelectSheetState();
+}
+
+class _BuySelectSheetState extends State<_BuySelectSheet> {
+  late final Set<int> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    // 默认全选——最常见的意图是「这道菜要做,把缺的全加进采买」,默认勾上少
+    // 一步操作;不想要某项再去掉就行。
+    _selected = {for (var i = 0; i < widget.ingredients.length; i++) i};
+  }
+
+  void _toggleAll() {
+    setState(() {
+      if (_selected.length == widget.ingredients.length) {
+        _selected.clear();
+      } else {
+        _selected
+          ..clear()
+          ..addAll([for (var i = 0; i < widget.ingredients.length; i++) i]);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    final all = _selected.length == widget.ingredients.length;
+    final none = _selected.isEmpty;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.75,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 标题栏 + 全选/全不选切换。
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                WoTokens.space4,
+                WoTokens.space4,
+                WoTokens.space2,
+                WoTokens.space2,
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    '加入采买清单',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _toggleAll,
+                    child: Text(all ? '全不选' : '全选'),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: wo.hairline),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: widget.ingredients.length,
+                itemBuilder: (_, i) {
+                  final ing = widget.ingredients[i];
+                  final sel = _selected.contains(i);
+                  return CheckboxListTile(
+                    value: sel,
+                    onChanged: (v) => setState(() {
+                      if (v == true) {
+                        _selected.add(i);
+                      } else {
+                        _selected.remove(i);
+                      }
+                    }),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(ing.name),
+                    subtitle: ing.amount.isEmpty ? null : Text(ing.amount),
+                    dense: true,
+                  );
+                },
+              ),
+            ),
+            Divider(height: 1, color: wo.hairline),
+            Padding(
+              padding: const EdgeInsets.all(WoTokens.space3),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: WoTokens.space3),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: none
+                          ? null
+                          : () => Navigator.of(context).pop(
+                                _selected.toList()..sort(),
+                              ),
+                      child: Text(
+                        none ? '加入采买' : '加入采买 (${_selected.length})',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

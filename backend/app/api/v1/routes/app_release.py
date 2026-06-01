@@ -3,18 +3,24 @@
 There is exactly one published release at a time (see `services.app_release`).
 
 - `GET  /app/version`  — latest release metadata (public; null when none).
-- `GET  /app/download` — stream the published APK (public).
+- `GET  /app/download` — fetch the published APK (public). Streams locally in
+                          dev/tests; 302-redirects to COS in prod.
 - `POST /app/release`  — publish/replace the release, guarded by a shared token.
 
 `version_code` is the Android versionCode (the `+N` in pubspec `version`), a
 monotonically increasing int. The client compares it against its own build
 number to decide whether an update is available.
+
+In **COS mode**, `/version`'s `download_url` is the full COS public URL so the
+app downloads directly from `<bucket>.cos.<region>.myqcloud.com`, offloading
+bandwidth from this CVM. `/app/download` is kept as a 302-redirect tombstone
+for any old client still hitting the relative path.
 """
 
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Header, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -40,6 +46,19 @@ class ReleaseRead(BaseModel):
     download_url: str
 
 
+def _resolve_download_url(m: release_service.ReleaseManifest) -> str:
+    """Pick the URL clients should download from for this release.
+
+    COS-mode releases hand back the full COS public URL so the app bypasses
+    this server entirely. Local-mode releases keep returning the relative
+    `/api/v1/app/download` path (the app prepends its `baseUrl`), matching
+    pre-COS behaviour for dev/tests and any legacy on-disk release.
+    """
+    if m.cos_url:
+        return m.cos_url
+    return f"/api/v1/app/download?v={m.version_code}"
+
+
 def _to_read(m: release_service.ReleaseManifest) -> ReleaseRead:
     return ReleaseRead(
         version_name=m.version_name,
@@ -48,7 +67,7 @@ def _to_read(m: release_service.ReleaseManifest) -> ReleaseRead:
         size=m.size,
         sha256=m.sha256,
         published_at=m.published_at,
-        download_url=f"/api/v1/app/download?v={m.version_code}",
+        download_url=_resolve_download_url(m),
     )
 
 
@@ -59,14 +78,30 @@ async def latest_version() -> ApiResponse[ReleaseRead | None]:
     return ok(_to_read(manifest) if manifest is not None else None)
 
 
-@router.get("/download")
-async def download_apk() -> FileResponse:
-    """Stream the published APK. `?v=` is just a cache-buster, ignored here."""
+@router.get("/download", response_model=None)
+async def download_apk() -> FileResponse | RedirectResponse:
+    """Fetch the published APK.
+
+    - Local-mode release: stream the on-disk APK directly (legacy path).
+    - COS-mode release: 302-redirect to the COS public URL. We keep this
+      endpoint instead of just removing it because already-installed old
+      clients have the relative URL baked in — they need a working path until
+      they upgrade past the COS cutover.
+
+    `?v=` is just a cache-buster, ignored here.
+    """
+    manifest = release_service.get_manifest()
+    if manifest is None:
+        raise AppError(ErrorCode.NOT_FOUND, "尚无可用更新", status_code=404)
+    if manifest.cos_url:
+        # 302 (not 301) — we want clients to keep asking us, so future
+        # republishes / config changes can move the target.
+        return RedirectResponse(manifest.cos_url, status_code=302)
+
     path = release_service.apk_path_for_download()
     if path is None:
         raise AppError(ErrorCode.NOT_FOUND, "尚无可用更新", status_code=404)
-    manifest = release_service.get_manifest()
-    filename = f"wo-{manifest.version_name}.apk" if manifest else "wo.apk"
+    filename = f"wo-{manifest.version_name}.apk"
     return FileResponse(
         path,
         media_type="application/vnd.android.package-archive",

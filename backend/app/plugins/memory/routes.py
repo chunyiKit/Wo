@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, UploadFile
 from sqlalchemy import func
 from sqlmodel import select
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 
 from app.api.deps import SessionDep
 from app.core.auth import CurrentUserDep
@@ -26,7 +26,7 @@ from app.core.errors import AppError, ErrorCode
 from app.core.ids import new_uuid7
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
-from app.core.storage import storage
+from app.core.storage import PresignableStorage, storage
 from app.plugins.memory.models import (
     VISIBILITY_VALUES,
     Memory,
@@ -391,8 +391,18 @@ async def get_media_raw(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> Response:
-    """Serve raw bytes (image or video). Membership-checked; private memories
-    only stream to their author. Returns a plain Response, not the envelope."""
+    """Serve a memory's photo or video bytes.
+
+    Membership-checked; private memories only resolve for their author. When
+    the storage backend supports presigned URLs (COS), we **302-redirect**
+    to a 1-hour signed URL so the bytes come straight from object storage
+    and never touch this CVM's bandwidth. Local-disk fallback (dev/tests)
+    still streams bytes inline.
+
+    `CachedNetworkImage` and other dart:io clients follow the 302 transparently
+    and cache against the original `/raw` URL, so the App doesn't need to
+    know that COS is in the loop.
+    """
     await require_membership(session, current_user.id, family_id)
     media = await session.get(MemoryMedia, media_id)
     if media is None or media.memory_id != memory_id or media.family_id != family_id:
@@ -400,6 +410,10 @@ async def get_media_raw(
     memory = await _load_memory(session, family_id, memory_id)
     if not visible_to(memory, current_user.id):
         raise AppError(ErrorCode.NOT_FOUND, "媒体不存在", status_code=404)
+
+    if isinstance(storage, PresignableStorage):
+        url = await storage.presigned_get_url(media.storage_key, ttl_seconds=3600)
+        return RedirectResponse(url, status_code=302)
 
     try:
         data = await storage.get(media.storage_key)

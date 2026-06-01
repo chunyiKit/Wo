@@ -202,11 +202,34 @@ async def preview_hook(
     latest = (await session.execute(latest_stmt)).scalars().first()
     title = (latest.title if latest else "").strip() or "一段回忆"
     emoji = (latest.mood if latest and latest.mood else None) or "📸"
+
+    # Latest 5 visible photos for the 4×2 card's right-side carousel.
+    # Same private_ok filter as the title query — a non-author can't see a
+    # private memory's photos sneaking in through the home card. Videos are
+    # excluded (preview is a still-image carousel; rendering a video frame
+    # would mean transcoding we don't want to do at preview time).
+    photos_stmt = (
+        select(MemoryMedia)
+        .join(Memory, MemoryMedia.memory_id == Memory.id)
+        .where(
+            Memory.family_id == family_id,
+            private_ok,
+            MemoryMedia.kind == "photo",
+        )
+        .order_by(MemoryMedia.created_at.desc())
+        .limit(5)
+    )
+    photos = list((await session.execute(photos_stmt)).scalars().all())
+    image_urls = [
+        build_media_url(family_id, p.memory_id, p.id) for p in photos
+    ]
+
     return PluginPreview(
         primary=title,
         secondary=f"共 {total} 条回忆",
         color_token="memory",
         emoji=emoji,
+        image_urls=image_urls or None,
     )
 
 

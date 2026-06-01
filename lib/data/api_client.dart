@@ -36,14 +36,19 @@ class ApiClient {
     http.Client? httpClient,
     String? baseUrl,
     String? userId,
+    String? authToken,
   })  : _http = httpClient ?? http.Client(),
         _baseUrl = baseUrl ?? ApiConfig.baseUrl,
-        userId = userId ?? ApiConfig.devUserId;
+        userId = userId ?? ApiConfig.devUserId,
+        authToken = authToken ?? '';
 
   final http.Client _http;
   final String _baseUrl;
 
-  /// 当前请求身份（X-User-Id）。多账号流程里可切换。
+  /// 登录签发的会话令牌（Bearer）。登录后设置，登出清空。
+  String authToken;
+
+  /// 仅 dev：无会话令牌时回退用的 X-User-Id 身份（生产后端已关闭该通道）。
   String userId;
 
   static const _timeout = Duration(seconds: 15);
@@ -51,16 +56,21 @@ class ApiClient {
   /// 拼接图片等原始资源的完整地址用（相对路径已含 /api/v1 前缀，故这里只给 host）。
   String get baseUrl => _baseUrl;
 
-  /// 加载受鉴权保护的资源（如菜谱封面原图）时要带的头。
-  Map<String, String> get imageHeaders => {
-        if (userId.isNotEmpty) 'X-User-Id': userId,
-      };
+  /// 认证头：优先会话令牌(Bearer)；没有则回退 X-User-Id(仅 dev 调试通道)。
+  /// 都没有则不带（如 /auth/login 等公开接口）。
+  Map<String, String> get _authHeaders {
+    if (authToken.isNotEmpty) return {'Authorization': 'Bearer $authToken'};
+    if (userId.isNotEmpty) return {'X-User-Id': userId};
+    return const {};
+  }
+
+  /// 加载受鉴权保护的资源（如菜谱封面原图、电影海报）时要带的头。
+  Map<String, String> get imageHeaders => _authHeaders;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        // Only identify when logged in; /auth/login itself is public.
-        if (userId.isNotEmpty) 'X-User-Id': userId,
+        ..._authHeaders,
       };
 
   Uri _uri(String path, [Map<String, dynamic>? query]) {
@@ -106,7 +116,7 @@ class ApiClient {
   }) =>
       _send(() async {
         final req = http.MultipartRequest('POST', _uri(path));
-        if (userId.isNotEmpty) req.headers['X-User-Id'] = userId;
+        req.headers.addAll(_authHeaders);
         req.headers['Accept'] = 'application/json';
         if (fields != null) req.fields.addAll(fields);
         req.files.add(

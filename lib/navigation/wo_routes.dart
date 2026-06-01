@@ -26,6 +26,7 @@ class WoRoutes {
   static const settings = '/me/settings';
   static const appearance = '/me/settings/appearance';
   static const notificationPrefs = '/me/settings/notifications';
+  static const changePassword = '/me/settings/password';
   static const about = '/me/about';
   static const notifications = '/notifications';
 

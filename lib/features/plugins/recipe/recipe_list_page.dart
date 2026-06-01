@@ -18,7 +18,10 @@ class RecipeListPage extends StatefulWidget {
 }
 
 class _RecipeListPageState extends State<RecipeListPage> {
+  // `_future` 只驱动首屏 spinner;数据缓存进 `_items`,之后的增删改静默就地替换,
+  // 不闪——见 CLAUDE.md「列表页刷新不能闪一下」。
   late Future<List<Recipe>> _future;
+  List<Recipe>? _items;
   bool _loaded = false;
 
   // null = 全部。仅做内存筛选，避免每次切分类都打一次网络。
@@ -29,37 +32,53 @@ class _RecipeListPageState extends State<RecipeListPage> {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<List<Recipe>> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value(const <Recipe>[])
         : session.api.recipes(familyId);
   }
 
-  Future<void> _refreshAll() async {
-    if (!mounted) return;
-    setState(_reload);
-    // 列表变化会影响首页卡片预览，刷新一次 bootstrap。
-    await WoScope.of(context).refresh();
+  void _store(List<Recipe> list) {
+    if (mounted) setState(() => _items = list);
+  }
+
+  Future<void> _retry() {
+    setState(() {
+      _items = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  Future<void> _refreshSilently() async {
+    try {
+      final list = await _fetch();
+      if (mounted) setState(() => _items = list);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据,不打断操作。
+    }
+    // 列表变化会影响首页卡片预览,刷新一次 bootstrap。
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _openEditor() async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const RecipeEditPage()),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _openDetail(Recipe r) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => RecipeDetailPage(recipe: r)),
     );
-    if (changed == true) await _refreshAll();
+    if (changed == true) await _refreshSilently();
   }
 
   List<Recipe> _filter(List<Recipe> all) => _category == null
@@ -68,7 +87,8 @@ class _RecipeListPageState extends State<RecipeListPage> {
 
   // 数据里实际出现过的分类，按推荐顺序排，其余追加在后面。
   List<String> _categoriesOf(List<Recipe> all) {
-    final present = all.map((r) => r.category).where((c) => c.isNotEmpty).toSet();
+    final present =
+        all.map((r) => r.category).where((c) => c.isNotEmpty).toSet();
     final ordered = [
       for (final c in kRecipeCategories)
         if (present.contains(c)) c,
@@ -89,49 +109,52 @@ class _RecipeListPageState extends State<RecipeListPage> {
         label: const Text('加菜谱'),
       ),
       body: SafeArea(
-        child: AsyncView<List<Recipe>>(
-          future: _future,
-          onRetry: () => setState(_reload),
-          builder: (context, all) {
-            if (all.isEmpty) return _Empty(onAdd: _openEditor);
-            final cats = _categoriesOf(all);
-            final items = _filter(all);
-            return Column(
-              children: [
-                _CategoryBar(
-                  categories: cats,
-                  selected: _category,
-                  onSelect: (c) => setState(() => _category = c),
-                ),
-                Expanded(
-                  child: items.isEmpty
-                      ? const _EmptyCategory()
-                      : GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(
-                            WoTokens.space4,
-                            WoTokens.space2,
-                            WoTokens.space4,
-                            100,
-                          ),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: WoTokens.space4,
-                            crossAxisSpacing: WoTokens.space4,
-                            childAspectRatio: 0.74,
-                          ),
-                          itemCount: items.length,
-                          itemBuilder: (_, i) => _RecipeCard(
-                            recipe: items[i],
-                            onTap: () => _openDetail(items[i]),
-                          ),
-                        ),
-                ),
-              ],
-            );
-          },
-        ),
+        child: _items != null
+            ? _buildBody(context, _items!)
+            : AsyncView<List<Recipe>>(
+                future: _future,
+                onRetry: _retry,
+                builder: _buildBody,
+              ),
       ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, List<Recipe> all) {
+    if (all.isEmpty) return _Empty(onAdd: _openEditor);
+    final cats = _categoriesOf(all);
+    final items = _filter(all);
+    return Column(
+      children: [
+        _CategoryBar(
+          categories: cats,
+          selected: _category,
+          onSelect: (c) => setState(() => _category = c),
+        ),
+        Expanded(
+          child: items.isEmpty
+              ? const _EmptyCategory()
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                    WoTokens.space4,
+                    WoTokens.space2,
+                    WoTokens.space4,
+                    100,
+                  ),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: WoTokens.space4,
+                    crossAxisSpacing: WoTokens.space4,
+                    childAspectRatio: 0.74,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => _RecipeCard(
+                    recipe: items[i],
+                    onTap: () => _openDetail(items[i]),
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }

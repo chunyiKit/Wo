@@ -33,12 +33,13 @@ class PickedPhotos {
 
 /// 从相册一次选多张照片并压缩成 JPEG。用户取消返回空结果。
 ///
-/// - 长边压到 [maxEdge]（回忆照片比菜谱封面更想留细节，默认略大）；
+/// - 长边压到 [maxEdge]（回忆是要长期保留的家庭影像，默认 2400 保留细节）；
+/// - [quality] 92 = 视觉上几乎无损的高画质 JPEG，单张通常 1-2MB；
 /// - [limit] 限制单次最多选几张（剩余可再点一次九宫格补选）；
 /// - 顺带读出第一张照片的 EXIF 拍摄日期，供新建时自动填日期用。
 Future<PickedPhotos> pickAndCompressMemoryPhotos({
-  int maxEdge = 1600,
-  int quality = 82,
+  int maxEdge = 2400,
+  int quality = 92,
   int? limit,
 }) async {
   final picker = ImagePicker();

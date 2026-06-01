@@ -17,7 +17,10 @@ def _random_phone() -> str:
 
 async def _register_user(client: AsyncClient) -> dict[str, str]:
     """注册新用户，返回鉴权头（X-User-Id）。"""
-    res = await client.post("/api/v1/auth/login", json={"phone": _random_phone()})
+    res = await client.post(
+        "/api/v1/auth/login",
+        json={"phone": _random_phone(), "password": "secret123"},
+    )
     return {"X-User-Id": res.json()["data"]["user"]["id"]}
 
 

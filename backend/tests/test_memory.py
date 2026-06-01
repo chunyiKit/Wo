@@ -102,6 +102,66 @@ async def test_upload_photo_attaches_media(client: AsyncClient, png_bytes: bytes
     assert len(detail.json()["data"]["media"]) == 1
 
 
+async def test_raw_redirects_to_presigned_url_when_storage_is_cos(
+    client: AsyncClient, png_bytes: bytes, monkeypatch
+) -> None:
+    """When the storage backend is COS (presignable), `/raw` should 302 the
+    client to a temporary signed URL instead of streaming bytes."""
+
+    class _FakeCos:
+        # Records the call so we can assert the right key + ttl, and verifies
+        # the fallback `storage.get` is not invoked.
+        def __init__(self) -> None:
+            self.signed: list[tuple[str, int]] = []
+
+        async def put(self, key: str, data: bytes, content_type: str) -> None:
+            # Upload still flows through the storage layer; the test doesn't
+            # care where bytes physically land, only that put is honoured.
+            self._stored = (key, data, content_type)
+
+        async def get(self, key: str) -> bytes:
+            raise AssertionError("get() should never run when redirect path applies")
+
+        async def delete(self, key: str) -> None: ...
+        async def exists(self, key: str) -> bool:
+            return True
+
+        async def presigned_get_url(self, key: str, *, ttl_seconds: int) -> str:
+            self.signed.append((key, ttl_seconds))
+            return f"https://fake.cos.example/{key}?sig=abc&exp={ttl_seconds}"
+
+    fake = _FakeCos()
+    # Patch the symbol the routes module actually reads (it imports `storage`
+    # into its own namespace at module load time).
+    from app.plugins.memory import routes as memory_routes
+
+    monkeypatch.setattr(memory_routes, "storage", fake)
+
+    fid = await _create_family(client)
+    mid = (
+        await client.post(MEM_BASE.format(fid=fid), json={"title": "去 COS"})
+    ).json()["data"]["id"]
+
+    up = await client.post(
+        f"{MEM_BASE.format(fid=fid)}/{mid}/media",
+        files={"file": ("a.png", png_bytes, "image/png")},
+    )
+    assert up.status_code == 201, up.text
+    media_url = up.json()["data"]["url"]
+
+    # /raw should 302 to the fake signed URL, NOT stream bytes back.
+    raw = await client.get(media_url, follow_redirects=False)
+    assert raw.status_code == 302
+    assert raw.headers["location"].startswith("https://fake.cos.example/")
+    assert "sig=" in raw.headers["location"]
+
+    # And the route asked for a 1-hour TTL on the signed URL.
+    assert len(fake.signed) == 1
+    key, ttl = fake.signed[0]
+    assert key.startswith(f"memory/{fid}/{mid}/")
+    assert ttl == 3600
+
+
 async def test_garbage_upload_rejected(client: AsyncClient) -> None:
     fid = await _create_family(client)
     mid = (
@@ -197,6 +257,58 @@ async def test_preview_shows_latest_title_and_count(client: AsyncClient) -> None
     assert preview.secondary == "共 2 条回忆"
     assert preview.color_token == "memory"
     assert preview.emoji == "😍"
+    # No photos yet → carousel URLs are None (home card falls back to plain layout).
+    assert preview.image_urls is None
+
+
+async def test_preview_image_urls_for_carousel(
+    client: AsyncClient, png_bytes: bytes
+) -> None:
+    """Memory's home preview surfaces the latest photos for the 4×2 carousel.
+
+    Order is newest-first (by media created_at), capped at 5. Photos from
+    `private` memories of OTHER users must not leak through.
+    """
+    from app.core.database import async_session_maker
+    from app.models.plugin import InstalledPlugin
+    from app.plugins.memory.service import preview_hook
+
+    fid = await _family_with_xiaolin(client)
+
+    # Three memories: 小林 makes a private one (老陈 must NOT see its photo);
+    # 老陈 makes a public one with two photos.
+    priv = (
+        await client.post(
+            MEM_BASE.format(fid=fid),
+            json={"title": "私密", "visibility": "private"},
+            headers=XIAOLIN,
+        )
+    ).json()["data"]
+    await client.post(
+        f"{MEM_BASE.format(fid=fid)}/{priv['id']}/media",
+        files={"file": ("p.png", png_bytes, "image/png")},
+        headers=XIAOLIN,
+    )
+
+    pub = (
+        await client.post(MEM_BASE.format(fid=fid), json={"title": "公开"})
+    ).json()["data"]
+    for name in ("a.png", "b.png"):
+        await client.post(
+            f"{MEM_BASE.format(fid=fid)}/{pub['id']}/media",
+            files={"file": (name, png_bytes, "image/png")},
+        )
+
+    ip = InstalledPlugin(family_id=uuid.UUID(fid), plugin_id="memory")
+    async with async_session_maker() as session:
+        preview = await preview_hook(session, ip, uuid.UUID(LAOCHEN))
+
+    # 老陈 (non-author of the private memory) sees only the 2 public photos.
+    assert preview.image_urls is not None
+    assert len(preview.image_urls) == 2
+    for url in preview.image_urls:
+        assert url.startswith(f"/api/v1/families/{fid}/plugins/memory/memories/")
+        assert url.endswith("/raw")
 
 
 async def test_author_avatar_url_surfaced_and_servable(

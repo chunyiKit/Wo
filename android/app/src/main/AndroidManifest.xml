@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <!-- 应用内更新：下载最新 APK 后调起系统安装器（Android 8+ 运行时申请）。 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- 植物日记：读取设备定位，作为家庭默认环境拉取当地天气。运行时申请。 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="wo"
         android:name="${applicationName}"
@@ -50,6 +53,13 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- 家历：add_2_calendar 用 ACTION_INSERT 打开系统日历的新建事件页。
+             Android 11+ 包可见性要求声明此 query，否则 resolveActivity 返回 null、
+             插件静默失败，弹不出日历页。 -->
+        <intent>
+            <action android:name="android.intent.action.INSERT"/>
+            <data android:mimeType="vnd.android.cursor.dir/event"/>
         </intent>
     </queries>
 </manifest>

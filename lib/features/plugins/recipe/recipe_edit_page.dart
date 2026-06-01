@@ -23,8 +23,22 @@ class RecipeEditPage extends StatefulWidget {
 
 class _RecipeEditPageState extends State<RecipeEditPage> {
   static const _emojis = [
-    '🍳', '🍅', '🥩', '🍗', '🍲', '🥣', '🍜', '🍚',
-    '🥗', '🍰', '🥟', '🌶️', '🐟', '🦐', '🥦', '🍢',
+    '🍳',
+    '🍅',
+    '🥩',
+    '🍗',
+    '🍲',
+    '🥣',
+    '🍜',
+    '🍚',
+    '🥗',
+    '🍰',
+    '🥟',
+    '🌶️',
+    '🐟',
+    '🦐',
+    '🥦',
+    '🍢',
   ];
 
   late String _emoji;
@@ -546,7 +560,8 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.remove_circle_outline, color: wo.fgDim),
+                        icon:
+                            Icon(Icons.remove_circle_outline, color: wo.fgDim),
                         onPressed: _ingredients.length > 1
                             ? () => _removeIngredient(i)
                             : null,
@@ -583,7 +598,8 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.remove_circle_outline, color: wo.fgDim),
+                        icon:
+                            Icon(Icons.remove_circle_outline, color: wo.fgDim),
                         onPressed:
                             _steps.length > 1 ? () => _removeStep(i) : null,
                       ),

@@ -21,6 +21,11 @@ class SettingsPage extends StatelessWidget {
               trailing: Icon(Icons.chevron_right),
             ),
             ListTile(
+              title: const Text('修改密码'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(WoRoutes.changePassword),
+            ),
+            ListTile(
               title: const Text('通知偏好'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push(WoRoutes.notificationPrefs),

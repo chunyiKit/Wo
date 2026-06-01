@@ -12,11 +12,15 @@ its own `__init__.py`, then import it here.
 from app.plugins import (  # noqa: F401
     accounting,
     anniversary,
+    calendar,
     chore,
     memory,
+    movie,
     photo,
+    plant,
     recipe,
     stock,
+    subscription,
 )
 from app.plugins.registry import registry  # noqa: F401  re-export for convenience
 

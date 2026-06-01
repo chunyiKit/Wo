@@ -20,16 +20,23 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _phone = TextEditingController();
+  final _password = TextEditingController();
   bool _busy = false;
+  bool _obscure = true;
+
+  static const _minPasswordLen = 6;
 
   bool get _valid {
     final v = _phone.text;
-    return v.length == 11 && v.startsWith('1');
+    return v.length == 11 &&
+        v.startsWith('1') &&
+        _password.text.length >= _minPasswordLen;
   }
 
   @override
   void dispose() {
     _phone.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -39,7 +46,7 @@ class _LoginPageState extends State<LoginPage> {
     final session = WoScope.of(context);
     final router = GoRouter.of(context);
     try {
-      await session.login(_phone.text);
+      await session.login(_phone.text, _password.text);
       if (!mounted) return;
       // 登录后：有家庭进首页，否则去创建/加入。
       router.go(
@@ -79,7 +86,7 @@ class _LoginPageState extends State<LoginPage> {
               Text('手机号登录', style: t.displaySmall),
               const SizedBox(height: WoTokens.space2),
               Text(
-                '没注册过的号码会直接为你创建账号。',
+                '没注册过的号码会直接创建账号；首次登录请设置一个登录密码。',
                 style: t.bodyMedium?.copyWith(color: wo.fgMid),
               ),
               const SizedBox(height: WoTokens.space8),
@@ -89,7 +96,6 @@ class _LoginPageState extends State<LoginPage> {
                 autofocus: true,
                 maxLength: 11,
                 onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _continue(),
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(11),
@@ -101,6 +107,25 @@ class _LoginPageState extends State<LoginPage> {
                   counterText: '',
                 ),
                 style: t.titleLarge,
+              ),
+              const SizedBox(height: WoTokens.space4),
+              TextField(
+                controller: _password,
+                obscureText: _obscure,
+                maxLength: 64,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _continue(),
+                decoration: InputDecoration(
+                  labelText: '密码',
+                  hintText: '至少 $_minPasswordLen 位',
+                  counterText: '',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscure ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                ),
               ),
               const SizedBox(height: WoTokens.space6),
               SizedBox(
@@ -119,8 +144,9 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: WoTokens.space4),
               Center(
                 child: Text(
-                  '短信验证码功能即将上线',
+                  '请妥善保管密码，登录后可在「设置 · 修改密码」中更改',
                   style: t.bodySmall?.copyWith(color: wo.fgDim),
+                  textAlign: TextAlign.center,
                 ),
               ),
             ],

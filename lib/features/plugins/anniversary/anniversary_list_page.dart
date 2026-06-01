@@ -16,27 +16,52 @@ class AnniversaryListPage extends StatefulWidget {
 }
 
 class _AnniversaryListPageState extends State<AnniversaryListPage> {
+  // `_future` 只驱动首屏 spinner;数据缓存进 `_items`,之后的增删改静默就地替换,
+  // 不闪——见 CLAUDE.md「列表页刷新不能闪一下」。
   late Future<List<Anniversary>> _future;
-
+  List<Anniversary>? _items;
   bool _loaded = false;
 
-  // 首次加载放在 didChangeDependencies 而非 initState：_reload 通过
+  // 首次加载放在 didChangeDependencies 而非 initState：_fetch 通过
   // WoScope.of(context) 依赖 InheritedWidget，在 initState 阶段访问会抛异常。
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
-      _reload();
+      _future = _fetch()..then(_store);
     }
   }
 
-  void _reload() {
+  Future<List<Anniversary>> _fetch() {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    _future = familyId == null
+    return familyId == null
         ? Future.value(const <Anniversary>[])
         : session.api.anniversaries(familyId);
+  }
+
+  void _store(List<Anniversary> list) {
+    if (mounted) setState(() => _items = list);
+  }
+
+  Future<void> _retry() {
+    setState(() {
+      _items = null;
+      _future = _fetch()..then(_store);
+    });
+    return _future;
+  }
+
+  Future<void> _refreshSilently() async {
+    try {
+      final list = await _fetch();
+      if (mounted) setState(() => _items = list);
+    } catch (_) {
+      // 拉取失败就继续显示旧数据,不打断操作。
+    }
+    // 列表变化会影响首页卡片预览,刷新一次 bootstrap。
+    if (mounted) await WoScope.of(context).refresh();
   }
 
   Future<void> _openEditor([Anniversary? existing]) async {
@@ -45,16 +70,13 @@ class _AnniversaryListPageState extends State<AnniversaryListPage> {
         builder: (_) => AnniversaryEditPage(existing: existing),
       ),
     );
-    if (changed == true && mounted) {
-      setState(_reload);
-      // 列表变化会影响首页卡片预览，刷新一次 bootstrap。
-      await WoScope.of(context).refresh();
-    }
+    if (changed == true) await _refreshSilently();
   }
 
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
+    final cached = _items;
     return Scaffold(
       backgroundColor: wo.bg,
       appBar: AppBar(title: const Text('纪念日')),
@@ -63,30 +85,33 @@ class _AnniversaryListPageState extends State<AnniversaryListPage> {
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
-        child: AsyncView<List<Anniversary>>(
-          future: _future,
-          onRetry: () => setState(_reload),
-          builder: (context, items) {
-            if (items.isEmpty) return _Empty(onAdd: () => _openEditor());
-            final sorted = [...items]
-              ..sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
-            return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(
-                WoTokens.space4,
-                WoTokens.space4,
-                WoTokens.space4,
-                100,
+        child: cached != null
+            ? _buildBody(context, cached)
+            : AsyncView<List<Anniversary>>(
+                future: _future,
+                onRetry: _retry,
+                builder: _buildBody,
               ),
-              itemCount: sorted.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: WoTokens.space3),
-              itemBuilder: (_, i) => _AnniversaryTile(
-                item: sorted[i],
-                onTap: () => _openEditor(sorted[i]),
-              ),
-            );
-          },
-        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, List<Anniversary> items) {
+    if (items.isEmpty) return _Empty(onAdd: () => _openEditor());
+    final sorted = [...items]
+      ..sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+        WoTokens.space4,
+        WoTokens.space4,
+        WoTokens.space4,
+        100,
+      ),
+      itemCount: sorted.length,
+      separatorBuilder: (_, __) => const SizedBox(height: WoTokens.space3),
+      itemBuilder: (_, i) => _AnniversaryTile(
+        item: sorted[i],
+        onTap: () => _openEditor(sorted[i]),
       ),
     );
   }

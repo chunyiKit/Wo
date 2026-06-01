@@ -17,8 +17,22 @@ class BuyItemEditPage extends StatefulWidget {
 
 class _BuyItemEditPageState extends State<BuyItemEditPage> {
   static const _emojis = [
-    '🛒', '🧻', '🥬', '🍎', '🥛', '🍞', '🥚', '🧴',
-    '🍗', '🐟', '🧂', '🍚', '🧼', '💊', '🔋', '🐾',
+    '🛒',
+    '🧻',
+    '🥬',
+    '🍎',
+    '🥛',
+    '🍞',
+    '🥚',
+    '🧴',
+    '🍗',
+    '🐟',
+    '🧂',
+    '🍚',
+    '🧼',
+    '💊',
+    '🔋',
+    '🐾',
   ];
 
   late String _emoji;
@@ -125,8 +139,9 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
                         width: 52,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color:
-                              sel ? wo.stock.withValues(alpha: 0.45) : wo.bgTint,
+                          color: sel
+                              ? wo.stock.withValues(alpha: 0.45)
+                              : wo.bgTint,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: sel ? wo.stock : Colors.transparent,

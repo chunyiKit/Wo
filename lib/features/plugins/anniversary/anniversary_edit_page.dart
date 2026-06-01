@@ -170,8 +170,7 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    final dateText =
-        '${_date.year}年${_date.month}月${_date.day}日';
+    final dateText = '${_date.year}年${_date.month}月${_date.day}日';
     final canSave = _name.text.trim().isNotEmpty && !_submitting;
 
     return Scaffold(
@@ -280,7 +279,8 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                     children: [
                       Icon(Icons.event_outlined, color: wo.fgMid, size: 20),
                       const SizedBox(width: WoTokens.space3),
-                      Text('日期', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+                      Text('日期',
+                          style: t.bodyMedium?.copyWith(color: wo.fgMid)),
                       const Spacer(),
                       Text(dateText, style: t.titleMedium),
                       const SizedBox(width: WoTokens.space2),

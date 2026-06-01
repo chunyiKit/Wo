@@ -52,6 +52,22 @@ class WoTokens {
   // ink 是在 memory tint 底色上可读的强调文字色。
   static const memoryLight = Color(0xFFDDCFC0);
   static const memoryDark = Color(0xFF34291F);
+
+  // 看电影：偏冷的薰衣草紫,跟剧院/胶片的紫调对应,跟暖系列(回忆/纪念日)拉开。
+  static const movieLight = Color(0xFFD9CCDF);
+  static const movieDark = Color(0xFF322336);
+
+  // 家历：沉静的青绿,跟「日历/计划」的冷静感对应,与既有暖色与紫蓝都拉开。
+  static const calendarLight = Color(0xFFBFD8D2);
+  static const calendarDark = Color(0xFF223230);
+
+  // 订阅管家：偏蓝的靛紫,呼应银行卡/账单的冷静感,与记账(money 暖金)区分开。
+  static const subscribeLight = Color(0xFFC3C8EA);
+  static const subscribeDark = Color(0xFF24263A);
+
+  // 植物日记：柔和的鼠尾草绿,对应草木生机,与家历(青绿)略作区分、更偏暖绿。
+  static const plantLight = Color(0xFFC6DCC0);
+  static const plantDark = Color(0xFF233022);
   static const memoryInkLight = Color(0xFF8B5A3C);
   static const memoryInkDark = Color(0xFFE6B89A);
 
@@ -109,6 +125,10 @@ class WoColors extends ThemeExtension<WoColors> {
     required this.memory,
     required this.memoryInk,
     required this.stock,
+    required this.movie,
+    required this.calendar,
+    required this.subscribe,
+    required this.plant,
     required this.warning,
     required this.danger,
   });
@@ -133,6 +153,10 @@ class WoColors extends ThemeExtension<WoColors> {
   final Color memory;
   final Color memoryInk;
   final Color stock;
+  final Color movie;
+  final Color calendar;
+  final Color subscribe;
+  final Color plant;
   final Color warning;
   final Color danger;
 
@@ -155,6 +179,10 @@ class WoColors extends ThemeExtension<WoColors> {
     memory: WoTokens.memoryLight,
     memoryInk: WoTokens.memoryInkLight,
     stock: WoTokens.stockLight,
+    movie: WoTokens.movieLight,
+    calendar: WoTokens.calendarLight,
+    subscribe: WoTokens.subscribeLight,
+    plant: WoTokens.plantLight,
     warning: WoTokens.warningLight,
     danger: WoTokens.dangerLight,
   );
@@ -178,6 +206,10 @@ class WoColors extends ThemeExtension<WoColors> {
     memory: WoTokens.memoryDark,
     memoryInk: WoTokens.memoryInkDark,
     stock: WoTokens.stockDark,
+    movie: WoTokens.movieDark,
+    calendar: WoTokens.calendarDark,
+    subscribe: WoTokens.subscribeDark,
+    plant: WoTokens.plantDark,
     warning: WoTokens.warningDark,
     danger: WoTokens.dangerDark,
   );
@@ -202,6 +234,10 @@ class WoColors extends ThemeExtension<WoColors> {
     Color? memory,
     Color? memoryInk,
     Color? stock,
+    Color? movie,
+    Color? calendar,
+    Color? subscribe,
+    Color? plant,
     Color? warning,
     Color? danger,
   }) {
@@ -224,6 +260,10 @@ class WoColors extends ThemeExtension<WoColors> {
       memory: memory ?? this.memory,
       memoryInk: memoryInk ?? this.memoryInk,
       stock: stock ?? this.stock,
+      movie: movie ?? this.movie,
+      calendar: calendar ?? this.calendar,
+      subscribe: subscribe ?? this.subscribe,
+      plant: plant ?? this.plant,
       warning: warning ?? this.warning,
       danger: danger ?? this.danger,
     );
@@ -251,6 +291,10 @@ class WoColors extends ThemeExtension<WoColors> {
       memory: Color.lerp(memory, other.memory, t)!,
       memoryInk: Color.lerp(memoryInk, other.memoryInk, t)!,
       stock: Color.lerp(stock, other.stock, t)!,
+      movie: Color.lerp(movie, other.movie, t)!,
+      calendar: Color.lerp(calendar, other.calendar, t)!,
+      subscribe: Color.lerp(subscribe, other.subscribe, t)!,
+      plant: Color.lerp(plant, other.plant, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
     );

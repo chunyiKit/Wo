@@ -264,6 +264,7 @@ class PluginPreview {
     required this.colorToken,
     this.emoji,
     this.secondaryTone,
+    this.imageUrls = const [],
   });
 
   final String primary;
@@ -279,6 +280,10 @@ class PluginPreview {
   /// 见 theme/color_token.dart 的 colorForTone。
   final String? secondaryTone;
 
+  /// 卡片右侧轮播缩略图（host 相对路径，加载时拼 baseUrl + 图片鉴权头）。
+  /// 4×2 大卡才会用上；为空表示不展示轮播。
+  final List<String> imageUrls;
+
   factory PluginPreview.fromJson(Map<String, dynamic> j) => PluginPreview(
         primary: j['primary'] as String? ?? '',
         secondary: j['secondary'] as String?,
@@ -286,6 +291,10 @@ class PluginPreview {
         colorToken: j['color_token'] as String? ?? 'accent',
         emoji: j['emoji'] as String?,
         secondaryTone: j['secondary_tone'] as String?,
+        imageUrls: (j['image_urls'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            const [],
       );
 }
 
@@ -543,7 +552,8 @@ class AccountingSummary {
   final double? budget;
   final double? remaining;
 
-  factory AccountingSummary.fromJson(Map<String, dynamic> j) => AccountingSummary(
+  factory AccountingSummary.fromJson(Map<String, dynamic> j) =>
+      AccountingSummary(
         monthTotal: _parseNum(j['month_total']),
         budget: _parseNumOrNull(j['budget']),
         remaining: _parseNumOrNull(j['remaining']),
@@ -857,7 +867,8 @@ class NotificationSource {
         enabled: enabled ?? this.enabled,
       );
 
-  factory NotificationSource.fromJson(Map<String, dynamic> j) => NotificationSource(
+  factory NotificationSource.fromJson(Map<String, dynamic> j) =>
+      NotificationSource(
         key: j['key'] as String,
         label: j['label'] as String? ?? '',
         emoji: j['emoji'] as String? ?? '🔔',
@@ -1033,5 +1044,383 @@ class Memory {
         comments: ((j['comments'] as List?) ?? const [])
             .map((e) => MemoryComment.fromJson(e as Map<String, dynamic>))
             .toList(),
+      );
+}
+
+// ── 看电影插件 ────────────────────────────────────────────────────────────
+
+/// 一部想看 / 看过的电影。
+class Movie {
+  const Movie({
+    required this.id,
+    required this.familyId,
+    required this.title,
+    this.note,
+    this.watched = false,
+    this.watchedAt,
+    this.createdAt,
+    this.createdBy,
+    this.intro,
+    this.doubanRating,
+    this.posterUrl,
+    this.aiStatus = 'none',
+  });
+
+  final String id;
+  final String familyId;
+  final String title;
+  final String? note;
+  final bool watched;
+  final DateTime? watchedAt;
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  /// AI 自动补充的剧情简介（100-150 字），未补充时为空。
+  final String? intro;
+
+  /// AI 给出的豆瓣评分（近似值），未知为空。
+  final double? doubanRating;
+
+  /// 海报相对地址（已含 /api/v1，带 ?v= 缓存键）；为空表示没有海报。
+  final String? posterUrl;
+
+  /// AI 补充状态：none / pending（补充中）/ ready / failed。
+  final String aiStatus;
+
+  bool get aiPending => aiStatus == 'pending';
+  bool get aiFailed => aiStatus == 'failed';
+
+  factory Movie.fromJson(Map<String, dynamic> j) => Movie(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        title: j['title'] as String? ?? '',
+        note: j['note'] as String?,
+        watched: j['watched'] as bool? ?? false,
+        watchedAt: _parseDate(j['watched_at']),
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+        intro: j['intro'] as String?,
+        doubanRating: _parseNumOrNull(j['douban_rating']),
+        posterUrl: j['poster_url'] as String?,
+        aiStatus: j['ai_status'] as String? ?? 'none',
+      );
+}
+
+/// 解析后端的纯日期字段（"YYYY-MM-DD"），返回当地午夜的 [DateTime]，不做时区换算。
+DateTime? _parseDateOnly(Object? v) {
+  if (v == null) return null;
+  final s = v.toString();
+  final d = DateTime.tryParse(s);
+  if (d == null) return null;
+  return DateTime(d.year, d.month, d.day);
+}
+
+/// 家历插件 · 一条日程 / 待办（对应后端 calendar_items 表 / CalendarItemRead）。
+///
+/// 统一模型：[eventDate] 非空 = 排到某天的日程；为空 = 没有日期的待办。
+/// [allDay] 为 false 且 [startMinute] 非空时是定时日程。[repeat] 为
+/// none/daily/weekly/monthly。重复项「完成」时后端把 [eventDate] 前移到下次发生。
+class CalendarItem {
+  const CalendarItem({
+    required this.id,
+    required this.familyId,
+    required this.title,
+    this.note,
+    required this.emoji,
+    this.eventDate,
+    this.allDay = true,
+    this.startMinute,
+    this.repeat = 'none',
+    this.assignedTo,
+    required this.done,
+    this.completedAt,
+    this.notifyEnabled = false,
+    this.notifyDaysBefore = 0,
+    this.nextDate,
+    this.daysUntil,
+    this.createdAt,
+    this.createdBy,
+    this.assigneeName,
+    this.assigneeEmoji,
+    this.assigneeAvatarUrl,
+  });
+
+  final String id;
+  final String familyId;
+  final String title;
+  final String? note;
+  final String emoji;
+
+  /// 日程发生 / 待办到期的日期；为空表示没有日期的待办。
+  final DateTime? eventDate;
+  final bool allDay;
+
+  /// 一天中的分钟数（0..1439），定时日程才有；全天为空。
+  final int? startMinute;
+
+  /// 重复规则：none / daily / weekly / monthly。
+  final String repeat;
+
+  /// 负责人 user id，可空（未指派）。
+  final String? assignedTo;
+  final bool done;
+  final DateTime? completedAt;
+
+  final bool notifyEnabled;
+  final int notifyDaysBefore;
+
+  /// 后端算好的下次发生日期（重复项已前移过今天）；无日期待办为空。
+  final DateTime? nextDate;
+
+  /// 距 [nextDate] 还有几天（负数=已过期）；无日期待办为空。
+  final int? daysUntil;
+
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  /// 负责人展示信息，后端注入；未指派或该成员已离开时为空。
+  final String? assigneeName;
+  final String? assigneeEmoji;
+
+  /// 负责人真实头像的相对地址（已含 /api/v1，带 ?v=）；为空时回退到 [assigneeEmoji]。
+  final String? assigneeAvatarUrl;
+
+  bool get isAssigned => assignedTo != null && assignedTo!.isNotEmpty;
+  bool get isTodo => eventDate == null;
+  bool get isRecurring => repeat != 'none';
+
+  /// 定时日程的「HH:mm」；全天 / 无日期返回空串。
+  String get timeLabel {
+    final m = startMinute;
+    if (allDay || m == null) return '';
+    final h = (m ~/ 60).toString().padLeft(2, '0');
+    final mm = (m % 60).toString().padLeft(2, '0');
+    return '$h:$mm';
+  }
+
+  factory CalendarItem.fromJson(Map<String, dynamic> j) => CalendarItem(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        title: j['title'] as String? ?? '',
+        note: j['note'] as String?,
+        emoji: j['emoji'] as String? ?? '📅',
+        eventDate: _parseDateOnly(j['event_date']),
+        allDay: j['all_day'] as bool? ?? true,
+        startMinute: (j['start_minute'] as num?)?.toInt(),
+        repeat: j['repeat'] as String? ?? 'none',
+        assignedTo: j['assigned_to'] as String?,
+        done: j['done'] as bool? ?? false,
+        completedAt: _parseDate(j['completed_at']),
+        notifyEnabled: j['notify_enabled'] as bool? ?? false,
+        notifyDaysBefore: (j['notify_days_before'] as num?)?.toInt() ?? 0,
+        nextDate: _parseDateOnly(j['next_date']),
+        daysUntil: (j['days_until'] as num?)?.toInt(),
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+        assigneeName: j['assignee_name'] as String?,
+        assigneeEmoji: j['assignee_emoji'] as String?,
+        assigneeAvatarUrl: j['assignee_avatar_url'] as String?,
+      );
+}
+
+/// 订阅管家插件 · 一条订阅 / 定期账单（对应后端 subscription_items / SubscriptionRead）。
+///
+/// [cycle] 为 monthly / yearly。到期时若 [autoRecord] 且家庭装了记账，后端会自动把这笔
+/// 扣费记进账本（订阅分类）并把 [nextDue] 顺延一个周期。[daysUntil] 由后端算好。
+class Subscription {
+  const Subscription({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.emoji,
+    required this.amount,
+    required this.cycle,
+    required this.nextDue,
+    this.note,
+    this.notifyEnabled = true,
+    this.notifyDaysBefore = 3,
+    this.autoRecord = true,
+    this.active = true,
+    this.daysUntil = 0,
+    this.createdAt,
+    this.createdBy,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+  final double amount;
+
+  /// 计费周期：monthly（按月）/ yearly（按年）。
+  final String cycle;
+
+  /// 下次扣费日期。
+  final DateTime nextDue;
+  final String? note;
+  final bool notifyEnabled;
+  final int notifyDaysBefore;
+
+  /// 到期是否自动记入「记账」（仅当家庭装了记账才会真正写入）。
+  final bool autoRecord;
+
+  /// 是否启用；暂停的订阅不提醒也不扣费。
+  final bool active;
+
+  /// 距 [nextDue] 还有几天（负数=已过期）。
+  final int daysUntil;
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  bool get isYearly => cycle == 'yearly';
+
+  factory Subscription.fromJson(Map<String, dynamic> j) => Subscription(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '💳',
+        amount: _parseNum(j['amount']),
+        cycle: j['cycle'] as String? ?? 'monthly',
+        nextDue: _parseDateOnly(j['next_due']) ?? DateTime.now(),
+        note: j['note'] as String?,
+        notifyEnabled: j['notify_enabled'] as bool? ?? true,
+        notifyDaysBefore: (j['notify_days_before'] as num?)?.toInt() ?? 3,
+        autoRecord: j['auto_record'] as bool? ?? true,
+        active: j['active'] as bool? ?? true,
+        daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+      );
+}
+
+/// 植物日记 —— 一株植物的档案。
+class Plant {
+  const Plant({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    this.emoji = '🌿',
+    this.species,
+    this.placement = '室内',
+    this.waterIntervalDays,
+    this.fertIntervalDays,
+    this.nextWaterDue,
+    this.nextFertDue,
+    this.coverUrl,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+  final String? species;
+
+  /// 摆放位置（室内 / 阳台 / 朝南窗…），决定真实光照。
+  final String placement;
+
+  /// 用户设定的浇水/施肥周期（天）；为空表示尚未设定、未开启提醒。
+  final int? waterIntervalDays;
+  final int? fertIntervalDays;
+
+  /// 下次浇水/施肥到期日（提醒据此触发）。
+  final DateTime? nextWaterDue;
+  final DateTime? nextFertDue;
+
+  /// 封面相对地址（已含 /api/v1，带 ?v= 缓存键）；为空表示无封面。
+  final String? coverUrl;
+
+  factory Plant.fromJson(Map<String, dynamic> j) => Plant(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '🌿',
+        species: j['species'] as String?,
+        placement: j['placement'] as String? ?? '室内',
+        waterIntervalDays: (j['water_interval_days'] as num?)?.toInt(),
+        fertIntervalDays: (j['fert_interval_days'] as num?)?.toInt(),
+        nextWaterDue: _parseDateOnly(j['next_water_due']),
+        nextFertDue: _parseDateOnly(j['next_fert_due']),
+        coverUrl: j['cover_url'] as String?,
+      );
+}
+
+/// 植物日记 —— 一条养护记录（照片 + AI 分析）。
+class PlantLog {
+  const PlantLog({
+    required this.id,
+    required this.plantId,
+    required this.familyId,
+    this.createdAt,
+    this.note,
+    this.envSnapshot,
+    this.aiStatus = 'pending',
+    this.aiAssessment,
+    this.aiAdvice,
+    this.aiSuggestedWaterDays,
+    this.aiSuggestedFertDays,
+    this.photoUrl,
+  });
+
+  final String id;
+  final String plantId;
+  final String familyId;
+  final DateTime? createdAt;
+  final String? note;
+
+  /// 记录时的环境快照（天气 + 摆放），结构化展示用。
+  final Map<String, dynamic>? envSnapshot;
+
+  /// AI 分析状态：pending（分析中）/ ready / failed。
+  final String aiStatus;
+  final String? aiAssessment;
+
+  /// 结构化建议 {watering, fertilizing, pruning}。
+  final Map<String, dynamic>? aiAdvice;
+
+  /// AI 建议的浇水/施肥周期（天），供用户一键采纳。
+  final int? aiSuggestedWaterDays;
+  final int? aiSuggestedFertDays;
+
+  /// 照片相对地址（已含 /api/v1，带 ?v= 缓存键）。
+  final String? photoUrl;
+
+  bool get aiPending => aiStatus == 'pending';
+  bool get aiFailed => aiStatus == 'failed';
+
+  factory PlantLog.fromJson(Map<String, dynamic> j) => PlantLog(
+        id: j['id'] as String,
+        plantId: j['plant_id'] as String? ?? '',
+        familyId: j['family_id'] as String? ?? '',
+        createdAt: _parseDate(j['created_at']),
+        note: j['note'] as String?,
+        envSnapshot: (j['env_snapshot'] as Map?)?.cast<String, dynamic>(),
+        aiStatus: j['ai_status'] as String? ?? 'pending',
+        aiAssessment: j['ai_assessment'] as String?,
+        aiAdvice: (j['ai_advice'] as Map?)?.cast<String, dynamic>(),
+        aiSuggestedWaterDays: (j['ai_suggested_water_days'] as num?)?.toInt(),
+        aiSuggestedFertDays: (j['ai_suggested_fert_days'] as num?)?.toInt(),
+        photoUrl: j['photo_url'] as String?,
+      );
+}
+
+/// 植物日记 —— 家庭级默认环境（定位）。
+class PlantFamilySettings {
+  const PlantFamilySettings({
+    this.latitude,
+    this.longitude,
+    this.locationLabel,
+  });
+
+  final double? latitude;
+  final double? longitude;
+  final String? locationLabel;
+
+  bool get hasLocation => latitude != null && longitude != null;
+
+  factory PlantFamilySettings.fromJson(Map<String, dynamic> j) =>
+      PlantFamilySettings(
+        latitude: _parseNumOrNull(j['latitude']),
+        longitude: _parseNumOrNull(j['longitude']),
+        locationLabel: j['location_label'] as String?,
       );
 }

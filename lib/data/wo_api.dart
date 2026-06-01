@@ -11,6 +11,10 @@ class WoApi {
   String get userId => _client.userId;
   set userId(String value) => _client.userId = value;
 
+  /// 会话令牌（Bearer）。登录后设置，登出清空。
+  String get authToken => _client.authToken;
+  set authToken(String value) => _client.authToken = value;
+
   /// 后端 host（不含 /api/v1）。下载 APK 等需要拼完整地址时用。
   String get baseUrl => _client.baseUrl;
 
@@ -23,10 +27,27 @@ class WoApi {
   }
 
   // ── 认证 ────────────────────────────────────────────────────
-  /// 手机号登录/注册。号码已存在则登录，不存在则注册（暂无短信验证码）。
-  Future<AuthResult> login(String phone) async => AuthResult.fromJson(
-        await _client.post('/auth/login', body: {'phone': phone})
-            as Map<String, dynamic>,
+  /// 手机号 + 密码登录/注册。新号码注册并设此密码；老号码校验密码；老号码若从未
+  /// 设过密码，则本次登录把此密码设为其登录密码。
+  Future<AuthResult> login(String phone, String password) async =>
+      AuthResult.fromJson(
+        await _client.post(
+          '/auth/login',
+          body: {'phone': phone, 'password': password},
+        ) as Map<String, dynamic>,
+      );
+
+  /// 登出:撤销当前会话令牌(后端删除会话行,令牌立即失效)。幂等。
+  Future<void> logout() => _client.post('/auth/logout');
+
+  /// 修改当前登录用户的密码。已设密码时需提供正确的原密码。
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) =>
+      _client.post(
+        '/auth/change-password',
+        body: {'old_password': oldPassword, 'new_password': newPassword},
       );
 
   // ── 启动 / 我 ────────────────────────────────────────────────
@@ -634,8 +655,8 @@ class WoApi {
 
   /// 把一个囤货项加进采买清单（关联回该项）；已有未买的同项时返回那一条。
   Future<BuyItem> stockItemToBuy(String familyId, String id) async {
-    final data =
-        await _client.post('/families/$familyId/plugins/stock/items/$id/to-buy');
+    final data = await _client
+        .post('/families/$familyId/plugins/stock/items/$id/to-buy');
     return BuyItem.fromJson(data as Map<String, dynamic>);
   }
 
@@ -646,7 +667,9 @@ class WoApi {
       '/families/$familyId/plugins/stock/buys',
       query: bought != null ? {'bought': bought} : null,
     ) as List;
-    return data.map((e) => BuyItem.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => BuyItem.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<BuyItem> createBuyItem(
@@ -720,7 +743,9 @@ class WoApi {
     final q = (year != null && month != null) ? '?year=$year&month=$month' : '';
     final data = await _client
         .get('/families/$familyId/plugins/accounting/transactions$q') as List;
-    return data.map((e) => Expense.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Expense> createExpense(
@@ -767,15 +792,15 @@ class WoApi {
     int? month,
   }) async {
     final q = (year != null && month != null) ? '?year=$year&month=$month' : '';
-    final data = await _client
-        .get('/families/$familyId/plugins/accounting/summary$q');
+    final data =
+        await _client.get('/families/$familyId/plugins/accounting/summary$q');
     return AccountingSummary.fromJson(data as Map<String, dynamic>);
   }
 
   Future<double?> getBudget(String familyId) async {
-    final data = await _client
-        .get('/families/$familyId/plugins/accounting/budget')
-        as Map<String, dynamic>;
+    final data =
+        await _client.get('/families/$familyId/plugins/accounting/budget')
+            as Map<String, dynamic>;
     final raw = data['monthly_amount'];
     if (raw == null) return null;
     if (raw is num) return raw.toDouble();
@@ -792,9 +817,7 @@ class WoApi {
   Future<List<Memory>> memories(String familyId) async {
     final data = await _client
         .get('/families/$familyId/plugins/memory/memories') as List;
-    return data
-        .map((e) => Memory.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return data.map((e) => Memory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// 单条回忆详情（含媒体与全部留言）。
@@ -905,6 +928,407 @@ class WoApi {
 
   /// 回忆媒体原图/视频的完整地址（含 host）。
   String memoryMediaUrl(MemoryMedia m) => '${_client.baseUrl}${m.url}';
+
+  // ── 看电影插件 ──────────────────────────────────────────────────────
+  /// 拉电影列表。[watched] 为空取全部,false 取想看,true 取看过。
+  Future<List<Movie>> movies(String familyId, {bool? watched}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/movie/movies',
+      query: watched != null ? {'watched': watched} : null,
+    ) as List;
+    return data.map((e) => Movie.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Movie> createMovie(
+    String familyId, {
+    required String title,
+    String? note,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/movie/movies',
+      body: {
+        'title': title,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
+    return Movie.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 部分更新——任何字段可选;`watched` 翻转时后端会自动打 / 清时间戳。
+  Future<Movie> updateMovie(
+    String familyId,
+    String id, {
+    String? title,
+    String? note,
+    bool? watched,
+  }) async {
+    final body = <String, dynamic>{};
+    if (title != null) body['title'] = title;
+    if (note != null) body['note'] = note;
+    if (watched != null) body['watched'] = watched;
+    final data = await _client.put(
+      '/families/$familyId/plugins/movie/movies/$id',
+      body: body,
+    );
+    return Movie.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteMovie(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/movie/movies/$id');
+
+  /// 重新触发 AI 补充（简介/评分/海报）。用于补充失败后重试或刷新。
+  Future<Movie> enrichMovie(String familyId, String id) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/movie/movies/$id/enrich');
+    return Movie.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- 家历（calendar）----------------------------------------------------
+
+  Future<List<CalendarItem>> calendarItems(String familyId,
+      {bool? done}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/calendar/items',
+      query: done != null ? {'done': done} : null,
+    ) as List;
+    return data
+        .map((e) => CalendarItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<CalendarItem> createCalendarItem(
+    String familyId, {
+    required String title,
+    required String emoji,
+    DateTime? eventDate,
+    bool allDay = true,
+    int? startMinute,
+    String repeat = 'none',
+    String? note,
+    String? assignedTo,
+    bool notifyEnabled = false,
+    int notifyDaysBefore = 0,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/calendar/items',
+      body: _calendarBody(
+        title: title,
+        emoji: emoji,
+        eventDate: eventDate,
+        allDay: allDay,
+        startMinute: startMinute,
+        repeat: repeat,
+        note: note,
+        assignedTo: assignedTo,
+        notifyEnabled: notifyEnabled,
+        notifyDaysBefore: notifyDaysBefore,
+      ),
+    );
+    return CalendarItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 更新日程。编辑页一次性提交完整状态，故 [eventDate] / [assignedTo] 为空即表示
+  /// 清空（无日期待办 / 取消指派）。完成状态用 complete/reopen 单独切换。
+  Future<CalendarItem> updateCalendarItem(
+    String familyId,
+    String id, {
+    required String title,
+    required String emoji,
+    DateTime? eventDate,
+    bool allDay = true,
+    int? startMinute,
+    String repeat = 'none',
+    String? note,
+    String? assignedTo,
+    bool notifyEnabled = false,
+    int notifyDaysBefore = 0,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/calendar/items/$id',
+      body: _calendarBody(
+        title: title,
+        emoji: emoji,
+        eventDate: eventDate,
+        allDay: allDay,
+        startMinute: startMinute,
+        repeat: repeat,
+        note: note,
+        assignedTo: assignedTo,
+        notifyEnabled: notifyEnabled,
+        notifyDaysBefore: notifyDaysBefore,
+      ),
+    );
+    return CalendarItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 组装日程请求体。显式带上可空字段（event_date / assigned_to / start_minute），
+  /// 让后端能区分「清空」与「不变」——编辑页提交完整状态，所以这里总是全量发送。
+  Map<String, dynamic> _calendarBody({
+    required String title,
+    required String emoji,
+    required DateTime? eventDate,
+    required bool allDay,
+    required int? startMinute,
+    required String repeat,
+    required String? note,
+    required String? assignedTo,
+    required bool notifyEnabled,
+    required int notifyDaysBefore,
+  }) {
+    return {
+      'title': title,
+      'emoji': emoji,
+      'event_date': eventDate == null ? null : _formatDate(eventDate),
+      'all_day': allDay,
+      'start_minute': allDay ? null : startMinute,
+      'repeat': repeat,
+      'note': (note != null && note.isNotEmpty) ? note : null,
+      'assigned_to':
+          (assignedTo != null && assignedTo.isNotEmpty) ? assignedTo : null,
+      'notify_enabled': notifyEnabled,
+      'notify_days_before': notifyDaysBefore,
+    };
+  }
+
+  Future<void> deleteCalendarItem(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/calendar/items/$id');
+
+  Future<CalendarItem> completeCalendarItem(String familyId, String id) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/calendar/items/$id/complete');
+    return CalendarItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<CalendarItem> reopenCalendarItem(String familyId, String id) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/calendar/items/$id/reopen');
+    return CalendarItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 手动提醒负责人（须已指派且未完成）。
+  Future<void> remindCalendarItem(String familyId, String id) =>
+      _client.post('/families/$familyId/plugins/calendar/items/$id/remind');
+
+  // ---- 订阅管家（subscription）-------------------------------------------
+
+  Future<List<Subscription>> subscriptions(String familyId,
+      {bool? active}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/subscription/subscriptions',
+      query: active != null ? {'active': active} : null,
+    ) as List;
+    return data
+        .map((e) => Subscription.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Subscription> createSubscription(
+    String familyId, {
+    required String name,
+    required String emoji,
+    required double amount,
+    required String cycle,
+    required DateTime nextDue,
+    String? note,
+    bool notifyEnabled = true,
+    int notifyDaysBefore = 3,
+    bool autoRecord = true,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/subscription/subscriptions',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'amount': amount,
+        'cycle': cycle,
+        'next_due': _formatDate(nextDue),
+        if (note != null && note.isNotEmpty) 'note': note,
+        'notify_enabled': notifyEnabled,
+        'notify_days_before': notifyDaysBefore,
+        'auto_record': autoRecord,
+      },
+    );
+    return Subscription.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Subscription> updateSubscription(
+    String familyId,
+    String id, {
+    String? name,
+    String? emoji,
+    double? amount,
+    String? cycle,
+    DateTime? nextDue,
+    String? note,
+    bool? notifyEnabled,
+    int? notifyDaysBefore,
+    bool? autoRecord,
+    bool? active,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/subscription/subscriptions/$id',
+      body: {
+        if (name != null) 'name': name,
+        if (emoji != null) 'emoji': emoji,
+        if (amount != null) 'amount': amount,
+        if (cycle != null) 'cycle': cycle,
+        if (nextDue != null) 'next_due': _formatDate(nextDue),
+        'note': (note != null && note.isNotEmpty) ? note : null,
+        if (notifyEnabled != null) 'notify_enabled': notifyEnabled,
+        if (notifyDaysBefore != null) 'notify_days_before': notifyDaysBefore,
+        if (autoRecord != null) 'auto_record': autoRecord,
+        if (active != null) 'active': active,
+      },
+    );
+    return Subscription.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteSubscription(String familyId, String id) => _client
+      .delete('/families/$familyId/plugins/subscription/subscriptions/$id');
+
+  // ── 植物日记插件 ────────────────────────────────────────────────────
+
+  Future<List<Plant>> plants(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/plant/plants') as List;
+    return data.map((e) => Plant.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Plant> plant(String familyId, String id) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/plant/plants/$id');
+    return Plant.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Plant> createPlant(
+    String familyId, {
+    required String name,
+    String? species,
+    String? placement,
+    String? emoji,
+    int? waterIntervalDays,
+    int? fertIntervalDays,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/plant/plants',
+      body: {
+        'name': name,
+        if (species != null && species.isNotEmpty) 'species': species,
+        if (placement != null && placement.isNotEmpty) 'placement': placement,
+        if (emoji != null && emoji.isNotEmpty) 'emoji': emoji,
+        if (waterIntervalDays != null) 'water_interval_days': waterIntervalDays,
+        if (fertIntervalDays != null) 'fert_interval_days': fertIntervalDays,
+      },
+    );
+    return Plant.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 部分更新——任意字段可选;改动浇水/施肥周期会让后端重算下次到期日。
+  Future<Plant> updatePlant(
+    String familyId,
+    String id, {
+    String? name,
+    String? species,
+    String? placement,
+    String? emoji,
+    int? waterIntervalDays,
+    int? fertIntervalDays,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (species != null) body['species'] = species;
+    if (placement != null) body['placement'] = placement;
+    if (emoji != null) body['emoji'] = emoji;
+    if (waterIntervalDays != null) {
+      body['water_interval_days'] = waterIntervalDays;
+    }
+    if (fertIntervalDays != null) {
+      body['fert_interval_days'] = fertIntervalDays;
+    }
+    final data = await _client.put(
+      '/families/$familyId/plugins/plant/plants/$id',
+      body: body,
+    );
+    return Plant.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deletePlant(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/plant/plants/$id');
+
+  Future<List<PlantLog>> plantLogs(String familyId, String plantId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/plant/plants/$plantId/logs') as List;
+    return data
+        .map((e) => PlantLog.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 新增一条养护记录（上传照片）。照片在请求内持久化，AI 分析在后台进行。
+  Future<PlantLog> createPlantLog(
+    String familyId,
+    String plantId, {
+    required List<int> bytes,
+    required String filename,
+    String? note,
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/plugins/plant/plants/$plantId/logs',
+      bytes: bytes,
+      filename: filename,
+      fields: (note != null && note.isNotEmpty) ? {'note': note} : null,
+    );
+    return PlantLog.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 重新触发某条记录的 AI 分析（失败后重试）。
+  Future<PlantLog> reanalyzePlantLog(
+    String familyId,
+    String plantId,
+    String logId,
+  ) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/plant/plants/$plantId/logs/$logId/reanalyze',
+    );
+    return PlantLog.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 采纳某条记录里 AI 建议的养护周期，写到植物上并重新计算到期日。
+  Future<Plant> adoptPlantSuggestion(
+    String familyId,
+    String plantId,
+    String logId, {
+    bool water = true,
+    bool fert = true,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/plant/plants/$plantId/logs/$logId/adopt',
+      body: {'water': water, 'fert': fert},
+    );
+    return Plant.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<PlantFamilySettings> plantSettings(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/plant/settings');
+    return PlantFamilySettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<PlantFamilySettings> updatePlantSettings(
+    String familyId, {
+    double? latitude,
+    double? longitude,
+    String? locationLabel,
+  }) async {
+    final body = <String, dynamic>{};
+    if (latitude != null) body['latitude'] = latitude;
+    if (longitude != null) body['longitude'] = longitude;
+    if (locationLabel != null) body['location_label'] = locationLabel;
+    final data = await _client.put(
+      '/families/$familyId/plugins/plant/settings',
+      body: body,
+    );
+    return PlantFamilySettings.fromJson(data as Map<String, dynamic>);
+  }
 
   static String _formatDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

@@ -4,14 +4,14 @@ from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 
 from app.api.deps import SessionDep
 from app.core.auth import CurrentUserDep
 from app.core.errors import AppError, ErrorCode
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
-from app.core.storage import storage
+from app.core.storage import PresignableStorage, storage
 from app.models.membership import MembershipRead, Role
 from app.models.user import User
 from app.services import family as family_service
@@ -107,6 +107,9 @@ async def get_member_avatar_raw(
     user = await session.get(User, user_id)
     if user is None or user.avatar_storage_key is None:
         raise AppError(ErrorCode.NOT_FOUND, "尚未设置头像", status_code=404)
+    if isinstance(storage, PresignableStorage):
+        url = await storage.presigned_get_url(user.avatar_storage_key, ttl_seconds=3600)
+        return RedirectResponse(url, status_code=302)
     try:
         data = await storage.get(user.avatar_storage_key)
     except FileNotFoundError as exc:
