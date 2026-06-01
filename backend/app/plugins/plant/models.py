@@ -36,6 +36,12 @@ MAX_LABEL_LEN = 60
 MIN_INTERVAL_DAYS = 1
 MAX_INTERVAL_DAYS = 365
 
+# Family-shared placement label presets (input convenience; the label text is
+# fed to the AI as environment context). A family can add/remove its own; when
+# it hasn't customized them yet, these defaults are returned.
+DEFAULT_PLACEMENTS: tuple[str, ...] = ("室内", "南阳台", "朝南窗", "朝北窗", "室外")
+MAX_PLACEMENTS = 30
+
 # AI analysis lifecycle for a care log:
 # - pending: analysis scheduled / running in the background
 # - ready:   analysis finished (assessment + advice present)
@@ -214,6 +220,11 @@ class PlantFamilySettings(SQLModel, table=True):
     latitude: float | None = Field(default=None)
     longitude: float | None = Field(default=None)
     location_label: str | None = Field(default=None, max_length=MAX_LABEL_LEN)
+    # Family-shared placement label presets. None = not customized yet (the
+    # route returns DEFAULT_PLACEMENTS in that case).
+    placements: list[str] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -226,9 +237,14 @@ class PlantFamilySettingsUpdate(SQLModel):
     latitude: float | None = None
     longitude: float | None = None
     location_label: str | None = Field(default=None, max_length=MAX_LABEL_LEN)
+    # Full replacement of the family's placement preset list (add/remove happen
+    # client-side, then PUT the whole list).
+    placements: list[str] | None = None
 
 
 class PlantFamilySettingsRead(SQLModel):
     latitude: float | None = None
     longitude: float | None = None
     location_label: str | None = None
+    # Always a non-empty list — defaults injected when the family hasn't set its own.
+    placements: list[str] = []

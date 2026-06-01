@@ -7,6 +7,7 @@ import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import 'plant_detail_page.dart';
 import 'plant_location.dart';
+import 'plant_placements.dart';
 
 /// 植物日记首页:植物网格 + 右下角新增 + 右上角默认环境(定位)设置。
 class PlantListPage extends StatefulWidget {
@@ -282,10 +283,118 @@ class _PlantEditSheet extends StatefulWidget {
 class _PlantEditSheetState extends State<_PlantEditSheet> {
   final _name = TextEditingController();
   final _species = TextEditingController();
-  String _placement = '室内';
+
+  // 摆放标签全家共享、存后端。首帧用默认值占位,拉到家庭设置后替换。
+  List<String> _placements = List.of(kDefaultPlacements);
+  String _placement = kDefaultPlacements.first;
   bool _saving = false;
 
-  static const _placements = ['室内', '阳台', '朝南窗', '朝北窗', '室外'];
+  @override
+  void initState() {
+    super.initState();
+    _loadPlacements();
+  }
+
+  Future<void> _loadPlacements() async {
+    final session = WoScope.of(context);
+    final fid = session.currentFamilyId;
+    if (fid == null) return;
+    try {
+      final settings = await session.api.plantSettings(fid);
+      if (!mounted || settings.placements.isEmpty) return;
+      setState(() {
+        _placements = settings.placements;
+        if (!_placements.contains(_placement)) _placement = _placements.first;
+      });
+    } catch (_) {
+      // 拉取失败就先用默认占位,不打断添加植物。
+    }
+  }
+
+  /// 把当前候选列表整体 PUT 到后端(全家共享);失败回滚并提示。
+  Future<void> _persistPlacements(List<String> next, {String? select}) async {
+    final prev = _placements;
+    setState(() {
+      _placements = next;
+      if (select != null) _placement = select;
+      if (!_placements.contains(_placement) && _placements.isNotEmpty) {
+        _placement = _placements.first;
+      }
+    });
+    final session = WoScope.of(context);
+    final fid = session.currentFamilyId;
+    if (fid == null) return;
+    try {
+      final settings =
+          await session.api.updatePlantSettings(fid, placements: next);
+      if (mounted && settings.placements.isNotEmpty) {
+        setState(() => _placements = settings.placements);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _placements = prev); // 回滚
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('标签保存失败:$e')));
+      }
+    }
+  }
+
+  Future<void> _addPlacement() async {
+    final ctrl = TextEditingController();
+    final label = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('添加摆放位置'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 12,
+          decoration: const InputDecoration(
+            hintText: '如:北阳台 / 卫生间 / 客厅飘窗',
+            helperText: '全家共享;此标签会作为环境信息发给 AI,写具体些更准',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+    if (label == null || label.isEmpty || !mounted) return;
+    if (_placements.contains(label)) {
+      setState(() => _placement = label);
+      return;
+    }
+    await _persistPlacements([..._placements, label], select: label);
+  }
+
+  Future<void> _deletePlacement(String p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('删除「$p」'),
+        content: const Text('全家共享的候选标签里移除,不影响已用此标签的植物。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _persistPlacements(_placements.where((e) => e != p).toList());
+  }
 
   @override
   void dispose() {
@@ -361,16 +470,33 @@ class _PlantEditSheetState extends State<_PlantEditSheet> {
                 .bodyMedium
                 ?.copyWith(color: wo.fgMid),
           ),
+          const SizedBox(height: 2),
+          Text(
+            '长按标签可删除;此标签会作为环境信息发给 AI',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: wo.fgDim),
+          ),
           const SizedBox(height: WoTokens.space2),
           Wrap(
             spacing: WoTokens.space2,
+            runSpacing: WoTokens.space2,
             children: [
               for (final p in _placements)
-                ChoiceChip(
-                  label: Text(p),
-                  selected: _placement == p,
-                  onSelected: (_) => setState(() => _placement = p),
+                GestureDetector(
+                  onLongPress: () => _deletePlacement(p),
+                  child: ChoiceChip(
+                    label: Text(p),
+                    selected: _placement == p,
+                    onSelected: (_) => setState(() => _placement = p),
+                  ),
                 ),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 18),
+                label: const Text('添加'),
+                onPressed: _addPlacement,
+              ),
             ],
           ),
           const SizedBox(height: WoTokens.space5),

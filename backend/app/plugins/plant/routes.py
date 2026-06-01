@@ -25,6 +25,9 @@ from app.core.response import ApiResponse, ok
 from app.core.storage import PresignableStorage, storage
 from app.plugins.plant.ai import analyze_log
 from app.plugins.plant.models import (
+    DEFAULT_PLACEMENTS,
+    MAX_PLACEMENT_LEN,
+    MAX_PLACEMENTS,
     Plant,
     PlantCreate,
     PlantFamilySettings,
@@ -360,6 +363,32 @@ async def adopt_suggestion(
 # ---- family default environment --------------------------------------------
 
 
+def _sanitize_placements(raw: list[str]) -> list[str]:
+    """Trim, drop empties, dedupe (keep order), clamp length & count. Family-shared
+    so we validate at the boundary."""
+    out: list[str] = []
+    for item in raw:
+        label = item.strip()[:MAX_PLACEMENT_LEN]
+        if label and label not in out:
+            out.append(label)
+        if len(out) >= MAX_PLACEMENTS:
+            break
+    return out
+
+
+def _settings_read(row: PlantFamilySettings | None) -> PlantFamilySettingsRead:
+    """Serialize settings, injecting the default placement presets when the
+    family hasn't customized them (stored as NULL)."""
+    if row is None:
+        return PlantFamilySettingsRead(placements=list(DEFAULT_PLACEMENTS))
+    return PlantFamilySettingsRead(
+        latitude=row.latitude,
+        longitude=row.longitude,
+        location_label=row.location_label,
+        placements=row.placements or list(DEFAULT_PLACEMENTS),
+    )
+
+
 @router.get("/settings", response_model=ApiResponse[PlantFamilySettingsRead])
 async def get_settings(
     family_id: UUID,
@@ -368,9 +397,7 @@ async def get_settings(
 ) -> ApiResponse[PlantFamilySettingsRead]:
     await require_membership(session, current_user.id, family_id)
     row = await session.get(PlantFamilySettings, family_id)
-    if row is None:
-        return ok(PlantFamilySettingsRead())
-    return ok(PlantFamilySettingsRead.model_validate(row, from_attributes=True))
+    return ok(_settings_read(row))
 
 
 @router.put("/settings", response_model=ApiResponse[PlantFamilySettingsRead])
@@ -380,11 +407,13 @@ async def update_settings(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[PlantFamilySettingsRead]:
-    """Set the family's default environment (location). New plants inherit it
-    for weather lookups."""
+    """Set the family's default environment (location) and/or its shared
+    placement presets. New plants inherit the location for weather lookups."""
     await require_membership(session, current_user.id, family_id)
     row = await session.get(PlantFamilySettings, family_id)
     updates = payload.model_dump(exclude_unset=True)
+    if "placements" in updates and updates["placements"] is not None:
+        updates["placements"] = _sanitize_placements(updates["placements"])
     if row is None:
         row = PlantFamilySettings(family_id=family_id, **updates)
     else:
@@ -393,7 +422,7 @@ async def update_settings(
     session.add(row)
     await session.commit()
     await session.refresh(row)
-    return ok(PlantFamilySettingsRead.model_validate(row, from_attributes=True))
+    return ok(_settings_read(row))
 
 
 # ---- helpers ---------------------------------------------------------------

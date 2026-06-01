@@ -1318,11 +1318,13 @@ class WoApi {
     double? latitude,
     double? longitude,
     String? locationLabel,
+    List<String>? placements,
   }) async {
     final body = <String, dynamic>{};
     if (latitude != null) body['latitude'] = latitude;
     if (longitude != null) body['longitude'] = longitude;
     if (locationLabel != null) body['location_label'] = locationLabel;
+    if (placements != null) body['placements'] = placements;
     final data = await _client.put(
       '/families/$familyId/plugins/plant/settings',
       body: body,

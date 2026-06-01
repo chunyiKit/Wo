@@ -182,6 +182,8 @@ async def test_settings_roundtrip(client: AsyncClient) -> None:
     empty = await client.get(f"{BASE.format(fid=fid)}/settings")
     assert empty.status_code == 200
     assert empty.json()["data"]["latitude"] is None
+    # Default placement presets are returned before any customization.
+    assert "南阳台" in empty.json()["data"]["placements"]
 
     put = await client.put(
         f"{BASE.format(fid=fid)}/settings",
@@ -192,6 +194,23 @@ async def test_settings_roundtrip(client: AsyncClient) -> None:
 
     got = await client.get(f"{BASE.format(fid=fid)}/settings")
     assert got.json()["data"]["latitude"] == 31.2304
+
+
+async def test_placements_shared_and_sanitized(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    # Custom list with dupes / blanks / whitespace → sanitized + family-shared.
+    put = await client.put(
+        f"{BASE.format(fid=fid)}/settings",
+        json={"placements": ["室内", "南阳台", "南阳台", "  卫生间 ", "  "]},
+    )
+    assert put.status_code == 200
+    assert put.json()["data"]["placements"] == ["室内", "南阳台", "卫生间"]
+
+    # A second family member (any caller in the same family) sees the same list.
+    got = await client.get(f"{BASE.format(fid=fid)}/settings")
+    assert got.json()["data"]["placements"] == ["室内", "南阳台", "卫生间"]
+    # Location untouched by a placements-only update.
+    assert got.json()["data"]["latitude"] is None
 
 
 # ---- membership isolation --------------------------------------------------

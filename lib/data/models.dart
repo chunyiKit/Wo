@@ -1403,17 +1403,21 @@ class PlantLog {
       );
 }
 
-/// 植物日记 —— 家庭级默认环境（定位）。
+/// 植物日记 —— 家庭级默认环境（定位）+ 全家共享的摆放位置候选标签。
 class PlantFamilySettings {
   const PlantFamilySettings({
     this.latitude,
     this.longitude,
     this.locationLabel,
+    this.placements = const [],
   });
 
   final double? latitude;
   final double? longitude;
   final String? locationLabel;
+
+  /// 摆放位置候选标签（全家共享）。后端在未自定义时回退到默认预设,所以非空。
+  final List<String> placements;
 
   bool get hasLocation => latitude != null && longitude != null;
 
@@ -1422,5 +1426,8 @@ class PlantFamilySettings {
         latitude: _parseNumOrNull(j['latitude']),
         longitude: _parseNumOrNull(j['longitude']),
         locationLabel: j['location_label'] as String?,
+        placements: ((j['placements'] as List?) ?? [])
+            .map((e) => e.toString())
+            .toList(),
       );
 }
