@@ -61,9 +61,19 @@ def parse_now(body: dict[str, Any]) -> dict[str, Any]:
         raise WeatherError(f"QWeather weather/now 异常: code={code or '?'}")
     return {
         "temp_c": _to_float(now.get("temp")),
+        "feels_like_c": _to_float(now.get("feelsLike")),
+        "condition": now.get("text") or None,
+        "icon": now.get("icon") or None,
         "humidity_pct": _to_int(now.get("humidity")),
         "precip_mm": _to_float(now.get("precip")),
-        "condition": now.get("text") or None,
+        "pressure_hpa": _to_float(now.get("pressure")),
+        "visibility_km": _to_float(now.get("vis")),
+        "cloud_pct": _to_int(now.get("cloud")),
+        "dew_point_c": _to_float(now.get("dew")),
+        "wind_dir": now.get("windDir") or None,
+        "wind_scale": now.get("windScale") or None,
+        "wind_speed_kmh": _to_float(now.get("windSpeed")),
+        "wind_deg": _to_float(now.get("wind360")),
         "observed_at": body.get("updateTime") or now.get("obsTime"),
     }
 

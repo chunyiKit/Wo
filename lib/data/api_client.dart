@@ -95,7 +95,8 @@ class ApiClient {
         () => _http.put(_uri(path), headers: _headers, body: _encode(body)),
       );
 
-  Future<dynamic> delete(String path, {Object? body, Map<String, dynamic>? query}) =>
+  Future<dynamic> delete(String path,
+          {Object? body, Map<String, dynamic>? query}) =>
       _send(
         () => _http.delete(
           _uri(path, query),
@@ -122,6 +123,27 @@ class ApiClient {
         req.files.add(
           http.MultipartFile.fromBytes(field, bytes, filename: filename),
         );
+        return http.Response.fromStream(await req.send());
+      });
+
+  /// 上传多个文件（multipart/form-data，同一 [field] 多个部分）。后端用
+  /// `list[UploadFile]` 接收。[filesData] 每项为 (bytes, filename)。
+  Future<dynamic> uploadFiles(
+    String path, {
+    required List<(List<int>, String)> filesData,
+    String field = 'files',
+    Map<String, String>? fields,
+  }) =>
+      _send(() async {
+        final req = http.MultipartRequest('POST', _uri(path));
+        req.headers.addAll(_authHeaders);
+        req.headers['Accept'] = 'application/json';
+        if (fields != null) req.fields.addAll(fields);
+        for (final (bytes, filename) in filesData) {
+          req.files.add(
+            http.MultipartFile.fromBytes(field, bytes, filename: filename),
+          );
+        }
         return http.Response.fromStream(await req.send());
       });
 

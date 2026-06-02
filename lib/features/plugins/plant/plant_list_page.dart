@@ -6,8 +6,8 @@ import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import 'plant_detail_page.dart';
+import 'plant_edit_sheet.dart';
 import 'plant_location.dart';
-import 'plant_placements.dart';
 
 /// 植物日记首页:植物网格 + 右下角新增 + 右上角默认环境(定位)设置。
 class PlantListPage extends StatefulWidget {
@@ -23,6 +23,8 @@ class _PlantListPageState extends State<PlantListPage> {
   late Future<List<Plant>> _future;
   List<Plant>? _items;
   bool _loaded = false;
+  // 改变它来让天气卡片重拉(如设完默认位置/名称返回)。
+  int _weatherToken = 0;
 
   @override
   void didChangeDependencies() {
@@ -64,7 +66,7 @@ class _PlantListPageState extends State<PlantListPage> {
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => const _PlantEditSheet(),
+      builder: (_) => const PlantEditSheet(),
     );
     if (created == true) await _refreshSilently();
   }
@@ -75,6 +77,8 @@ class _PlantListPageState extends State<PlantListPage> {
       isScrollControlled: true,
       builder: (_) => const _PlantSettingsSheet(),
     );
+    // 位置/名称可能变了,让天气卡片重拉。
+    if (mounted) setState(() => _weatherToken++);
   }
 
   @override
@@ -93,13 +97,20 @@ class _PlantListPageState extends State<PlantListPage> {
         ],
       ),
       body: SafeArea(
-        child: _items != null
-            ? _buildGrid(context, _items!)
-            : AsyncView<List<Plant>>(
-                future: _future,
-                onRetry: _retry,
-                builder: _buildGrid,
-              ),
+        child: Column(
+          children: [
+            _WeatherCard(key: ValueKey(_weatherToken)),
+            Expanded(
+              child: _items != null
+                  ? _buildGrid(context, _items!)
+                  : AsyncView<List<Plant>>(
+                      future: _future,
+                      onRetry: _retry,
+                      builder: _buildGrid,
+                    ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCreateSheet,
@@ -272,250 +283,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// 新建植物表单。
-class _PlantEditSheet extends StatefulWidget {
-  const _PlantEditSheet();
-
-  @override
-  State<_PlantEditSheet> createState() => _PlantEditSheetState();
-}
-
-class _PlantEditSheetState extends State<_PlantEditSheet> {
-  final _name = TextEditingController();
-  final _species = TextEditingController();
-
-  // 摆放标签全家共享、存后端。首帧用默认值占位,拉到家庭设置后替换。
-  List<String> _placements = List.of(kDefaultPlacements);
-  String _placement = kDefaultPlacements.first;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPlacements();
-  }
-
-  Future<void> _loadPlacements() async {
-    final session = WoScope.of(context);
-    final fid = session.currentFamilyId;
-    if (fid == null) return;
-    try {
-      final settings = await session.api.plantSettings(fid);
-      if (!mounted || settings.placements.isEmpty) return;
-      setState(() {
-        _placements = settings.placements;
-        if (!_placements.contains(_placement)) _placement = _placements.first;
-      });
-    } catch (_) {
-      // 拉取失败就先用默认占位,不打断添加植物。
-    }
-  }
-
-  /// 把当前候选列表整体 PUT 到后端(全家共享);失败回滚并提示。
-  Future<void> _persistPlacements(List<String> next, {String? select}) async {
-    final prev = _placements;
-    setState(() {
-      _placements = next;
-      if (select != null) _placement = select;
-      if (!_placements.contains(_placement) && _placements.isNotEmpty) {
-        _placement = _placements.first;
-      }
-    });
-    final session = WoScope.of(context);
-    final fid = session.currentFamilyId;
-    if (fid == null) return;
-    try {
-      final settings =
-          await session.api.updatePlantSettings(fid, placements: next);
-      if (mounted && settings.placements.isNotEmpty) {
-        setState(() => _placements = settings.placements);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _placements = prev); // 回滚
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('标签保存失败:$e')));
-      }
-    }
-  }
-
-  Future<void> _addPlacement() async {
-    final ctrl = TextEditingController();
-    final label = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('添加摆放位置'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLength: 12,
-          decoration: const InputDecoration(
-            hintText: '如:北阳台 / 卫生间 / 客厅飘窗',
-            helperText: '全家共享;此标签会作为环境信息发给 AI,写具体些更准',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('添加'),
-          ),
-        ],
-      ),
-    );
-    if (label == null || label.isEmpty || !mounted) return;
-    if (_placements.contains(label)) {
-      setState(() => _placement = label);
-      return;
-    }
-    await _persistPlacements([..._placements, label], select: label);
-  }
-
-  Future<void> _deletePlacement(String p) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('删除「$p」'),
-        content: const Text('全家共享的候选标签里移除,不影响已用此标签的植物。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    await _persistPlacements(_placements.where((e) => e != p).toList());
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _species.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-    setState(() => _saving = true);
-    final session = WoScope.of(context);
-    final fid = session.currentFamilyId;
-    try {
-      if (fid != null) {
-        await session.api.createPlant(
-          fid,
-          name: name,
-          species: _species.text.trim(),
-          placement: _placement,
-        );
-      }
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败:$e')));
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final wo = context.wo;
-    final insets = MediaQuery.of(context).viewInsets;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        WoTokens.space5,
-        WoTokens.space5,
-        WoTokens.space5,
-        insets.bottom + WoTokens.space5,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '添加植物',
-            style:
-                Theme.of(context).textTheme.titleLarge?.copyWith(color: wo.fg),
-          ),
-          const SizedBox(height: WoTokens.space4),
-          TextField(
-            controller: _name,
-            decoration:
-                const InputDecoration(labelText: '名称', hintText: '如:绿萝'),
-          ),
-          const SizedBox(height: WoTokens.space3),
-          TextField(
-            controller: _species,
-            decoration: const InputDecoration(
-              labelText: '品种(可选)',
-              hintText: '不填的话 AI 会帮你认',
-            ),
-          ),
-          const SizedBox(height: WoTokens.space4),
-          Text(
-            '摆放位置',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: wo.fgMid),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '长按标签可删除;此标签会作为环境信息发给 AI',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: wo.fgDim),
-          ),
-          const SizedBox(height: WoTokens.space2),
-          Wrap(
-            spacing: WoTokens.space2,
-            runSpacing: WoTokens.space2,
-            children: [
-              for (final p in _placements)
-                GestureDetector(
-                  onLongPress: () => _deletePlacement(p),
-                  child: ChoiceChip(
-                    label: Text(p),
-                    selected: _placement == p,
-                    onSelected: (_) => setState(() => _placement = p),
-                  ),
-                ),
-              ActionChip(
-                avatar: const Icon(Icons.add, size: 18),
-                label: const Text('添加'),
-                onPressed: _addPlacement,
-              ),
-            ],
-          ),
-          const SizedBox(height: WoTokens.space5),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('保存'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 默认环境(定位)设置表单。
 class _PlantSettingsSheet extends StatefulWidget {
   const _PlantSettingsSheet();
@@ -526,6 +293,7 @@ class _PlantSettingsSheet extends StatefulWidget {
 
 class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
   PlantFamilySettings? _settings;
+  final _label = TextEditingController();
   bool _loading = true;
   bool _busy = false;
 
@@ -533,6 +301,12 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _label.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -547,11 +321,35 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
       if (mounted) {
         setState(() {
           _settings = s;
+          _label.text = s.locationLabel ?? '';
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _saveLabel() async {
+    final session = WoScope.of(context);
+    final fid = session.currentFamilyId;
+    if (fid == null) return;
+    FocusScope.of(context).unfocus();
+    try {
+      final s = await session.api.updatePlantSettings(
+        fid,
+        locationLabel: _label.text.trim(),
+      );
+      if (mounted) {
+        setState(() => _settings = s);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已保存位置名称')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存失败:$e')));
+      }
     }
   }
 
@@ -623,12 +421,31 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
                 child: CircularProgressIndicator(),
               ),
             )
-          else
+          else if (s != null && s.hasLocation) ...[
+            // 已定位:醒目地显示状态 + 名称(若有)+ 经纬度,确保「位置信息」可见。
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: wo.plant, size: 20),
+                const SizedBox(width: WoTokens.space2),
+                Expanded(
+                  child: Text(
+                    (s.locationLabel != null && s.locationLabel!.isNotEmpty)
+                        ? s.locationLabel!
+                        : '已定位',
+                    style: t.titleSmall?.copyWith(color: wo.fg),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
             Text(
-              s != null && s.hasLocation
-                  ? '当前位置:${s.locationLabel ?? '${s.latitude!.toStringAsFixed(3)}, ${s.longitude!.toStringAsFixed(3)}'}'
-                  : '尚未设置位置',
-              style: t.bodyMedium?.copyWith(color: wo.fg),
+              '经纬度 ${s.latitude!.toStringAsFixed(4)}, ${s.longitude!.toStringAsFixed(4)}',
+              style: t.bodySmall?.copyWith(color: wo.fgMid),
+            ),
+          ] else
+            Text(
+              '尚未设置位置',
+              style: t.bodyMedium?.copyWith(color: wo.fgMid),
             ),
           const SizedBox(height: WoTokens.space4),
           FilledButton.icon(
@@ -636,8 +453,221 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
             icon: const Icon(Icons.my_location),
             label: Text(_busy ? '定位中…' : '使用当前定位'),
           ),
+          if (s != null && s.hasLocation) ...[
+            const SizedBox(height: WoTokens.space4),
+            TextField(
+              controller: _label,
+              decoration: InputDecoration(
+                labelText: '位置名称(可选)',
+                hintText: '如:家 / 杭州西湖',
+                suffixIcon: TextButton(
+                  onPressed: _saveLabel,
+                  child: const Text('保存'),
+                ),
+              ),
+              onSubmitted: (_) => _saveLabel(),
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// 主页顶部天气卡片:显示当前位置名 + 和风能取到的全部天气字段。
+/// 自己拉取(用 [ValueKey] 在位置变化后重建即重拉);不可用时显示原因。
+class _WeatherCard extends StatefulWidget {
+  const _WeatherCard({super.key});
+
+  @override
+  State<_WeatherCard> createState() => _WeatherCardState();
+}
+
+class _WeatherCardState extends State<_WeatherCard> {
+  Future<PlantWeather>? _future;
+  bool _loaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loaded) {
+      _loaded = true;
+      _reload();
+    }
+  }
+
+  void _reload() {
+    final session = WoScope.of(context);
+    final fid = session.currentFamilyId;
+    setState(() {
+      _future = fid == null
+          ? Future.value(const PlantWeather(reason: '未加入家庭'))
+          : session.api.plantWeather(fid);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        WoTokens.space4,
+        WoTokens.space4,
+        WoTokens.space4,
+        0,
+      ),
+      padding: const EdgeInsets.all(WoTokens.space4),
+      decoration: BoxDecoration(
+        color: wo.plant,
+        borderRadius: BorderRadius.circular(WoTokens.cardRadius),
+      ),
+      child: FutureBuilder<PlantWeather>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: WoTokens.space3),
+                Text('天气加载中…', style: t.bodyMedium?.copyWith(color: wo.fg)),
+              ],
+            );
+          }
+          final w = snap.data;
+          if (w == null || !w.available) {
+            return Row(
+              children: [
+                Icon(Icons.cloud_off_outlined, color: wo.fgMid, size: 20),
+                const SizedBox(width: WoTokens.space2),
+                Expanded(
+                  child: Text(
+                    w?.reason ?? '天气不可用',
+                    style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.refresh, color: wo.fgMid),
+                  onPressed: _reload,
+                ),
+              ],
+            );
+          }
+          return _buildWeather(context, w);
+        },
+      ),
+    );
+  }
+
+  Widget _buildWeather(BuildContext context, PlantWeather w) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    final place = (w.locationLabel != null && w.locationLabel!.isNotEmpty)
+        ? w.locationLabel!
+        : '当前位置';
+
+    // 全部字段(空的自动跳过)。
+    final rows = <(String, String)>[
+      if (w.feelsLikeC != null) ('体感', '${w.feelsLikeC!.toStringAsFixed(0)}℃'),
+      if (w.humidityPct != null) ('湿度', '${w.humidityPct}%'),
+      if (w.precipMm != null) ('降水', '${w.precipMm} mm'),
+      if (w.pressureHpa != null)
+        ('气压', '${w.pressureHpa!.toStringAsFixed(0)} hPa'),
+      if (w.visibilityKm != null)
+        ('能见度', '${w.visibilityKm!.toStringAsFixed(0)} km'),
+      if (w.cloudPct != null) ('云量', '${w.cloudPct}%'),
+      if (w.dewPointC != null) ('露点', '${w.dewPointC!.toStringAsFixed(0)}℃'),
+      if (w.windDir != null) ('风向', w.windDir!),
+      if (w.windScale != null) ('风力', '${w.windScale} 级'),
+      if (w.windSpeedKmh != null)
+        ('风速', '${w.windSpeedKmh!.toStringAsFixed(0)} km/h'),
+      if (w.windDeg != null) ('风向角', '${w.windDeg!.toStringAsFixed(0)}°'),
+      if (w.uvIndex != null) ('紫外线', w.uvIndex!.toStringAsFixed(0)),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 头部:地点 + 天况 + 大号温度 + 刷新。
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.place, size: 16, color: wo.fgMid),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          place,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.titleSmall?.copyWith(color: wo.fg),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    w.condition ?? '—',
+                    style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              w.tempC != null ? '${w.tempC!.toStringAsFixed(0)}℃' : '—',
+              style: t.displaySmall?.copyWith(
+                color: wo.fg,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.refresh, color: wo.fgMid),
+              onPressed: _reload,
+            ),
+          ],
+        ),
+        if (rows.isNotEmpty) ...[
+          const SizedBox(height: WoTokens.space3),
+          Wrap(
+            spacing: WoTokens.space2,
+            runSpacing: WoTokens.space2,
+            children: [
+              for (final (label, value) in rows)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: WoTokens.space3,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: wo.bgElev.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(WoTokens.chipRadius),
+                  ),
+                  child: Text(
+                    '$label $value',
+                    style: t.labelMedium?.copyWith(color: wo.fg),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        if (w.observedAt != null) ...[
+          const SizedBox(height: WoTokens.space2),
+          Text(
+            '观测 ${w.observedAt}',
+            style: t.labelSmall?.copyWith(color: wo.fgDim),
+          ),
+        ],
+      ],
     );
   }
 }

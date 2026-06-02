@@ -1263,18 +1263,19 @@ class WoApi {
         .toList();
   }
 
-  /// 新增一条养护记录（上传照片）。照片在请求内持久化，AI 分析在后台进行。
+  /// 新增一条养护记录（上传 1+ 张照片）。照片在请求内持久化,AI 后台一起分析。
   Future<PlantLog> createPlantLog(
     String familyId,
     String plantId, {
-    required List<int> bytes,
-    required String filename,
+    required List<List<int>> photos,
     String? note,
   }) async {
-    final data = await _client.uploadFile(
+    final files = <(List<int>, String)>[
+      for (var i = 0; i < photos.length; i++) (photos[i], 'plant_$i.jpg'),
+    ];
+    final data = await _client.uploadFiles(
       '/families/$familyId/plugins/plant/plants/$plantId/logs',
-      bytes: bytes,
-      filename: filename,
+      filesData: files,
       fields: (note != null && note.isNotEmpty) ? {'note': note} : null,
     );
     return PlantLog.fromJson(data as Map<String, dynamic>);
@@ -1311,6 +1312,12 @@ class WoApi {
     final data =
         await _client.get('/families/$familyId/plugins/plant/settings');
     return PlantFamilySettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 当前位置天气(和风全字段),用于植物主页天气卡片。
+  Future<PlantWeather> plantWeather(String familyId) async {
+    final data = await _client.get('/families/$familyId/plugins/plant/weather');
+    return PlantWeather.fromJson(data as Map<String, dynamic>);
   }
 
   Future<PlantFamilySettings> updatePlantSettings(

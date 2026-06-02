@@ -132,8 +132,11 @@ class Settings(BaseSettings):
     # backend. Each provider no-ops/raises clearly when its key is blank, so
     # dev/tests run without credentials.
     ai_provider: str = "kimi"
-    # LLM calls are slow (K2.5 is a thinking model), so a generous timeout.
-    ai_timeout_seconds: float = 60.0
+    # LLM calls are slow — K2.6 is a *thinking* model, and multimodal (vision)
+    # calls (e.g. the plant plugin analyzing a photo) routinely run past a
+    # minute. Keep a generous ceiling so vision/thinking calls aren't cut off;
+    # text-only calls return well under it anyway.
+    ai_timeout_seconds: float = 180.0
     # Default output cap when a caller doesn't pass one; None = provider default.
     ai_default_max_tokens: int | None = None
     # Kimi / Moonshot — OpenAI-compatible chat-completions API. `kimi-k2.6` is

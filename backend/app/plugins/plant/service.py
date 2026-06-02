@@ -27,9 +27,12 @@ _PLUGIN_COLOR = "plant"
 _PLUGIN_EMOJI = "🌿"
 
 
-def build_storage_key(family_id: UUID, plant_id: UUID, log_id: UUID, ext: str) -> str:
-    """Blob key for a care-log photo. Durable history record (see design D4)."""
-    return f"plant/{family_id}/{plant_id}/{log_id}.{ext}"
+def build_storage_key(
+    family_id: UUID, plant_id: UUID, log_id: UUID, ext: str, index: int = 0
+) -> str:
+    """Blob key for a care-log photo (one log may have several). Durable history
+    record (see design D4)."""
+    return f"plant/{family_id}/{plant_id}/{log_id}_{index}.{ext}"
 
 
 def build_plant_read(plant: Plant) -> PlantRead:
@@ -46,15 +49,32 @@ def build_plant_read(plant: Plant) -> PlantRead:
 
 
 def build_log_read(log: PlantLog) -> PlantLogRead:
-    """Serialize a care log, injecting the host-relative photo URL."""
+    """Serialize a care log, injecting host-relative photo URLs.
+
+    New logs store all photos in `log.photos` → one indexed URL each. Legacy
+    logs (single `photo_storage_key`, no `photos`) → the old /photo URL.
+    """
+    base = (
+        f"/api/v1/families/{log.family_id}/plugins/plant/plants/"
+        f"{log.plant_id}/logs/{log.id}"
+    )
+    v = log.photo_version or 1
+    photo_urls: list[str] = []
+    if log.photos:
+        photo_urls = [f"{base}/photos/{i}?v={v}" for i in range(len(log.photos))]
+    elif log.photo_storage_key:
+        photo_urls = [f"{base}/photo?v={v}"]
+    return read_with_photos(log, photo_urls)
+
+
+def read_with_photos(log: PlantLog, photo_urls: list[str]) -> PlantLogRead:
     read = PlantLogRead.model_validate(log, from_attributes=True)
-    photo_url = None
-    if log.photo_storage_key:
-        photo_url = (
-            f"/api/v1/families/{log.family_id}/plugins/plant/plants/"
-            f"{log.plant_id}/logs/{log.id}/photo?v={log.photo_version}"
-        )
-    return read.model_copy(update={"photo_url": photo_url})
+    return read.model_copy(
+        update={
+            "photo_url": photo_urls[0] if photo_urls else None,
+            "photo_urls": photo_urls,
+        }
+    )
 
 
 def arm_due_dates(plant: Plant, *, today: date) -> None:

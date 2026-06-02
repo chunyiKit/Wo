@@ -87,7 +87,7 @@ async def test_create_log_persists_photo_independent_of_ai(client: AsyncClient) 
 
     resp = await client.post(
         f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs",
-        files={"file": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
+        files={"files": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
         data={"note": "新长了一片叶子"},
     )
     assert resp.status_code == 201, resp.text
@@ -113,10 +113,42 @@ async def test_first_log_sets_plant_cover(client: AsyncClient) -> None:
     plant = await _create_plant(client, fid)
     await client.post(
         f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs",
-        files={"file": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
+        files={"files": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
     )
     got = await client.get(f"{BASE.format(fid=fid)}/plants/{plant['id']}")
     assert got.json()["data"]["cover_url"] is not None
+
+
+async def test_create_log_with_multiple_photos(client: AsyncClient) -> None:
+    """A care log accepts several photos; all are persisted and each is servable."""
+    fid = await _create_family(client)
+    plant = await _create_plant(client, fid)
+
+    resp = await client.post(
+        f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs",
+        files=[
+            ("files", ("a.jpg", _jpeg_bytes("green"), "image/jpeg")),
+            ("files", ("b.jpg", _jpeg_bytes("olive"), "image/jpeg")),
+            ("files", ("c.jpg", _jpeg_bytes("teal"), "image/jpeg")),
+        ],
+    )
+    assert resp.status_code == 201, resp.text
+    log = resp.json()["data"]
+    assert len(log["photo_urls"]) == 3
+    assert log["photo_url"] == log["photo_urls"][0]
+
+    # Each photo is independently servable by index.
+    for i in range(3):
+        photo = await client.get(
+            f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs/{log['id']}/photos/{i}"
+        )
+        assert photo.status_code == 200, i
+        assert photo.headers["content-type"].startswith("image/")
+    # Out-of-range index → 404.
+    missing = await client.get(
+        f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs/{log['id']}/photos/9"
+    )
+    assert missing.status_code == 404
 
 
 async def test_non_image_upload_rejected(client: AsyncClient) -> None:
@@ -124,7 +156,7 @@ async def test_non_image_upload_rejected(client: AsyncClient) -> None:
     plant = await _create_plant(client, fid)
     resp = await client.post(
         f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs",
-        files={"file": ("x.txt", b"not an image", "text/plain")},
+        files={"files": ("x.txt", b"not an image", "text/plain")},
     )
     assert resp.status_code == 400
 
@@ -137,7 +169,7 @@ async def test_adopt_suggestion_sets_interval_and_arms(client: AsyncClient) -> N
     plant = await _create_plant(client, fid)
     log_resp = await client.post(
         f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs",
-        files={"file": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
+        files={"files": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
     )
     log_id = log_resp.json()["data"]["id"]
 
@@ -164,7 +196,7 @@ async def test_adopt_without_suggestion_rejected(client: AsyncClient) -> None:
     plant = await _create_plant(client, fid)
     log_resp = await client.post(
         f"{BASE.format(fid=fid)}/plants/{plant['id']}/logs",
-        files={"file": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
+        files={"files": ("p.jpg", _jpeg_bytes(), "image/jpeg")},
     )
     log_id = log_resp.json()["data"]["id"]
     adopt = await client.post(
@@ -194,6 +226,31 @@ async def test_settings_roundtrip(client: AsyncClient) -> None:
 
     got = await client.get(f"{BASE.format(fid=fid)}/settings")
     assert got.json()["data"]["latitude"] == 31.2304
+
+
+async def test_weather_card_states(client: AsyncClient) -> None:
+    from app.services.weather import clear_weather_cache
+
+    clear_weather_cache()  # avoid a stub snapshot cached by test_weather leaking in
+    fid = await _create_family(client)
+
+    # No location set yet → unavailable with a clear reason.
+    r1 = await client.get(f"{BASE.format(fid=fid)}/weather")
+    assert r1.status_code == 200
+    assert r1.json()["data"]["available"] is False
+    assert r1.json()["data"]["reason"] == "尚未设置位置"
+
+    # With a location but no weather key configured (tests) → degrade gracefully,
+    # still echoing the location.
+    await client.put(
+        f"{BASE.format(fid=fid)}/settings",
+        json={"latitude": 22.5431, "longitude": 114.0579},
+    )
+    r2 = await client.get(f"{BASE.format(fid=fid)}/weather")
+    data = r2.json()["data"]
+    assert data["available"] is False
+    assert data["reason"] == "天气服务未配置"
+    assert data["latitude"] == 22.5431
 
 
 async def test_placements_shared_and_sanitized(client: AsyncClient) -> None:

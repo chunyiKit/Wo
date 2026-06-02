@@ -36,7 +36,13 @@ from app.plugins.plant.models import (
     PlantFamilySettings,
     PlantLog,
 )
-from app.services.ai import AiError, ai_complete_vision
+from app.services.ai import (
+    AiError,
+    AiMessage,
+    ImagePart,
+    TextPart,
+    ai_complete,
+)
 from app.services.weather import WeatherError, WeatherSnapshot, get_weather
 
 logger = logging.getLogger(__name__)
@@ -95,10 +101,19 @@ def _weather_text(snap: WeatherSnapshot | None) -> str:
 
 
 def _build_prompt(
-    plant: Plant, weather: WeatherSnapshot | None, history: list[str], note: str | None
+    plant: Plant,
+    weather: WeatherSnapshot | None,
+    history: list[str],
+    note: str | None,
+    photo_count: int = 1,
 ) -> str:
+    intro = (
+        f"我提供了同一株植物的 {photo_count} 张照片（不同角度/局部），请综合所有照片判断。"
+        if photo_count > 1
+        else "请分析这株植物的状态并给出养护建议。"
+    )
     lines = [
-        "请分析这株植物的状态并给出养护建议。",
+        intro,
         f"名称：{plant.name}",
         f"品种：{plant.species or '未知（请你从照片推断）'}",
         f"摆放位置：{plant.placement}",
@@ -132,27 +147,47 @@ async def analyze_log(log_id: UUID) -> None:
             return
 
         try:
-            if not log.photo_storage_key:
+            # All photos for this log (new logs use `photos`; legacy ones fall
+            # back to the single key). The AI looks at every photo together.
+            specs = log.photos or (
+                [{"key": log.photo_storage_key, "content_type": log.photo_content_type}]
+                if log.photo_storage_key
+                else []
+            )
+            if not specs:
                 raise AiError("记录没有照片，无法分析")
 
             # 1) Weather (best-effort) for the plant's family location.
             weather = await _fetch_weather(session, plant)
 
-            # 2) Read the photo back from storage → base64 (handled by helper).
-            try:
-                photo_bytes = await storage.get(log.photo_storage_key)
-            except FileNotFoundError as exc:
-                raise AiError("照片文件丢失") from exc
+            # 2) Read every photo back from storage.
+            images: list[tuple[bytes, str]] = []
+            for spec in specs:
+                key = spec.get("key")
+                if not key:
+                    continue
+                try:
+                    data_bytes = await storage.get(key)
+                except FileNotFoundError as exc:
+                    raise AiError("照片文件丢失") from exc
+                images.append((data_bytes, spec.get("content_type") or "image/jpeg"))
+            if not images:
+                raise AiError("照片文件丢失")
 
             # 3) Recent history as trend context.
             history = await _recent_assessments(session, plant.id, exclude=log.id)
 
-            # 4) Multimodal call.
-            result = await ai_complete_vision(
-                system=_SYSTEM_PROMPT,
-                user=_build_prompt(plant, weather, history, log.note),
-                image_data=photo_bytes,
-                content_type=log.photo_content_type or "image/jpeg",
+            # 4) Multimodal call — text prompt + every photo as an image block.
+            parts: list[object] = [
+                TextPart(text=_build_prompt(plant, weather, history, log.note, len(images)))
+            ]
+            for img_bytes, content_type in images:
+                parts.append(ImagePart.from_bytes(img_bytes, content_type=content_type))
+            result = await ai_complete(
+                [
+                    AiMessage(role="system", content=_SYSTEM_PROMPT),
+                    AiMessage(role="user", content=parts),
+                ],
                 max_tokens=_MAX_TOKENS,
             )
             data = json.loads(_strip_fence(result.content))

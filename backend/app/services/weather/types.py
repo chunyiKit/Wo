@@ -29,18 +29,28 @@ class WeatherNotConfiguredError(WeatherError):
 class WeatherSnapshot:
     """Current weather at a location.
 
-    Individual fields are nullable because providers differ in what they return
-    (e.g. UV often needs a separate endpoint that may be unavailable on the free
-    tier). `condition` is the human-readable sky description (e.g. "多云").
-    `location` echoes the queried coordinates, `observed_at` is the provider's
-    observation timestamp when given.
+    Covers the full set of fields QWeather's `weather/now` returns (plus UV from
+    its indices endpoint), so callers can display everything. All nullable —
+    providers differ in coverage and a provider may omit a field. `condition` is
+    the human-readable sky description (e.g. "多云"); `location` echoes the
+    queried coordinates; `observed_at` is the provider's observation timestamp.
     """
 
     temp_c: float | None = None
-    humidity_pct: int | None = None
-    uv_index: float | None = None
-    precip_mm: float | None = None
+    feels_like_c: float | None = None
     condition: str | None = None
+    icon: str | None = None
+    humidity_pct: int | None = None
+    precip_mm: float | None = None
+    pressure_hpa: float | None = None
+    visibility_km: float | None = None
+    cloud_pct: int | None = None
+    dew_point_c: float | None = None
+    wind_dir: str | None = None
+    wind_scale: str | None = None
+    wind_speed_kmh: float | None = None
+    wind_deg: float | None = None
+    uv_index: float | None = None
     observed_at: str | None = None
     location: str | None = None
 

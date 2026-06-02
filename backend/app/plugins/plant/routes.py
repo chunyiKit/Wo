@@ -26,6 +26,7 @@ from app.core.storage import PresignableStorage, storage
 from app.plugins.plant.ai import analyze_log
 from app.plugins.plant.models import (
     DEFAULT_PLACEMENTS,
+    MAX_LOG_PHOTOS,
     MAX_PLACEMENT_LEN,
     MAX_PLACEMENTS,
     Plant,
@@ -37,12 +38,18 @@ from app.plugins.plant.models import (
     PlantLogRead,
     PlantRead,
     PlantUpdate,
+    PlantWeatherRead,
 )
 from app.plugins.plant.service import (
     arm_due_dates,
     build_log_read,
     build_plant_read,
     build_storage_key,
+)
+from app.services.weather import (
+    WeatherError,
+    WeatherNotConfiguredError,
+    get_weather,
 )
 
 router = APIRouter(
@@ -229,40 +236,61 @@ async def create_log(
     session: SessionDep,
     current_user: CurrentUserDep,
     background: BackgroundTasks,
-    file: Annotated[UploadFile, File(...)],
+    files: Annotated[list[UploadFile], File(...)],
     note: Annotated[str | None, Form()] = None,
 ) -> ApiResponse[PlantLogRead]:
-    """Add a dated care log with a photo. The photo is persisted to storage in
-    this request (the durable history record), the row is created with
-    `ai_status="pending"`, and a background task then fills the AI assessment +
-    advice. Photo persistence is independent of AI success."""
+    """Add a dated care log with one or more photos. Photos are persisted to
+    storage in this request (the durable history record), the row is created
+    with `ai_status="pending"`, and a background task then has the AI analyze
+    ALL photos together. Photo persistence is independent of AI success."""
     from app.core.config import settings
 
     await require_membership(session, current_user.id, family_id)
     plant = await _load_plant(session, family_id, plant_id)
 
-    content = await file.read(settings.max_upload_bytes + 1)
-    if not content:
-        raise AppError(ErrorCode.INVALID_IMAGE, "上传内容为空", status_code=400)
-    if len(content) > settings.max_upload_bytes:
+    if not files:
+        raise AppError(ErrorCode.INVALID_IMAGE, "至少上传一张照片", status_code=400)
+    if len(files) > MAX_LOG_PHOTOS:
         raise AppError(
-            ErrorCode.FILE_TOO_LARGE,
-            f"文件超过上限 {settings.max_upload_bytes // (1024 * 1024)} MB",
-            status_code=413,
+            ErrorCode.VALIDATION_ERROR,
+            f"一次最多 {MAX_LOG_PHOTOS} 张照片",
+            status_code=400,
         )
-    content_type, ext, _w, _h = validate_image(content)
+
+    # Read + validate every file first, so we don't persist a partial set.
+    blobs: list[tuple[bytes, str, str]] = []  # (content, content_type, ext)
+    for f in files:
+        content = await f.read(settings.max_upload_bytes + 1)
+        if not content:
+            raise AppError(ErrorCode.INVALID_IMAGE, "上传内容为空", status_code=400)
+        if len(content) > settings.max_upload_bytes:
+            raise AppError(
+                ErrorCode.FILE_TOO_LARGE,
+                f"文件超过上限 {settings.max_upload_bytes // (1024 * 1024)} MB",
+                status_code=413,
+            )
+        content_type, ext, _w, _h = validate_image(content)
+        blobs.append((content, content_type, ext))
 
     log_id = new_uuid7()
-    storage_key = build_storage_key(family_id, plant_id, log_id, ext)
-    # Persist the blob first; if the DB write fails we delete it so nothing leaks.
-    await storage.put(storage_key, content, content_type)
+    photos: list[dict[str, str]] = []
+    written_keys: list[str] = []
     try:
+        for i, (content, content_type, ext) in enumerate(blobs):
+            key = build_storage_key(family_id, plant_id, log_id, ext, index=i)
+            await storage.put(key, content, content_type)
+            written_keys.append(key)
+            photos.append({"key": key, "content_type": content_type})
+
+        first = photos[0]
         log = PlantLog(
             id=log_id,
             plant_id=plant_id,
             family_id=family_id,
-            photo_storage_key=storage_key,
-            photo_content_type=content_type,
+            photos=photos,
+            # Legacy single-photo fields mirror the first photo (cover/thumb).
+            photo_storage_key=first["key"],
+            photo_content_type=first["content_type"],
             photo_version=1,
             note=(note.strip() if note else None) or None,
             ai_status="pending",
@@ -270,15 +298,17 @@ async def create_log(
         session.add(log)
         # Give the plant a cover from its first photo.
         if not plant.cover_storage_key:
-            plant.cover_storage_key = storage_key
-            plant.cover_content_type = content_type
+            plant.cover_storage_key = first["key"]
+            plant.cover_content_type = first["content_type"]
             plant.cover_version += 1
             session.add(plant)
         await session.commit()
         await session.refresh(log)
     except Exception:
-        with contextlib.suppress(Exception):
-            await storage.delete(storage_key)
+        # Roll back any blobs we wrote so nothing leaks on failure.
+        for key in written_keys:
+            with contextlib.suppress(Exception):
+                await storage.delete(key)
         raise
     # Runs after the response is sent; opens its own DB session.
     background.add_task(analyze_log, log.id)
@@ -298,6 +328,29 @@ async def get_log_photo(
     if not log.photo_storage_key:
         raise AppError(ErrorCode.NOT_FOUND, "照片不存在", status_code=404)
     return await _serve_blob(log.photo_storage_key, log.photo_content_type)
+
+
+@router.get("/plants/{plant_id}/logs/{log_id}/photos/{index}")
+async def get_log_photo_at(
+    family_id: UUID,
+    plant_id: UUID,
+    log_id: UUID,
+    index: int,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> Response:
+    """Serve the i-th photo of a multi-photo care log."""
+    await require_membership(session, current_user.id, family_id)
+    log = await _load_log(session, family_id, plant_id, log_id)
+    photos = log.photos or (
+        [{"key": log.photo_storage_key, "content_type": log.photo_content_type}]
+        if log.photo_storage_key
+        else []
+    )
+    if index < 0 or index >= len(photos):
+        raise AppError(ErrorCode.NOT_FOUND, "照片不存在", status_code=404)
+    spec = photos[index]
+    return await _serve_blob(spec.get("key"), spec.get("content_type"))
 
 
 @router.post(
@@ -423,6 +476,57 @@ async def update_settings(
     await session.commit()
     await session.refresh(row)
     return ok(_settings_read(row))
+
+
+@router.get("/weather", response_model=ApiResponse[PlantWeatherRead])
+async def get_weather_now(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[PlantWeatherRead]:
+    """Current weather at the family's saved location, for the plugin's weather
+    card. Degrades gracefully (available=False + reason) when no location is set,
+    the provider isn't configured, or the lookup fails."""
+    await require_membership(session, current_user.id, family_id)
+    row = await session.get(PlantFamilySettings, family_id)
+    if row is None or row.latitude is None or row.longitude is None:
+        return ok(PlantWeatherRead(available=False, reason="尚未设置位置"))
+
+    base = PlantWeatherRead(
+        location_label=row.location_label,
+        latitude=row.latitude,
+        longitude=row.longitude,
+    )
+    try:
+        snap = await get_weather(row.latitude, row.longitude)
+    except WeatherNotConfiguredError:
+        return ok(base.model_copy(update={"reason": "天气服务未配置"}))
+    except WeatherError:
+        return ok(base.model_copy(update={"reason": "天气暂时获取失败,稍后再试"}))
+
+    return ok(
+        base.model_copy(
+            update={
+                "available": True,
+                "temp_c": snap.temp_c,
+                "feels_like_c": snap.feels_like_c,
+                "condition": snap.condition,
+                "icon": snap.icon,
+                "humidity_pct": snap.humidity_pct,
+                "precip_mm": snap.precip_mm,
+                "pressure_hpa": snap.pressure_hpa,
+                "visibility_km": snap.visibility_km,
+                "cloud_pct": snap.cloud_pct,
+                "dew_point_c": snap.dew_point_c,
+                "wind_dir": snap.wind_dir,
+                "wind_scale": snap.wind_scale,
+                "wind_speed_kmh": snap.wind_speed_kmh,
+                "wind_deg": snap.wind_deg,
+                "uv_index": snap.uv_index,
+                "observed_at": snap.observed_at,
+            }
+        )
+    )
 
 
 # ---- helpers ---------------------------------------------------------------

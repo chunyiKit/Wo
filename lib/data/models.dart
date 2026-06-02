@@ -1359,6 +1359,7 @@ class PlantLog {
     this.aiSuggestedWaterDays,
     this.aiSuggestedFertDays,
     this.photoUrl,
+    this.photoUrls = const [],
   });
 
   final String id;
@@ -1381,8 +1382,11 @@ class PlantLog {
   final int? aiSuggestedWaterDays;
   final int? aiSuggestedFertDays;
 
-  /// 照片相对地址（已含 /api/v1，带 ?v= 缓存键）。
+  /// 首图相对地址（时间线缩略；已含 /api/v1,带 ?v=)。
   final String? photoUrl;
+
+  /// 全部照片的相对地址(详情可逐张展示)。
+  final List<String> photoUrls;
 
   bool get aiPending => aiStatus == 'pending';
   bool get aiFailed => aiStatus == 'failed';
@@ -1400,6 +1404,9 @@ class PlantLog {
         aiSuggestedWaterDays: (j['ai_suggested_water_days'] as num?)?.toInt(),
         aiSuggestedFertDays: (j['ai_suggested_fert_days'] as num?)?.toInt(),
         photoUrl: j['photo_url'] as String?,
+        photoUrls: ((j['photo_urls'] as List?) ?? [])
+            .map((e) => e.toString())
+            .toList(),
       );
 }
 
@@ -1429,5 +1436,80 @@ class PlantFamilySettings {
         placements: ((j['placements'] as List?) ?? [])
             .map((e) => e.toString())
             .toList(),
+      );
+}
+
+/// 植物日记 —— 当前位置天气(和风 weather/now 全字段)。用于主页天气卡片。
+class PlantWeather {
+  const PlantWeather({
+    this.available = false,
+    this.reason,
+    this.locationLabel,
+    this.latitude,
+    this.longitude,
+    this.tempC,
+    this.feelsLikeC,
+    this.condition,
+    this.icon,
+    this.humidityPct,
+    this.precipMm,
+    this.pressureHpa,
+    this.visibilityKm,
+    this.cloudPct,
+    this.dewPointC,
+    this.windDir,
+    this.windScale,
+    this.windSpeedKmh,
+    this.windDeg,
+    this.uvIndex,
+    this.observedAt,
+  });
+
+  /// 为 false 时 [reason] 说明原因(未设位置 / 未配置 / 获取失败),其余字段为空。
+  final bool available;
+  final String? reason;
+  final String? locationLabel;
+  final double? latitude;
+  final double? longitude;
+
+  final double? tempC;
+  final double? feelsLikeC;
+  final String? condition;
+  final String? icon;
+  final int? humidityPct;
+  final double? precipMm;
+  final double? pressureHpa;
+  final double? visibilityKm;
+  final int? cloudPct;
+  final double? dewPointC;
+  final String? windDir;
+  final String? windScale;
+  final double? windSpeedKmh;
+  final double? windDeg;
+  final double? uvIndex;
+  final String? observedAt;
+
+  factory PlantWeather.fromJson(Map<String, dynamic> j) => PlantWeather(
+        available: j['available'] as bool? ?? false,
+        reason: j['reason'] as String?,
+        locationLabel: j['location_label'] as String?,
+        latitude: _parseNumOrNull(j['latitude']),
+        longitude: _parseNumOrNull(j['longitude']),
+        tempC: _parseNumOrNull(j['temp_c']),
+        feelsLikeC: _parseNumOrNull(j['feels_like_c']),
+        condition: j['condition'] as String?,
+        icon: j['icon'] as String?,
+        humidityPct: (j['humidity_pct'] as num?)?.toInt(),
+        precipMm: _parseNumOrNull(j['precip_mm']),
+        pressureHpa: _parseNumOrNull(j['pressure_hpa']),
+        visibilityKm: _parseNumOrNull(j['visibility_km']),
+        cloudPct: (j['cloud_pct'] as num?)?.toInt(),
+        dewPointC: _parseNumOrNull(j['dew_point_c']),
+        windDir: j['wind_dir'] as String?,
+        windScale: j['wind_scale'] as String?,
+        windSpeedKmh: _parseNumOrNull(j['wind_speed_kmh']),
+        windDeg: _parseNumOrNull(j['wind_deg']),
+        uvIndex: _parseNumOrNull(j['uv_index']),
+        observedAt: j['observed_at'] as String?,
       );
 }

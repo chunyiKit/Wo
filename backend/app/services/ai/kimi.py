@@ -138,7 +138,10 @@ class KimiClient:
             ) as http:
                 resp = await http.post(url, json=payload, headers=headers)
         except httpx.HTTPError as exc:
-            raise AiError(f"Kimi 请求失败: {exc}") from exc
+            # str(exc) is often empty for timeouts — include the type so the log
+            # distinguishes a timeout (ReadTimeout) from a connect failure, etc.
+            detail = str(exc) or type(exc).__name__
+            raise AiError(f"Kimi 请求失败: {detail}") from exc
 
         if resp.status_code != 200:
             # Don't echo the request (it carries the prompt); the provider's

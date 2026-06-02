@@ -23,8 +23,34 @@ Future<Uint8List?> pickAndCompressImage({
   );
   if (picked == null) return null;
 
-  final raw = await picked.readAsBytes();
-  final compressed = await FlutterImageCompress.compressWithList(
+  return _compress(await picked.readAsBytes(),
+      maxEdge: maxEdge, quality: quality,);
+}
+
+/// 从相册多选若干张图并各自压缩。用户取消时返回空列表。最多取 [max] 张。
+Future<List<Uint8List>> pickAndCompressMultiImage({
+  int maxEdge = 1280,
+  int quality = 82,
+  int max = 6,
+}) async {
+  final picker = ImagePicker();
+  final picked = await picker.pickMultiImage(maxWidth: 2400, maxHeight: 2400);
+  if (picked.isEmpty) return const [];
+  final limited = picked.take(max);
+  final out = <Uint8List>[];
+  for (final x in limited) {
+    out.add(await _compress(await x.readAsBytes(),
+        maxEdge: maxEdge, quality: quality,),);
+  }
+  return out;
+}
+
+Future<Uint8List> _compress(
+  Uint8List raw, {
+  required int maxEdge,
+  required int quality,
+}) {
+  return FlutterImageCompress.compressWithList(
     raw,
     // minWidth/minHeight 在这里是「最长不超过」的上限（保持纵横比，不放大）。
     minWidth: maxEdge,
@@ -32,5 +58,4 @@ Future<Uint8List?> pickAndCompressImage({
     quality: quality,
     format: CompressFormat.jpeg,
   );
-  return compressed;
 }

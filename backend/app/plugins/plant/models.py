@@ -42,6 +42,9 @@ MAX_INTERVAL_DAYS = 365
 DEFAULT_PLACEMENTS: tuple[str, ...] = ("室内", "南阳台", "朝南窗", "朝北窗", "室外")
 MAX_PLACEMENTS = 30
 
+# 一条养护记录最多几张照片(都会喂给 AI 一起分析)。
+MAX_LOG_PHOTOS = 6
+
 # AI analysis lifecycle for a care log:
 # - pending: analysis scheduled / running in the background
 # - ready:   analysis finished (assessment + advice present)
@@ -160,8 +163,14 @@ class PlantLog(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-    # Photo persisted to blob storage — the durable history record. Saved in the
-    # request, independent of AI success.
+    # Photos persisted to blob storage — the durable history record, saved in the
+    # request, independent of AI success. `photos` holds ALL photos for the log
+    # (each: {"key": str, "content_type": str}); the AI analyzes them together.
+    # The legacy `photo_storage_key`/`_content_type` mirror the FIRST photo (used
+    # for the plant cover, the timeline thumbnail, and the legacy /photo route).
+    photos: list[dict[str, Any]] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     photo_storage_key: str | None = Field(default=None)
     photo_content_type: str | None = Field(default=None)
     photo_version: int = Field(default=0)
@@ -201,8 +210,10 @@ class PlantLogRead(SQLModel):
     ai_advice: dict[str, Any] | None = None
     ai_suggested_water_days: int | None = None
     ai_suggested_fert_days: int | None = None
-    # Host-relative photo URL with `?v=` cache-buster. Injected server-side.
+    # Host-relative URL of the first photo (timeline thumbnail). Injected server-side.
     photo_url: str | None = None
+    # All photos' host-relative URLs (with `?v=` cache-buster). Injected server-side.
+    photo_urls: list[str] = []
 
 
 # ---- Family default environment --------------------------------------------
@@ -248,3 +259,36 @@ class PlantFamilySettingsRead(SQLModel):
     location_label: str | None = None
     # Always a non-empty list — defaults injected when the family hasn't set its own.
     placements: list[str] = []
+
+
+class PlantWeatherRead(SQLModel):
+    """Current weather at the family's location, for the plugin's weather card.
+
+    `available` is False (with a `reason`) when there's no location set, the
+    weather provider isn't configured, or the lookup failed — the client shows
+    the reason instead of empty fields. All weather fields mirror the full set
+    QWeather's `weather/now` returns (+ UV)."""
+
+    available: bool = False
+    reason: str | None = None
+    # Echo of the family's location for display.
+    location_label: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    # Weather fields (see WeatherSnapshot).
+    temp_c: float | None = None
+    feels_like_c: float | None = None
+    condition: str | None = None
+    icon: str | None = None
+    humidity_pct: int | None = None
+    precip_mm: float | None = None
+    pressure_hpa: float | None = None
+    visibility_km: float | None = None
+    cloud_pct: int | None = None
+    dew_point_c: float | None = None
+    wind_dir: str | None = None
+    wind_scale: str | None = None
+    wind_speed_kmh: float | None = None
+    wind_deg: float | None = None
+    uv_index: float | None = None
+    observed_at: str | None = None

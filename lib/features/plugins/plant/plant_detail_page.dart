@@ -9,6 +9,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
+import 'plant_edit_sheet.dart';
 
 /// 植物详情:头部(封面 + 周期设置) + 养护时间线。
 class PlantDetailPage extends StatefulWidget {
@@ -30,8 +31,11 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
 
   Timer? _pollTimer;
   int _pollsLeft = 0;
-  static const _maxPolls = 8;
-  static const _pollInterval = Duration(seconds: 5);
+  // 看图分析(kimi-k2.6 思考+视觉)常要 1 分钟以上,轮询窗口要够长,否则结果
+  // 还没出来轮询就停了、用户得手动刷新。20 × 6s ≈ 2 分钟,覆盖后端 180s 超时内
+  // 的绝大多数情况。
+  static const _maxPolls = 20;
+  static const _pollInterval = Duration(seconds: 6);
 
   @override
   void didChangeDependencies() {
@@ -129,8 +133,16 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
     );
     if (source == null) return;
 
-    final bytes = await pickAndCompressImage(source: source);
-    if (bytes == null) return;
+    // 拍照一次一张;相册可多选(一起喂 AI 分析)。
+    final List<List<int>> photos;
+    if (source == ImageSource.camera) {
+      final one = await pickAndCompressImage(source: ImageSource.camera);
+      photos = one == null ? const [] : [one];
+    } else {
+      photos =
+          (await pickAndCompressMultiImage()).map<List<int>>((e) => e).toList();
+    }
+    if (photos.isEmpty) return;
 
     final note = await _askNote();
     if (!mounted) return;
@@ -143,8 +155,7 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
         await session.api.createPlantLog(
           fid,
           widget.plantId,
-          bytes: bytes,
-          filename: 'plant.jpg',
+          photos: photos,
           note: note,
         );
       }
@@ -184,6 +195,15 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _editPlant(Plant plant) async {
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => PlantEditSheet(existing: plant),
+    );
+    if (changed == true) await _refreshSilently();
   }
 
   Future<void> _editCycle(Plant plant) async {
@@ -235,7 +255,17 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
     final wo = context.wo;
     return Scaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('植物详情')),
+      appBar: AppBar(
+        title: const Text('植物详情'),
+        actions: [
+          if (_data?.plant != null)
+            IconButton(
+              tooltip: '编辑',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => _editPlant(_data!.plant!),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: _data != null
             ? _buildContent(context, _data!)
@@ -503,6 +533,33 @@ class _LogCard extends StatelessWidget {
               ),
             ],
           ),
+          // 多图:首图已作为左侧缩略,这里横向展示其余照片。
+          if (log.photoUrls.length > 1) ...[
+            const SizedBox(height: WoTokens.space2),
+            SizedBox(
+              height: 64,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: log.photoUrls.length - 1,
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: WoTokens.space2),
+                itemBuilder: (_, i) => ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: '${api.baseUrl}${log.photoUrls[i + 1]}',
+                    httpHeaders: api.imageHeaders,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) =>
+                        Container(width: 64, height: 64, color: wo.bgTint),
+                    errorWidget: (_, __, ___) =>
+                        Container(width: 64, height: 64, color: wo.bgTint),
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (advice != null && advice.isNotEmpty) ...[
             const SizedBox(height: WoTokens.space3),
             _AdviceRow(emoji: '💧', label: '浇水', text: advice['watering']),
