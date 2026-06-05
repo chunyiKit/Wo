@@ -29,6 +29,10 @@ extension WoColorTokenX on WoColors {
         return subscribe;
       case 'plant':
         return plant;
+      case 'retire':
+        return retire;
+      case 'expiry':
+        return expiry;
       case 'accent':
       default:
         return accent;

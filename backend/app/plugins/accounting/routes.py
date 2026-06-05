@@ -5,14 +5,17 @@ Every route enforces membership via `require_membership`.
 """
 
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 from sqlmodel import select
 
 from app.api.deps import SessionDep
 from app.core.auth import CurrentUserDep
+from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
+from app.core.images import validate_image
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
 from app.plugins.accounting.models import (
@@ -26,12 +29,14 @@ from app.plugins.accounting.models import (
     TransactionRead,
     TransactionUpdate,
 )
+from app.plugins.accounting.receipt import ReceiptScanResult, scan_receipt
 from app.plugins.accounting.service import (
     build_read,
     get_budget,
     month_bounds,
     month_total,
 )
+from app.services.ai import AiError, AiNotConfiguredError
 from app.services.membership import member_info_map as member_map
 
 router = APIRouter(
@@ -189,3 +194,45 @@ async def read_summary(
     budget = await get_budget(session, family_id)
     remaining = (budget - total) if budget is not None else None
     return ok(SummaryRead(month_total=total, budget=budget, remaining=remaining))
+
+
+@router.post("/receipt-scan", response_model=ApiResponse[ReceiptScanResult])
+async def receipt_scan(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    file: Annotated[UploadFile, File(...)],
+) -> ApiResponse[ReceiptScanResult]:
+    """Read a 小票 / 账单 / 付款截图 into a draft expense via the multimodal model.
+
+    Returns a draft only — nothing is recorded and the photo is not persisted.
+    The client pre-fills the 记一笔 form with the result for the user to confirm.
+    AI not being configured or failing surfaces as a friendly error so the user
+    can just type the amount instead.
+    """
+    await require_membership(session, current_user.id, family_id)
+
+    content = await file.read(settings.max_upload_bytes + 1)
+    if not content:
+        raise AppError(ErrorCode.INVALID_IMAGE, "上传内容为空", status_code=400)
+    if len(content) > settings.max_upload_bytes:
+        raise AppError(
+            ErrorCode.FILE_TOO_LARGE,
+            f"文件超过上限 {settings.max_upload_bytes // (1024 * 1024)} MB",
+            status_code=413,
+        )
+    content_type, _ext, _w, _h = validate_image(content)
+
+    try:
+        draft = await scan_receipt(content, content_type=content_type)
+    except AiNotConfiguredError as exc:
+        raise AppError(
+            ErrorCode.INTERNAL, "小票识别暂未开通，请手动记一笔", status_code=503
+        ) from exc
+    except AiError as exc:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "没认出小票内容，请手动记一笔",
+            status_code=422,
+        ) from exc
+    return ok(draft)

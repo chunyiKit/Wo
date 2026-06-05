@@ -1,7 +1,7 @@
 name: wo
 description: 窝（Wo）— 插件化家庭事务 App
 publish_to: "none"
-version: 0.3.4+19
+version: 0.3.10+25
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -9,6 +9,9 @@ environment:
 
 dependencies:
   flutter:
+    sdk: flutter
+  # Material/Cupertino 组件的中文本地化（日期选择器月份、星期、确定/取消等）。
+  flutter_localizations:
     sdk: flutter
   go_router: ^14.6.0
   http: ^1.2.0

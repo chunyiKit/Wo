@@ -5,10 +5,12 @@ import 'accounting/accounting_page.dart';
 import 'anniversary/anniversary_list_page.dart';
 import 'calendar/calendar_list_page.dart';
 import 'chore/chore_list_page.dart';
+import 'expiry/expiry_page.dart';
 import 'memory/memory_list_page.dart';
 import 'movie/movie_list_page.dart';
 import 'plant/plant_list_page.dart';
 import 'recipe/recipe_list_page.dart';
+import 'retirement/retirement_page.dart';
 import 'stock/stock_page.dart';
 import 'subscription/subscription_page.dart';
 
@@ -30,6 +32,8 @@ const Map<String, PluginPageBuilder> _pluginPages = {
   'calendar': _calendarPage,
   'subscription': _subscriptionPage,
   'plant': _plantPage,
+  'retirement': _retirementPage,
+  'expiry': _expiryPage,
 };
 
 Widget _accountingPage(InstalledPlugin ip) => const AccountingPage();
@@ -42,6 +46,8 @@ Widget _moviePage(InstalledPlugin ip) => const MovieListPage();
 Widget _calendarPage(InstalledPlugin ip) => const CalendarListPage();
 Widget _subscriptionPage(InstalledPlugin ip) => const SubscriptionPage();
 Widget _plantPage(InstalledPlugin ip) => const PlantListPage();
+Widget _retirementPage(InstalledPlugin ip) => const RetirementPage();
+Widget _expiryPage(InstalledPlugin ip) => const ExpiryPage();
 
 /// 返回插件对应的详情页；未注册的插件返回 null（卡片点击无动作）。
 Widget? pluginPageFor(InstalledPlugin ip) =>

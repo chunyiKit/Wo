@@ -203,3 +203,48 @@ async def test_predue_reminder_marks_and_no_advance(client: AsyncClient) -> None
     # Not due yet → date unchanged, but the pre-due reminder is marked sent.
     assert rolled.next_due == due
     assert rolled.last_notified_due == due
+
+
+async def test_due_charge_is_idempotent_per_due_date(client: AsyncClient) -> None:
+    """If a due date was already charged but its date somehow didn't advance
+    (a stuck row, or a duplicate/overlapping pass), the next pass must NOT charge
+    it again. `last_charged_due == next_due` is the idempotency guard."""
+    fid = await _create_family(client)
+    await _install_accounting(fid)
+    today = date.today()
+    sub = await _create_sub(client, fid, amount="30", next_due=today.isoformat())
+
+    # Simulate "already charged this exact due date, but the date is still here".
+    async with async_session_maker() as session:
+        row = await session.get(Subscription, uuid.UUID(sub["id"]))
+        row.last_charged_due = row.next_due
+        session.add(row)
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await check_due_subscriptions(session, today=today)
+
+    # No second charge, and the (stuck) date is left untouched — not advanced
+    # again on top of an already-charged period.
+    assert await _family_txns(fid) == []
+    rolled = await _get_sub(sub["id"])
+    assert rolled.next_due == today
+
+
+async def test_due_then_repoll_charges_once_and_advances(client: AsyncClient) -> None:
+    """Happy path stays exactly-once: a due monthly sub is charged + advanced on
+    the first pass, and a second pass the same day does nothing more."""
+    fid = await _create_family(client)
+    await _install_accounting(fid)
+    today = date.today()
+    sub = await _create_sub(client, fid, amount="12", next_due=today.isoformat())
+
+    async with async_session_maker() as session:
+        await check_due_subscriptions(session, today=today)
+    async with async_session_maker() as session:
+        await check_due_subscriptions(session, today=today)
+
+    assert len(await _family_txns(fid)) == 1
+    rolled = await _get_sub(sub["id"])
+    assert rolled.next_due == advance_due(today, "monthly")
+    assert rolled.last_charged_due == today

@@ -812,6 +812,22 @@ class WoApi {
         body: {'monthly_amount': amount},
       );
 
+  /// 拍小票识别：上传一张小票 / 账单 / 付款截图，返回一笔「草稿」支出供用户确认。
+  /// 后端不落库、不存图。AI 未开通或识别失败会抛 [ApiException]，调用方据此回退到
+  /// 手动记一笔。
+  Future<ReceiptDraft> scanReceipt(
+    String familyId, {
+    required List<int> bytes,
+    String filename = 'receipt.jpg',
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/plugins/accounting/receipt-scan',
+      bytes: bytes,
+      filename: filename,
+    );
+    return ReceiptDraft.fromJson(data as Map<String, dynamic>);
+  }
+
   // ── 回忆插件 ────────────────────────────────────────────────
   /// 时间线列表（按 event_date 倒序，含每条的媒体与留言数）。
   Future<List<Memory>> memories(String familyId) async {
@@ -980,6 +996,45 @@ class WoApi {
   Future<Movie> enrichMovie(String familyId, String id) async {
     final data = await _client
         .post('/families/$familyId/plugins/movie/movies/$id/enrich');
+    return Movie.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 片库：TMDB 电影类型列表（筛选用）。
+  Future<List<MovieGenre>> movieGenres(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/movie/discover/genres') as List;
+    return data
+        .map((e) => MovieGenre.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 片库：按类型 + 排序浏览 TMDB。[genreIds] 为空表示不限类型；
+  /// [sort] ∈ {popular, rating, newest}；[page] 从 1 起。
+  Future<List<DiscoverMovie>> movieDiscover(
+    String familyId, {
+    List<int> genreIds = const [],
+    String sort = 'popular',
+    int page = 1,
+  }) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/movie/discover',
+      query: {
+        if (genreIds.isNotEmpty) 'genres': genreIds.join(','),
+        'sort': sort,
+        'page': page,
+      },
+    ) as List;
+    return data
+        .map((e) => DiscoverMovie.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 片库：按 TMDB id 把一部片加入「想看」，返回 pending 的新条目。
+  Future<Movie> addMovieFromTmdb(String familyId, int tmdbId) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/movie/movies/from_tmdb',
+      body: {'tmdb_id': tmdbId},
+    );
     return Movie.fromJson(data as Map<String, dynamic>);
   }
 
@@ -1186,6 +1241,74 @@ class WoApi {
   Future<void> deleteSubscription(String familyId, String id) => _client
       .delete('/families/$familyId/plugins/subscription/subscriptions/$id');
 
+  // ── 到期管家插件 ────────────────────────────────────────────────────
+
+  Future<List<ExpiryItem>> expiryItems(String familyId, {bool? active}) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/expiry/items',
+      query: active != null ? {'active': active} : null,
+    ) as List;
+    return data
+        .map((e) => ExpiryItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ExpiryItem> createExpiryItem(
+    String familyId, {
+    required String name,
+    required String emoji,
+    required String kind,
+    required DateTime expireOn,
+    String? note,
+    bool notifyEnabled = true,
+    int notifyDaysBefore = 30,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/expiry/items',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        'kind': kind,
+        'expire_on': _formatDate(expireOn),
+        if (note != null && note.isNotEmpty) 'note': note,
+        'notify_enabled': notifyEnabled,
+        'notify_days_before': notifyDaysBefore,
+      },
+    );
+    return ExpiryItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<ExpiryItem> updateExpiryItem(
+    String familyId,
+    String id, {
+    String? name,
+    String? emoji,
+    String? kind,
+    DateTime? expireOn,
+    String? note,
+    bool? notifyEnabled,
+    int? notifyDaysBefore,
+    bool? active,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/expiry/items/$id',
+      body: {
+        if (name != null) 'name': name,
+        if (emoji != null) 'emoji': emoji,
+        if (kind != null) 'kind': kind,
+        if (expireOn != null) 'expire_on': _formatDate(expireOn),
+        'note': (note != null && note.isNotEmpty) ? note : null,
+        if (notifyEnabled != null) 'notify_enabled': notifyEnabled,
+        if (notifyDaysBefore != null) 'notify_days_before': notifyDaysBefore,
+        if (active != null) 'active': active,
+      },
+    );
+    return ExpiryItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteExpiryItem(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/expiry/items/$id');
+
   // ── 植物日记插件 ────────────────────────────────────────────────────
 
   Future<List<Plant>> plants(String familyId) async {
@@ -1281,6 +1404,16 @@ class WoApi {
     return PlantLog.fromJson(data as Map<String, dynamic>);
   }
 
+  /// 删除一条养护记录(连同照片);进行中的 AI 分析会自动失效。
+  Future<void> deletePlantLog(
+    String familyId,
+    String plantId,
+    String logId,
+  ) =>
+      _client.delete(
+        '/families/$familyId/plugins/plant/plants/$plantId/logs/$logId',
+      );
+
   /// 重新触发某条记录的 AI 分析（失败后重试）。
   Future<PlantLog> reanalyzePlantLog(
     String familyId,
@@ -1337,6 +1470,182 @@ class WoApi {
       body: body,
     );
     return PlantFamilySettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ── 退休倒计时插件 ──────────────────────────────────────────────────────
+
+  Future<List<RetireAccount>> retireAccounts(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/retirement/accounts') as List;
+    return data
+        .map((e) => RetireAccount.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<RetireAccount> createRetireAccount(
+    String familyId, {
+    required String name,
+    required String kind,
+    required String emoji,
+    required double balance,
+    double monthlyIncome = 0,
+    int incomeDay = 1,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/retirement/accounts',
+      body: {
+        'name': name,
+        'kind': kind,
+        'emoji': emoji,
+        'balance': balance,
+        'monthly_income': monthlyIncome,
+        'income_day': incomeDay,
+      },
+    );
+    return RetireAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 编辑页一次性提交完整状态，故全量发送。
+  Future<RetireAccount> updateRetireAccount(
+    String familyId,
+    String id, {
+    required String name,
+    required String kind,
+    required String emoji,
+    required double balance,
+    required double monthlyIncome,
+    required int incomeDay,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/retirement/accounts/$id',
+      body: {
+        'name': name,
+        'kind': kind,
+        'emoji': emoji,
+        'balance': balance,
+        'monthly_income': monthlyIncome,
+        'income_day': incomeDay,
+      },
+    );
+    return RetireAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteRetireAccount(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/retirement/accounts/$id');
+
+  Future<List<RetireDebt>> retireDebts(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/retirement/debts') as List;
+    return data
+        .map((e) => RetireDebt.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<RetireDebt> createRetireDebt(
+    String familyId, {
+    required String name,
+    required String kind,
+    required String emoji,
+    required double balance,
+    required double monthlyPayment,
+    int paymentDay = 1,
+    String? fromAccountId,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/retirement/debts',
+      body: {
+        'name': name,
+        'kind': kind,
+        'emoji': emoji,
+        'balance': balance,
+        'monthly_payment': monthlyPayment,
+        'payment_day': paymentDay,
+        if (fromAccountId != null) 'from_account_id': fromAccountId,
+      },
+    );
+    return RetireDebt.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 编辑页一次性提交完整状态；[fromAccountId] 为 null 表示清除关联账户。
+  Future<RetireDebt> updateRetireDebt(
+    String familyId,
+    String id, {
+    required String name,
+    required String kind,
+    required String emoji,
+    required double balance,
+    required double monthlyPayment,
+    required int paymentDay,
+    String? fromAccountId,
+    bool? active,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/retirement/debts/$id',
+      body: {
+        'name': name,
+        'kind': kind,
+        'emoji': emoji,
+        'balance': balance,
+        'monthly_payment': monthlyPayment,
+        'payment_day': paymentDay,
+        'from_account_id': fromAccountId,
+        if (active != null) 'active': active,
+      },
+    );
+    return RetireDebt.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteRetireDebt(String familyId, String id) =>
+      _client.delete('/families/$familyId/plugins/retirement/debts/$id');
+
+  Future<RetirePlan> retirePlan(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/retirement/plan');
+    return RetirePlan.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 仅传需要变更的字段；[clearRetireDate] 为 true 时显式把退休日期清空。
+  Future<RetirePlan> updateRetirePlan(
+    String familyId, {
+    DateTime? retireDate,
+    bool clearRetireDate = false,
+    double? savingsGoal,
+    String? goalBasis,
+    String? surplusBasis,
+  }) async {
+    final body = <String, dynamic>{};
+    if (clearRetireDate) {
+      body['retire_date'] = null;
+    } else if (retireDate != null) {
+      body['retire_date'] = _formatDate(retireDate);
+    }
+    if (savingsGoal != null) body['savings_goal'] = savingsGoal;
+    if (goalBasis != null) body['goal_basis'] = goalBasis;
+    if (surplusBasis != null) body['surplus_basis'] = surplusBasis;
+    final data = await _client.put(
+      '/families/$familyId/plugins/retirement/plan',
+      body: body,
+    );
+    return RetirePlan.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<RetireDashboard> retireDashboard(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/retirement/dashboard');
+    return RetireDashboard.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<List<RetireLedgerEntry>> retireLedger(
+    String familyId, {
+    int limit = 100,
+  }) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/retirement/ledger',
+      query: {'limit': limit},
+    ) as List;
+    return data
+        .map((e) => RetireLedgerEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static String _formatDate(DateTime d) =>

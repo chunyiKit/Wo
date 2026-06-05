@@ -315,6 +315,58 @@ async def create_log(
     return ok(build_log_read(log))
 
 
+@router.delete("/plants/{plant_id}/logs/{log_id}", response_model=ApiResponse[dict])
+async def delete_log(
+    family_id: UUID,
+    plant_id: UUID,
+    log_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[dict]:
+    """Delete a care log: removes the row + its photo blobs. Any in-flight AI
+    analysis becomes a no-op (its background task re-reads the row by id and
+    finds it gone, or its result update hits the deleted row and affects nothing),
+    so deleting also effectively cancels the analysis. If the plant's cover came
+    from this log, it's repointed to the latest remaining log (or cleared)."""
+    await require_membership(session, current_user.id, family_id)
+    log = await _load_log(session, family_id, plant_id, log_id)
+    plant = await _load_plant(session, family_id, plant_id)
+
+    keys = [p["key"] for p in (log.photos or []) if p.get("key")]
+    if log.photo_storage_key and log.photo_storage_key not in keys:
+        keys.append(log.photo_storage_key)
+    cover_from_this = (
+        plant.cover_storage_key is not None and plant.cover_storage_key in keys
+    )
+
+    await session.delete(log)
+    await session.flush()  # so the cover-repoint query excludes the deleted log
+
+    if cover_from_this:
+        # Repoint the plant cover to the newest remaining log's photo, else clear.
+        stmt = (
+            select(PlantLog)
+            .where(
+                PlantLog.plant_id == plant_id,
+                PlantLog.photo_storage_key.is_not(None),
+            )
+            .order_by(PlantLog.created_at.desc())
+        )
+        nxt = (await session.execute(stmt)).scalars().first()
+        plant.cover_storage_key = nxt.photo_storage_key if nxt else None
+        plant.cover_content_type = nxt.photo_content_type if nxt else None
+        plant.cover_version += 1
+        session.add(plant)
+
+    await session.commit()
+
+    # Drop blobs after the DB commit (so a commit failure doesn't orphan the row).
+    for key in keys:
+        with contextlib.suppress(Exception):
+            await storage.delete(key)
+    return ok({"deleted": str(log_id)})
+
+
 @router.get("/plants/{plant_id}/logs/{log_id}/photo")
 async def get_log_photo(
     family_id: UUID,

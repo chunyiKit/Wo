@@ -8,6 +8,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
+import 'movie_discover_page.dart';
 
 /// 看电影插件首页:两个 tab 「想看 / 看过」,右下角 FAB 新增。
 ///
@@ -35,6 +36,14 @@ class _MovieListPageState extends State<MovieListPage> {
     if (created == true) _bumpReload();
   }
 
+  Future<void> _openDiscover() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const MovieDiscoverPage()),
+    );
+    // 片库里可能加入了新片(pending),回来静默刷新两个 tab 并重新轮询补充。
+    if (mounted) _bumpReload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
@@ -44,6 +53,13 @@ class _MovieListPageState extends State<MovieListPage> {
         backgroundColor: wo.bg,
         appBar: AppBar(
           title: const Text('看电影'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.local_movies_outlined),
+              tooltip: '片库',
+              onPressed: _openDiscover,
+            ),
+          ],
           bottom: TabBar(
             indicatorColor: wo.movie,
             tabs: const [
@@ -475,7 +491,7 @@ class _AiInfoBlock extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (movie.doubanRating != null) ...[
+                if (movie.tmdbRating != null) ...[
                   Row(
                     children: [
                       const Icon(
@@ -485,7 +501,7 @@ class _AiInfoBlock extends StatelessWidget {
                       ),
                       const SizedBox(width: 2),
                       Text(
-                        '${movie.doubanRating!.toStringAsFixed(1)} 豆瓣',
+                        '${movie.tmdbRating!.toStringAsFixed(1)} TMDB',
                         style: t.labelMedium?.copyWith(
                           color: wo.fg,
                           fontWeight: FontWeight.w700,
@@ -496,10 +512,10 @@ class _AiInfoBlock extends StatelessWidget {
                   const SizedBox(height: 4),
                 ],
                 if (movie.aiPending)
-                  Text('AI 补充中…', style: t.bodySmall?.copyWith(color: wo.fgMid))
+                  Text('补充中…', style: t.bodySmall?.copyWith(color: wo.fgMid))
                 else if (movie.aiFailed)
                   Text(
-                    'AI 补充失败',
+                    '补充失败',
                     style: t.bodySmall?.copyWith(color: wo.fgMid),
                   )
                 else if (movie.intro != null && movie.intro!.isNotEmpty)
@@ -539,7 +555,7 @@ class _AiLine extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2, color: wo.movie),
           ),
           const SizedBox(width: 6),
-          Text('AI 补充中…', style: t.labelSmall?.copyWith(color: wo.fgMid)),
+          Text('补充中…', style: t.labelSmall?.copyWith(color: wo.fgMid)),
         ],
       );
     }
@@ -565,14 +581,14 @@ class _AiLine extends StatelessWidget {
       );
     }
 
-    if (movie.doubanRating != null) {
+    if (movie.tmdbRating != null) {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.star_rounded, size: 16, color: Color(0xFFE0A800)),
           const SizedBox(width: 2),
           Text(
-            '${movie.doubanRating!.toStringAsFixed(1)} 豆瓣',
+            '${movie.tmdbRating!.toStringAsFixed(1)} TMDB',
             style: t.labelMedium?.copyWith(
               color: wo.fg,
               fontWeight: FontWeight.w700,
@@ -719,7 +735,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
               if (!isEdit) ...[
                 const SizedBox(height: WoTokens.space2),
                 Text(
-                  '只填片名就行,保存后 AI 会自动补上简介、豆瓣评分和海报。',
+                  '只填片名就行,保存后会自动从 TMDB 补上简介、评分和海报。',
                   style: t.labelSmall?.copyWith(color: wo.fgMid),
                 ),
               ],

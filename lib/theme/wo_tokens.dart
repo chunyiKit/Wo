@@ -68,6 +68,12 @@ class WoTokens {
   // 植物日记：柔和的鼠尾草绿,对应草木生机,与家历(青绿)略作区分、更偏暖绿。
   static const plantLight = Color(0xFFC6DCC0);
   static const plantDark = Color(0xFF233022);
+  // 退休倒计时：海松青,呼应海岛度假的松弛感,与记账(暖金)/订阅(靛紫)区分开。
+  static const retireLight = Color(0xFFAFD8CE);
+  static const retireDark = Color(0xFF1E2F2B);
+  // 到期管家：沉稳的灰紫,像证件/档案/印章的庄重感,与订阅(偏蓝靛紫)、看电影(浅薰衣草)区分开。
+  static const expiryLight = Color(0xFFCBC6DA);
+  static const expiryDark = Color(0xFF2A2833);
   static const memoryInkLight = Color(0xFF8B5A3C);
   static const memoryInkDark = Color(0xFFE6B89A);
 
@@ -129,6 +135,8 @@ class WoColors extends ThemeExtension<WoColors> {
     required this.calendar,
     required this.subscribe,
     required this.plant,
+    required this.retire,
+    required this.expiry,
     required this.warning,
     required this.danger,
   });
@@ -157,6 +165,8 @@ class WoColors extends ThemeExtension<WoColors> {
   final Color calendar;
   final Color subscribe;
   final Color plant;
+  final Color retire;
+  final Color expiry;
   final Color warning;
   final Color danger;
 
@@ -183,6 +193,8 @@ class WoColors extends ThemeExtension<WoColors> {
     calendar: WoTokens.calendarLight,
     subscribe: WoTokens.subscribeLight,
     plant: WoTokens.plantLight,
+    retire: WoTokens.retireLight,
+    expiry: WoTokens.expiryLight,
     warning: WoTokens.warningLight,
     danger: WoTokens.dangerLight,
   );
@@ -210,6 +222,8 @@ class WoColors extends ThemeExtension<WoColors> {
     calendar: WoTokens.calendarDark,
     subscribe: WoTokens.subscribeDark,
     plant: WoTokens.plantDark,
+    retire: WoTokens.retireDark,
+    expiry: WoTokens.expiryDark,
     warning: WoTokens.warningDark,
     danger: WoTokens.dangerDark,
   );
@@ -238,6 +252,8 @@ class WoColors extends ThemeExtension<WoColors> {
     Color? calendar,
     Color? subscribe,
     Color? plant,
+    Color? retire,
+    Color? expiry,
     Color? warning,
     Color? danger,
   }) {
@@ -264,6 +280,8 @@ class WoColors extends ThemeExtension<WoColors> {
       calendar: calendar ?? this.calendar,
       subscribe: subscribe ?? this.subscribe,
       plant: plant ?? this.plant,
+      retire: retire ?? this.retire,
+      expiry: expiry ?? this.expiry,
       warning: warning ?? this.warning,
       danger: danger ?? this.danger,
     );
@@ -295,6 +313,8 @@ class WoColors extends ThemeExtension<WoColors> {
       calendar: Color.lerp(calendar, other.calendar, t)!,
       subscribe: Color.lerp(subscribe, other.subscribe, t)!,
       plant: Color.lerp(plant, other.plant, t)!,
+      retire: Color.lerp(retire, other.retire, t)!,
+      expiry: Color.lerp(expiry, other.expiry, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
     );

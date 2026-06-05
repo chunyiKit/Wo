@@ -126,6 +126,22 @@ class Settings(BaseSettings):
     plant_reminder_enabled: bool = False
     plant_reminder_poll_seconds: float = 3600.0
 
+    # ---- Retirement (退休倒计时) automated monthly events ------------------
+    # Background loop that credits each account's fixed monthly income on its
+    # income_day, auto-deducts debt月供 on payment_day, and on month start
+    # settles last month's accounting expenses against deposits. Off by default;
+    # every event is idempotent per month (via retire_ledger), so hourly polling
+    # is fine.
+    retirement_reminder_enabled: bool = False
+    retirement_reminder_poll_seconds: float = 3600.0
+
+    # ---- Expiry (到期管家) due reminders -----------------------------------
+    # Background loop that reminds before an item's expiry date and once after
+    # it goes overdue. Off by default; idempotent per expiry date (the date is
+    # never auto-advanced — the user updates it after renewing).
+    expiry_reminder_enabled: bool = False
+    expiry_reminder_poll_seconds: float = 3600.0
+
     # ---- AI (generic LLM access for plugins) ------------------------------
     # A shared module any server-side plugin can call to get model output
     # (see app.services.ai). Provider-agnostic; `ai_provider` selects the
@@ -167,6 +183,31 @@ class Settings(BaseSettings):
     # surfaces as a 404 from `weather/now`.
     qweather_api_key: str = ""
     qweather_base_url: str = "https://devapi.qweather.com/v7"
+
+    # ---- TMDB (movie metadata for the 看电影 plugin) ---------------------
+    # The movie plugin enriches a saved title with intro / rating / poster from
+    # The Movie Database (themoviedb.org) instead of an LLM's recollection. Auth
+    # accepts EITHER a v4 Read Access Token (Bearer, preferred) OR a v3 API key
+    # (query param) — both are issued together at TMDB signup. Blank both →
+    # enrichment marks the movie "failed" with a clear "not configured" log.
+    tmdb_access_token: str = ""
+    tmdb_api_key: str = ""
+    # api.themoviedb.org / image.tmdb.org are not always reachable from mainland
+    # China; point these at a reverse proxy / mirror if the server can't reach
+    # them directly. `tmdb_base_url` MUST include the `/3` version segment.
+    tmdb_base_url: str = "https://api.themoviedb.org/3"
+    tmdb_image_base_url: str = "https://image.tmdb.org/t/p"
+    # Poster bucket (TMDB sizes: w92/w154/w185/w342/w500/w780/original).
+    tmdb_poster_size: str = "w500"
+    # Smaller bucket for 片库 browse thumbnails — the backend proxies these to
+    # clients (so phones needn't reach image.tmdb.org), so keep the grid light.
+    tmdb_thumb_size: str = "w342"
+    # Metadata language; zh-CN yields Chinese title/overview where TMDB has them.
+    tmdb_language: str = "zh-CN"
+    tmdb_timeout_seconds: float = 15.0
+    # When sorting 片库 (discover) by score, require this many votes so TMDB
+    # doesn't surface obscure 10.0-rated titles with only a handful of ratings.
+    tmdb_discover_min_votes: int = 200
 
 
 settings = Settings()

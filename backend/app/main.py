@@ -23,7 +23,9 @@ from app.core.seed import ensure_plugins, ensure_seed_users
 from app.plugins.accounting.reminders import run_accounting_monthly_loop
 from app.plugins.anniversary.reminders import run_anniversary_reminder_loop
 from app.plugins.calendar.reminders import run_calendar_reminder_loop
+from app.plugins.expiry.reminders import run_expiry_reminder_loop
 from app.plugins.plant.reminders import run_plant_reminder_loop
+from app.plugins.retirement.reminders import run_retirement_loop
 from app.plugins.stock.reminders import run_stock_weekly_loop
 from app.plugins.subscription.reminders import run_subscription_reminder_loop
 from app.services.push_dispatcher import run_push_dispatcher
@@ -52,6 +54,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(run_subscription_reminder_loop(stop)))
     if settings.plant_reminder_enabled:
         tasks.append(asyncio.create_task(run_plant_reminder_loop(stop)))
+    if settings.retirement_reminder_enabled:
+        tasks.append(asyncio.create_task(run_retirement_loop(stop)))
+    if settings.expiry_reminder_enabled:
+        tasks.append(asyncio.create_task(run_expiry_reminder_loop(stop)))
 
     try:
         yield

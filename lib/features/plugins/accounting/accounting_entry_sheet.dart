@@ -8,22 +8,27 @@ import '../../../theme/wo_tokens.dart';
 import 'expense_categories.dart';
 
 /// 记一笔 / 编辑支出的底部表单。保存成功后 `Navigator.pop(true)`。
+///
+/// [draft] 用于「拍小票」识别后预填金额 / 分类 / 备注（仅新增时生效），
+/// 用户仍可在保存前修改。
 Future<bool?> showExpenseEntrySheet(
   BuildContext context, {
   Expense? existing,
+  ReceiptDraft? draft,
 }) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _ExpenseEntrySheet(existing: existing),
+    builder: (_) => _ExpenseEntrySheet(existing: existing, draft: draft),
   );
 }
 
 class _ExpenseEntrySheet extends StatefulWidget {
-  const _ExpenseEntrySheet({this.existing});
+  const _ExpenseEntrySheet({this.existing, this.draft});
 
   final Expense? existing;
+  final ReceiptDraft? draft;
 
   @override
   State<_ExpenseEntrySheet> createState() => _ExpenseEntrySheetState();
@@ -53,9 +58,16 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
   void initState() {
     super.initState();
     final e = widget.existing;
-    _category = e?.category ?? expenseCategories.first.code;
-    _input = e == null ? '' : _trimAmount(e.amount);
-    _note = TextEditingController(text: e?.note ?? '');
+    // 拍小票草稿仅在新增时预填；分类要落在内置标签里才采用，否则回退到默认。
+    final d = e == null ? widget.draft : null;
+    final draftCat = d != null && expenseCategories.any((c) => c.code == d.category)
+        ? d.category
+        : null;
+    _category = e?.category ?? draftCat ?? expenseCategories.first.code;
+    _input = e != null
+        ? _trimAmount(e.amount)
+        : (d?.amount != null ? _trimAmount(d!.amount!) : '');
+    _note = TextEditingController(text: e?.note ?? d?.note ?? '');
     _noteFocus = FocusNode();
     _noteFocus.addListener(_onNoteFocusChange);
   }

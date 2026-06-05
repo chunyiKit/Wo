@@ -152,36 +152,38 @@ async def test_preview_all_watched(client: AsyncClient, _preview_imports) -> Non
     assert preview.secondary == "看过 1 部"
 
 
-# ---- AI enrichment ---------------------------------------------------------
+# ---- TMDB enrichment -------------------------------------------------------
 
-import json  # noqa: E402
+from app.plugins.movie.enrich import enrich_movie  # noqa: E402
+from app.services.tmdb import TmdbError, TmdbGenre, TmdbMovie  # noqa: E402
 
-from app.plugins.movie.ai import enrich_movie  # noqa: E402
-from app.services.ai import AiError, AiResult  # noqa: E402
+_FAKE_MATCH = TmdbMovie(
+    id=27205,
+    title="盗梦空间",
+    original_title="Inception",
+    overview="一段来自 TMDB 的中文剧情简介，用于测试 enrichment 是否把简介正确写入数据库。",
+    poster_path="/inception.jpg",
+    release_date="2010-07-15",
+    vote_average=8.4,
+    vote_count=34000,
+)
 
-_FAKE_JSON = {
-    "intro": "一段一百到一百五十字的中文剧情简介，用于测试 AI 补充流程是否把简介正确写入数据库。",
-    "douban_rating": 9.7,
-    "poster_url": "https://img9.doubanio.com/view/photo/s_ratio_poster/public/p480747492.jpg",
-}
 
-
-def _install_fake_ai(monkeypatch, *, content: str | None = None, raises: bool = False):
-    """Replace the AI call inside movie.ai with a deterministic stub."""
-    async def fake(*, system=None, user="", max_tokens=None):
+def _install_fake_search(monkeypatch, *, match=_FAKE_MATCH, raises: bool = False):
+    """Replace the TMDB search inside movie.enrich with a deterministic stub."""
+    async def fake(query):
         if raises:
-            raise AiError("boom")
-        body = content if content is not None else json.dumps(_FAKE_JSON)
-        return AiResult(content=body, model="kimi-k2.6", finish_reason="stop")
+            raise TmdbError("boom")
+        return match
 
-    monkeypatch.setattr("app.plugins.movie.ai.ai_complete_text", fake)
+    monkeypatch.setattr("app.plugins.movie.enrich.search_movie", fake)
 
 
 def _install_fake_poster(monkeypatch, *, ok: bool = True):
     async def fake(url):
         return (b"\xff\xd8\xff" + b"x" * 3000, "image/jpeg") if ok else None
 
-    monkeypatch.setattr("app.plugins.movie.ai._download_poster", fake)
+    monkeypatch.setattr("app.plugins.movie.enrich._download_poster", fake)
 
 
 async def test_create_sets_pending_status(client: AsyncClient) -> None:
@@ -200,14 +202,14 @@ async def test_enrich_success_fills_fields_and_poster(
         await client.post(MOVIE_BASE.format(fid=fid), json={"title": "肖申克的救赎"})
     ).json()["data"]["id"]
 
-    _install_fake_ai(monkeypatch)
+    _install_fake_search(monkeypatch)
     _install_fake_poster(monkeypatch, ok=True)
     await enrich_movie(uuid.UUID(mid))
 
     got = (await client.get(MOVIE_BASE.format(fid=fid))).json()["data"][0]
     assert got["ai_status"] == "ready"
-    assert got["intro"] == _FAKE_JSON["intro"]
-    assert got["douban_rating"] == 9.7
+    assert got["intro"] == _FAKE_MATCH.overview
+    assert got["tmdb_rating"] == 8.4
     assert got["poster_url"] is not None
     assert "/poster?v=" in got["poster_url"]
 
@@ -218,7 +220,7 @@ async def test_enrich_success_fills_fields_and_poster(
     assert len(poster.content) > 1000
 
 
-async def test_enrich_ai_failure_sets_failed(
+async def test_enrich_tmdb_error_sets_failed(
     client: AsyncClient, monkeypatch
 ) -> None:
     fid = await _create_family(client)
@@ -226,12 +228,29 @@ async def test_enrich_ai_failure_sets_failed(
         await client.post(MOVIE_BASE.format(fid=fid), json={"title": "无名电影"})
     ).json()["data"]["id"]
 
-    _install_fake_ai(monkeypatch, raises=True)
+    _install_fake_search(monkeypatch, raises=True)
     await enrich_movie(uuid.UUID(mid))
 
     got = (await client.get(MOVIE_BASE.format(fid=fid))).json()["data"][0]
     assert got["ai_status"] == "failed"
     assert got["intro"] is None
+
+
+async def test_enrich_no_match_sets_failed(
+    client: AsyncClient, monkeypatch
+) -> None:
+    """A title TMDB doesn't know → failed (the user can fix the title and retry)."""
+    fid = await _create_family(client)
+    mid = (
+        await client.post(MOVIE_BASE.format(fid=fid), json={"title": "完全不存在的片"})
+    ).json()["data"]["id"]
+
+    _install_fake_search(monkeypatch, match=None)
+    await enrich_movie(uuid.UUID(mid))
+
+    got = (await client.get(MOVIE_BASE.format(fid=fid))).json()["data"][0]
+    assert got["ai_status"] == "failed"
+    assert got["tmdb_rating"] is None
 
 
 async def test_enrich_poster_fail_still_ready(
@@ -244,13 +263,13 @@ async def test_enrich_poster_fail_still_ready(
         await client.post(MOVIE_BASE.format(fid=fid), json={"title": "千与千寻"})
     ).json()["data"]["id"]
 
-    _install_fake_ai(monkeypatch)
+    _install_fake_search(monkeypatch)
     _install_fake_poster(monkeypatch, ok=False)
     await enrich_movie(uuid.UUID(mid))
 
     got = (await client.get(MOVIE_BASE.format(fid=fid))).json()["data"][0]
     assert got["ai_status"] == "ready"
-    assert got["intro"] == _FAKE_JSON["intro"]
+    assert got["intro"] == _FAKE_MATCH.overview
     assert got["poster_url"] is None
 
 
@@ -271,3 +290,169 @@ async def test_reenrich_endpoint_resets_pending(client: AsyncClient) -> None:
     resp = await client.post(f"{MOVIE_BASE.format(fid=fid)}/{mid}/enrich")
     assert resp.status_code == 200
     assert resp.json()["data"]["ai_status"] == "pending"
+
+
+# ---- 片库 (TMDB discover) ---------------------------------------------------
+
+DISCOVER_BASE = "/api/v1/families/{fid}/plugins/movie/discover"
+
+
+def _install_fake_get_movie(monkeypatch, *, match=_FAKE_MATCH):
+    """Stub the by-id lookup used by BOTH the from_tmdb route and the background
+    enrich, so adding from 片库 is deterministic end-to-end."""
+    async def fake(tmdb_id):
+        return match
+
+    monkeypatch.setattr("app.plugins.movie.routes.get_movie", fake)
+    monkeypatch.setattr("app.plugins.movie.enrich.get_movie", fake)
+
+
+async def test_discover_genres(client: AsyncClient, monkeypatch) -> None:
+    fid = await _create_family(client)
+
+    async def fake_genres():
+        return [TmdbGenre(id=28, name="动作"), TmdbGenre(id=18, name="剧情")]
+
+    monkeypatch.setattr("app.plugins.movie.routes.get_genres", fake_genres)
+    resp = await client.get(f"{DISCOVER_BASE.format(fid=fid)}/genres")
+    assert resp.status_code == 200
+    assert resp.json()["data"] == [
+        {"id": 28, "name": "动作"},
+        {"id": 18, "name": "剧情"},
+    ]
+
+
+async def test_discover_lists_with_poster_and_added_flag(
+    client: AsyncClient, monkeypatch
+) -> None:
+    fid = await _create_family(client)
+
+    # Add 27205 first so discover flags it as already in the family's list.
+    _install_fake_get_movie(monkeypatch)
+    _install_fake_poster(monkeypatch, ok=True)
+    await client.post(
+        f"{MOVIE_BASE.format(fid=fid)}/from_tmdb", json={"tmdb_id": 27205}
+    )
+
+    async def fake_discover(*, genre_ids, sort, page):
+        return [
+            _FAKE_MATCH,  # id 27205 → already added
+            TmdbMovie(
+                id=99, title="新片", overview="简介", poster_path="/x.jpg",
+                vote_average=7.7,
+            ),
+        ]
+
+    monkeypatch.setattr("app.plugins.movie.routes.discover_movies", fake_discover)
+    resp = await client.get(
+        DISCOVER_BASE.format(fid=fid), params={"genres": "28,18", "sort": "rating"}
+    )
+    assert resp.status_code == 200
+    by_id = {c["tmdb_id"]: c for c in resp.json()["data"]}
+    assert by_id[27205]["already_added"] is True
+    assert by_id[99]["already_added"] is False
+    assert by_id[99]["title"] == "新片"
+    # poster_url now points at the backend thumbnail proxy (path url-encoded).
+    assert "/discover/poster?path=" in by_id[99]["poster_url"]
+    assert "%2Fx.jpg" in by_id[99]["poster_url"]
+
+
+async def test_add_from_tmdb_creates_dedups(
+    client: AsyncClient, monkeypatch
+) -> None:
+    fid = await _create_family(client)
+    _install_fake_get_movie(monkeypatch)
+    _install_fake_poster(monkeypatch, ok=True)
+
+    resp = await client.post(
+        f"{MOVIE_BASE.format(fid=fid)}/from_tmdb", json={"tmdb_id": 27205}
+    )
+    assert resp.status_code == 201
+    data = resp.json()["data"]
+    assert data["title"] == _FAKE_MATCH.title
+    assert data["tmdb_rating"] == 8.4
+    assert data["intro"] == _FAKE_MATCH.overview  # pre-filled from TMDB
+
+    # The background enrich ran during the request → now ready with a poster.
+    got = (await client.get(MOVIE_BASE.format(fid=fid))).json()["data"][0]
+    assert got["ai_status"] == "ready"
+    assert got["poster_url"] is not None
+
+    # Re-adding the same TMDB id is rejected.
+    dup = await client.post(
+        f"{MOVIE_BASE.format(fid=fid)}/from_tmdb", json={"tmdb_id": 27205}
+    )
+    assert dup.status_code == 400
+
+
+async def test_add_from_tmdb_not_found(client: AsyncClient, monkeypatch) -> None:
+    fid = await _create_family(client)
+
+    async def fake(tmdb_id):
+        return None
+
+    monkeypatch.setattr("app.plugins.movie.routes.get_movie", fake)
+    resp = await client.post(
+        f"{MOVIE_BASE.format(fid=fid)}/from_tmdb", json={"tmdb_id": 1}
+    )
+    assert resp.status_code == 404
+
+
+async def test_discover_poster_proxies_bytes(
+    client: AsyncClient, monkeypatch
+) -> None:
+    fid = await _create_family(client)
+
+    async def fake_thumb(path):
+        assert path == "/x.jpg"
+        return (b"\xff\xd8\xff" + b"y" * 2000, "image/jpeg")
+
+    monkeypatch.setattr("app.plugins.movie.routes.fetch_poster_thumb", fake_thumb)
+    resp = await client.get(
+        f"{DISCOVER_BASE.format(fid=fid)}/poster", params={"path": "/x.jpg"}
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/")
+    assert "max-age" in resp.headers.get("cache-control", "")
+    assert len(resp.content) > 1000
+
+
+async def test_discover_poster_rejects_bad_path(
+    client: AsyncClient, monkeypatch
+) -> None:
+    """SSRF-ish / malformed paths are rejected before any fetch happens."""
+    fid = await _create_family(client)
+    calls = {"n": 0}
+
+    async def fake_thumb(path):
+        calls["n"] += 1
+        return None
+
+    monkeypatch.setattr("app.plugins.movie.routes.fetch_poster_thumb", fake_thumb)
+    for bad in [
+        "/../etc/passwd",
+        "http://evil.example/a.jpg",
+        "/a.txt",
+        "/a.jpg/b",
+        "abc.jpg",
+    ]:
+        r = await client.get(
+            f"{DISCOVER_BASE.format(fid=fid)}/poster", params={"path": bad}
+        )
+        assert r.status_code == 400, bad
+    assert calls["n"] == 0
+
+
+async def test_discover_poster_404_when_unavailable(
+    client: AsyncClient, monkeypatch
+) -> None:
+    fid = await _create_family(client)
+
+    async def fake_thumb(path):
+        return None  # image host unreachable / not an image
+
+    monkeypatch.setattr("app.plugins.movie.routes.fetch_poster_thumb", fake_thumb)
+    resp = await client.get(
+        f"{DISCOVER_BASE.format(fid=fid)}/poster", params={"path": "/x.jpg"}
+    )
+    assert resp.status_code == 404

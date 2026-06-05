@@ -82,8 +82,14 @@ async def check_due_subscriptions(
     for sub in rows:
         delta = (sub.next_due - today).days
 
-        # 2) Due today or overdue → charge + roll forward.
+        # 2) Due today or overdue → charge + roll forward, exactly once per due
+        # date. `last_charged_due` is the idempotency key: if we already
+        # processed this exact due date (a duplicate/overlapping pass, or a
+        # prior pass that charged but whose date advance didn't stick), skip so
+        # we never double-record the same charge.
         if delta <= 0:
+            if sub.last_charged_due == sub.next_due:
+                continue
             recorded = False
             if sub.auto_record and await _accounting_installed(session, sub.family_id):
                 await _record_to_accounting(session, sub)

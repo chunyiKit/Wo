@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../data/api_client.dart';
+import '../../../data/image_pick.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
@@ -111,6 +113,62 @@ class _AccountingPageState extends State<AccountingPage> {
 
   Future<void> _addExpense() async {
     final changed = await showExpenseEntrySheet(context);
+    if (changed == true) await _refreshSilently();
+  }
+
+  /// 拍小票：选图 → AI 识别一笔草稿 → 预填「记一笔」表单供确认。识别失败也照常
+  /// 打开空白表单让用户手填，绝不卡住记账。
+  Future<void> _scanReceipt() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('拍小票'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('从相册选'),
+              subtitle: const Text('小票、账单或支付截图都行'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final bytes = await pickAndCompressImage(source: source);
+    if (bytes == null || !mounted) return;
+
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+
+    final nav = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _ScanningDialog(),
+    );
+
+    ReceiptDraft? draft;
+    Object? error;
+    try {
+      draft = await session.api.scanReceipt(familyId, bytes: bytes);
+    } catch (e) {
+      error = e;
+    }
+    if (!mounted) return;
+    nav.pop(); // 关闭识别中弹窗
+    if (error != null) _toast(error);
+
+    // 识别成功就预填草稿；失败则 draft 为空，打开空白表单手填。
+    final changed = await showExpenseEntrySheet(context, draft: draft);
     if (changed == true) await _refreshSilently();
   }
 
@@ -242,7 +300,16 @@ class _AccountingPageState extends State<AccountingPage> {
     final wo = context.wo;
     return Scaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('记账')),
+      appBar: AppBar(
+        title: const Text('记账'),
+        actions: [
+          IconButton(
+            tooltip: '拍小票',
+            icon: const Icon(Icons.document_scanner_outlined),
+            onPressed: _scanReceipt,
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addExpense,
         child: const Icon(Icons.add),
@@ -486,6 +553,29 @@ class _ExpenseTile extends StatelessWidget {
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     if (isToday) return '今天 $hm';
     return '${dt.month}月${dt.day}日 $hm';
+  }
+}
+
+/// 拍小票识别中的阻塞弹窗（单次结果、转圈合理——见 CLAUDE.md 约束的例外）。
+class _ScanningDialog extends StatelessWidget {
+  const _ScanningDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return AlertDialog(
+      content: Row(
+        children: [
+          const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: WoTokens.space4),
+          Text('正在识别小票…', style: t.bodyMedium),
+        ],
+      ),
+    );
   }
 }
 

@@ -560,6 +560,24 @@ class AccountingSummary {
       );
 }
 
+/// 拍小票识别出的一笔「草稿」支出。后端不落库、不存图，仅用于预填「记一笔」
+/// 表单，由用户确认后再正式记账。[amount] 为空表示没认出金额（让用户手填）。
+class ReceiptDraft {
+  const ReceiptDraft({this.amount, required this.category, this.merchant, this.note});
+
+  final double? amount;
+  final String category;
+  final String? merchant;
+  final String? note;
+
+  factory ReceiptDraft.fromJson(Map<String, dynamic> j) => ReceiptDraft(
+        amount: _parseNumOrNull(j['amount']),
+        category: j['category'] as String? ?? 'shopping',
+        merchant: j['merchant'] as String?,
+        note: j['note'] as String?,
+      );
+}
+
 /// 菜谱里的一条食材，如 {name: 番茄, amount: 2个}。
 class RecipeIngredient {
   const RecipeIngredient({required this.name, this.amount = ''});
@@ -1061,7 +1079,7 @@ class Movie {
     this.createdAt,
     this.createdBy,
     this.intro,
-    this.doubanRating,
+    this.tmdbRating,
     this.posterUrl,
     this.aiStatus = 'none',
   });
@@ -1078,8 +1096,8 @@ class Movie {
   /// AI 自动补充的剧情简介（100-150 字），未补充时为空。
   final String? intro;
 
-  /// AI 给出的豆瓣评分（近似值），未知为空。
-  final double? doubanRating;
+  /// TMDB 社区评分（vote_average，0–10），未知为空。
+  final double? tmdbRating;
 
   /// 海报相对地址（已含 /api/v1，带 ?v= 缓存键）；为空表示没有海报。
   final String? posterUrl;
@@ -1100,9 +1118,71 @@ class Movie {
         createdAt: _parseDate(j['created_at']),
         createdBy: j['created_by'] as String?,
         intro: j['intro'] as String?,
-        doubanRating: _parseNumOrNull(j['douban_rating']),
+        tmdbRating: _parseNumOrNull(j['tmdb_rating']),
         posterUrl: j['poster_url'] as String?,
         aiStatus: j['ai_status'] as String? ?? 'none',
+      );
+}
+
+/// 片库筛选用的 TMDB 电影类型（id + 本地化名称）。
+class MovieGenre {
+  const MovieGenre({required this.id, required this.name});
+
+  final int id;
+  final String name;
+
+  factory MovieGenre.fromJson(Map<String, dynamic> j) => MovieGenre(
+        id: (j['id'] as num).toInt(),
+        name: j['name'] as String? ?? '',
+      );
+}
+
+/// 片库（TMDB discover）里的一条结果。还没存进片单，所以用 [tmdbId] 标识。
+///
+/// [posterUrl] 是 TMDB 图床（或配置的反代）的完整地址，浏览网格直接加载；
+/// [alreadyAdded] 表示这部已经在本家庭的片单里，用于显示「已在片单」。
+class DiscoverMovie {
+  const DiscoverMovie({
+    required this.tmdbId,
+    required this.title,
+    this.overview,
+    this.releaseDate,
+    this.rating,
+    this.posterUrl,
+    this.alreadyAdded = false,
+  });
+
+  final int tmdbId;
+  final String title;
+  final String? overview;
+  final String? releaseDate;
+  final double? rating;
+  final String? posterUrl;
+  final bool alreadyAdded;
+
+  /// 上映年份（取 "YYYY-MM-DD" 前 4 位），无则空。
+  String? get year => (releaseDate != null && releaseDate!.length >= 4)
+      ? releaseDate!.substring(0, 4)
+      : null;
+
+  DiscoverMovie copyWith({bool? alreadyAdded}) => DiscoverMovie(
+        tmdbId: tmdbId,
+        title: title,
+        overview: overview,
+        releaseDate: releaseDate,
+        rating: rating,
+        posterUrl: posterUrl,
+        alreadyAdded: alreadyAdded ?? this.alreadyAdded,
+      );
+
+  factory DiscoverMovie.fromJson(Map<String, dynamic> j) => DiscoverMovie(
+        tmdbId: (j['tmdb_id'] as num).toInt(),
+        title: j['title'] as String? ?? '',
+        overview: j['overview'] as String?,
+        releaseDate: j['release_date'] as String?,
+        rating: _parseNumOrNull(j['tmdb_rating']),
+        posterUrl: j['poster_url'] as String?,
+        alreadyAdded: j['already_added'] as bool? ?? false,
       );
 }
 
@@ -1286,6 +1366,66 @@ class Subscription {
         notifyEnabled: j['notify_enabled'] as bool? ?? true,
         notifyDaysBefore: (j['notify_days_before'] as num?)?.toInt() ?? 3,
         autoRecord: j['auto_record'] as bool? ?? true,
+        active: j['active'] as bool? ?? true,
+        daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+      );
+}
+
+/// 到期管家 —— 一项会到期的东西（证件 / 年检 / 保险 / 合同 …）。
+class ExpiryItem {
+  const ExpiryItem({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.emoji,
+    required this.kind,
+    required this.expireOn,
+    this.note,
+    this.notifyEnabled = true,
+    this.notifyDaysBefore = 30,
+    this.active = true,
+    this.daysUntil = 0,
+    this.createdAt,
+    this.createdBy,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+
+  /// 类型代码：id_card / passport / visa / driver_license / vehicle_inspection /
+  /// insurance / contract / membership / household / other。
+  final String kind;
+
+  /// 到期日期。
+  final DateTime expireOn;
+  final String? note;
+  final bool notifyEnabled;
+
+  /// 提前几天提醒（0 = 当天）。
+  final int notifyDaysBefore;
+
+  /// 是否启用；停用的项目不提醒、也不在首页卡片体现。
+  final bool active;
+
+  /// 距 [expireOn] 还有几天（负数=已过期）。
+  final int daysUntil;
+  final DateTime? createdAt;
+  final String? createdBy;
+
+  factory ExpiryItem.fromJson(Map<String, dynamic> j) => ExpiryItem(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '📄',
+        kind: j['kind'] as String? ?? 'other',
+        expireOn: _parseDateOnly(j['expire_on']) ?? DateTime.now(),
+        note: j['note'] as String?,
+        notifyEnabled: j['notify_enabled'] as bool? ?? true,
+        notifyDaysBefore: (j['notify_days_before'] as num?)?.toInt() ?? 30,
         active: j['active'] as bool? ?? true,
         daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
         createdAt: _parseDate(j['created_at']),
@@ -1511,5 +1651,277 @@ class PlantWeather {
         windDeg: _parseNumOrNull(j['wind_deg']),
         uvIndex: _parseNumOrNull(j['uv_index']),
         observedAt: j['observed_at'] as String?,
+      );
+}
+
+/// ── 退休倒计时插件 ──────────────────────────────────────────────────────────
+
+/// 一个家庭资产账户（存款 deposit / 公积金 fund），可带每月固定收入与入账日。
+class RetireAccount {
+  const RetireAccount({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.kind,
+    required this.emoji,
+    required this.balance,
+    this.monthlyIncome = 0,
+    this.incomeDay = 1,
+    this.createdAt,
+    this.createdBy,
+    this.creatorName,
+    this.creatorEmoji,
+    this.creatorAvatarUrl,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+
+  /// deposit（存款）/ fund（公积金）。
+  final String kind;
+  final String emoji;
+  final double balance;
+
+  /// 每月固定收入（0 = 无）；到 [incomeDay] 自动入账。
+  final double monthlyIncome;
+
+  /// 每月入账日（1-28）。
+  final int incomeDay;
+  final DateTime? createdAt;
+  final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final String? creatorAvatarUrl;
+
+  bool get isDeposit => kind == 'deposit';
+  bool get isFund => kind == 'fund';
+
+  factory RetireAccount.fromJson(Map<String, dynamic> j) => RetireAccount(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        kind: j['kind'] as String? ?? 'deposit',
+        emoji: j['emoji'] as String? ?? '🏦',
+        balance: _parseNum(j['balance']),
+        monthlyIncome: _parseNum(j['monthly_income']),
+        incomeDay: (j['income_day'] as num?)?.toInt() ?? 1,
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
+      );
+}
+
+/// 一笔家庭负债（房贷 mortgage / 车贷 car / 其他 other），定时从关联存款账户扣款。
+class RetireDebt {
+  const RetireDebt({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.kind,
+    required this.emoji,
+    required this.balance,
+    required this.monthlyPayment,
+    this.paymentDay = 1,
+    this.fromAccountId,
+    this.active = true,
+    this.createdAt,
+    this.createdBy,
+    this.creatorName,
+    this.creatorEmoji,
+    this.creatorAvatarUrl,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+
+  /// mortgage（房贷）/ car（车贷）/ other（其他）。
+  final String kind;
+  final String emoji;
+
+  /// 剩余欠款；每月 [paymentDay] 按 [monthlyPayment] 递减。
+  final double balance;
+  final double monthlyPayment;
+  final int paymentDay;
+
+  /// 从哪个存款账户扣款（null = 只记负债、不动账户）。
+  final String? fromAccountId;
+  final bool active;
+  final DateTime? createdAt;
+  final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final String? creatorAvatarUrl;
+
+  factory RetireDebt.fromJson(Map<String, dynamic> j) => RetireDebt(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        kind: j['kind'] as String? ?? 'mortgage',
+        emoji: j['emoji'] as String? ?? '🏠',
+        balance: _parseNum(j['balance']),
+        monthlyPayment: _parseNum(j['monthly_payment']),
+        paymentDay: (j['payment_day'] as num?)?.toInt() ?? 1,
+        fromAccountId: j['from_account_id'] as String?,
+        active: j['active'] as bool? ?? true,
+        createdAt: _parseDate(j['created_at']),
+        createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
+      );
+}
+
+/// 退休计划：退休日期、存款目标，以及两个计算口径配置项。
+class RetirePlan {
+  const RetirePlan({
+    this.retireDate,
+    this.savingsGoal,
+    this.goalBasis = 'net_worth',
+    this.surplusBasis = 'income_debt_expense',
+  });
+
+  final DateTime? retireDate;
+  final double? savingsGoal;
+
+  /// 目标进度口径：net_worth / total_assets / deposit_only。
+  final String goalBasis;
+
+  /// 月结余口径：income_debt_expense / income_debt / income_only。
+  final String surplusBasis;
+
+  factory RetirePlan.fromJson(Map<String, dynamic> j) => RetirePlan(
+        retireDate: _parseDateOnly(j['retire_date']),
+        savingsGoal: _parseNumOrNull(j['savings_goal']),
+        goalBasis: j['goal_basis'] as String? ?? 'net_worth',
+        surplusBasis: j['surplus_basis'] as String? ?? 'income_debt_expense',
+      );
+}
+
+/// 退休总览（后端算好的资产/负债汇总 + 需求 6/7 的测算结果）。
+class RetireDashboard {
+  const RetireDashboard({
+    required this.totalDeposit,
+    required this.totalFund,
+    required this.totalAssets,
+    required this.totalDebt,
+    required this.netWorth,
+    required this.current,
+    required this.monthlyIncome,
+    required this.monthlyDebt,
+    required this.monthlyExpense,
+    required this.monthlySurplus,
+    this.retireDate,
+    this.savingsGoal,
+    this.goalBasis = 'net_worth',
+    this.surplusBasis = 'income_debt_expense',
+    this.daysToRetire,
+    this.monthsToRetire,
+    this.goalReached = false,
+    this.remaining,
+    this.monthsToGoal,
+    this.requiredMonthly,
+    this.monthlyGap,
+    this.accountingInstalled = false,
+  });
+
+  final double totalDeposit;
+  final double totalFund;
+  final double totalAssets;
+  final double totalDebt;
+  final double netWorth;
+
+  /// 与目标比较的「现在已有」数（按 goalBasis 取值）。
+  final double current;
+
+  final double monthlyIncome;
+  final double monthlyDebt;
+  final double monthlyExpense;
+  final double monthlySurplus;
+
+  final DateTime? retireDate;
+  final double? savingsGoal;
+  final String goalBasis;
+  final String surplusBasis;
+  final int? daysToRetire;
+  final int? monthsToRetire;
+  final bool goalReached;
+  final double? remaining;
+
+  /// 需求 6：按当前结余还需几个月到目标；null = 当前结余无法达成。
+  final int? monthsToGoal;
+
+  /// 需求 7：要在退休日达标，每月所需净结余。
+  final double? requiredMonthly;
+
+  /// 需求 7：monthlySurplus − requiredMonthly。>0 盈余（+¥ 红）；<0 需提高（−¥ 绿）。
+  final double? monthlyGap;
+  final bool accountingInstalled;
+
+  factory RetireDashboard.fromJson(Map<String, dynamic> j) => RetireDashboard(
+        totalDeposit: _parseNum(j['total_deposit']),
+        totalFund: _parseNum(j['total_fund']),
+        totalAssets: _parseNum(j['total_assets']),
+        totalDebt: _parseNum(j['total_debt']),
+        netWorth: _parseNum(j['net_worth']),
+        current: _parseNum(j['current']),
+        monthlyIncome: _parseNum(j['monthly_income']),
+        monthlyDebt: _parseNum(j['monthly_debt']),
+        monthlyExpense: _parseNum(j['monthly_expense']),
+        monthlySurplus: _parseNum(j['monthly_surplus']),
+        retireDate: _parseDateOnly(j['retire_date']),
+        savingsGoal: _parseNumOrNull(j['savings_goal']),
+        goalBasis: j['goal_basis'] as String? ?? 'net_worth',
+        surplusBasis: j['surplus_basis'] as String? ?? 'income_debt_expense',
+        daysToRetire: (j['days_to_retire'] as num?)?.toInt(),
+        monthsToRetire: (j['months_to_retire'] as num?)?.toInt(),
+        goalReached: j['goal_reached'] as bool? ?? false,
+        remaining: _parseNumOrNull(j['remaining']),
+        monthsToGoal: (j['months_to_goal'] as num?)?.toInt(),
+        requiredMonthly: _parseNumOrNull(j['required_monthly']),
+        monthlyGap: _parseNumOrNull(j['monthly_gap']),
+        accountingInstalled: j['accounting_installed'] as bool? ?? false,
+      );
+}
+
+/// 一条自动事件流水（入账 income / 还款 debt_payment / 月结算 expense_settle）。
+class RetireLedgerEntry {
+  const RetireLedgerEntry({
+    required this.id,
+    required this.kind,
+    required this.amount,
+    required this.period,
+    this.accountId,
+    this.debtId,
+    this.note,
+    this.createdAt,
+  });
+
+  final String id;
+
+  /// income / debt_payment / expense_settle。
+  final String kind;
+  final double amount;
+
+  /// 所属月份 "YYYY-MM"。
+  final String period;
+  final String? accountId;
+  final String? debtId;
+  final String? note;
+  final DateTime? createdAt;
+
+  factory RetireLedgerEntry.fromJson(Map<String, dynamic> j) =>
+      RetireLedgerEntry(
+        id: j['id'] as String,
+        kind: j['kind'] as String? ?? '',
+        amount: _parseNum(j['amount']),
+        period: j['period'] as String? ?? '',
+        accountId: j['account_id'] as String?,
+        debtId: j['debt_id'] as String?,
+        note: j['note'] as String?,
+        createdAt: _parseDate(j['created_at']),
       );
 }

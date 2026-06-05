@@ -7,7 +7,7 @@ the current weather for the plant's location (best-effort), reads the photo back
 from storage, asks the multimodal model for a JSON blob, and writes the result
 onto the log row.
 
-Design notes (mirrors movie.ai):
+Design notes (mirrors movie.enrich):
 - The photo is read back from blob storage and inlined as base64 — the provider
   can't fetch our private COS objects. The stored photo is the durable record;
   the base64 is a throwaway transport for this one call.

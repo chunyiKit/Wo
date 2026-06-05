@@ -13,10 +13,17 @@ WorkingDirectory=/opt/wo-backend
 EnvironmentFile=/etc/wo/db.env
 EnvironmentFile=/etc/wo/app.env
 # uv-managed venv at .venv/, populated by deploy.sh via `uv sync`.
+# IMPORTANT: keep --workers 1. The app starts its background reminder loops
+# (subscription auto-record, expiry / plant / anniversary / retirement reminders …)
+# inside the lifespan of *every* worker process. With >1 worker each loop runs in
+# duplicate → double-charges and duplicate notifications, because the per-row dedup
+# guards race across separate processes. A single async worker handles this family
+# app's concurrency comfortably; before scaling workers back up, move the loops into
+# a separate scheduler process or guard each pass with a cross-process lock.
 ExecStart=/opt/wo-backend/.venv/bin/uvicorn app.main:app \
     --host 127.0.0.1 \
     --port 8000 \
-    --workers 2 \
+    --workers 1 \
     --proxy-headers \
     --forwarded-allow-ips=127.0.0.1
 Restart=always

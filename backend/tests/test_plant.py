@@ -151,6 +151,46 @@ async def test_create_log_with_multiple_photos(client: AsyncClient) -> None:
     assert missing.status_code == 404
 
 
+async def test_delete_log_removes_record_and_repoints_cover(
+    client: AsyncClient,
+) -> None:
+    """Deleting a care log removes it; if it was the cover source, the cover
+    repoints to the remaining log (or clears when none left)."""
+    fid = await _create_family(client)
+    plant = await _create_plant(client, fid)
+    base = f"{BASE.format(fid=fid)}/plants/{plant['id']}"
+
+    # Two logs; the FIRST sets the plant cover.
+    log1 = (
+        await client.post(
+            f"{base}/logs", files={"files": ("a.jpg", _jpeg_bytes(), "image/jpeg")}
+        )
+    ).json()["data"]
+    log2 = (
+        await client.post(
+            f"{base}/logs", files={"files": ("b.jpg", _jpeg_bytes("olive"), "image/jpeg")}
+        )
+    ).json()["data"]
+    assert (await client.get(base)).json()["data"]["cover_url"] is not None
+
+    # Delete the cover-source log → cover repoints to the remaining log, still set.
+    d1 = await client.delete(f"{base}/logs/{log1['id']}")
+    assert d1.status_code == 200
+    logs = (await client.get(f"{base}/logs")).json()["data"]
+    assert [x["id"] for x in logs] == [log2["id"]]
+    assert (await client.get(base)).json()["data"]["cover_url"] is not None
+
+    # Delete the last log → cover clears.
+    d2 = await client.delete(f"{base}/logs/{log2['id']}")
+    assert d2.status_code == 200
+    assert (await client.get(f"{base}/logs")).json()["data"] == []
+    assert (await client.get(base)).json()["data"]["cover_url"] is None
+
+    # Deleting a non-existent log → 404.
+    gone = await client.delete(f"{base}/logs/{log2['id']}")
+    assert gone.status_code == 404
+
+
 async def test_non_image_upload_rejected(client: AsyncClient) -> None:
     fid = await _create_family(client)
     plant = await _create_plant(client, fid)

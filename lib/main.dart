@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/api_config.dart';
 import 'data/push_service.dart';
@@ -82,6 +83,18 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
           theme: WoTheme.light(),
           darkTheme: WoTheme.dark(),
           themeMode: mode,
+          // 全 App 走简体中文：日期选择器月份/星期、确定/取消等系统组件文案
+          // 都用中文（默认会回退到英文）。本 App 仅面向中文用户，直接锁定 zh_CN。
+          locale: const Locale('zh', 'CN'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('en'),
+          ],
           routerConfig: _router,
         ),
       ),

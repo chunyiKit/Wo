@@ -5,7 +5,9 @@ Every route enforces family membership.
 """
 
 import contextlib
+import re
 from datetime import UTC, datetime
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks
@@ -18,14 +20,28 @@ from app.core.errors import AppError, ErrorCode
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
 from app.core.storage import PresignableStorage, storage
-from app.plugins.movie.ai import enrich_movie
+from app.plugins.movie.enrich import enrich_movie
 from app.plugins.movie.models import (
+    MAX_INTRO_LEN,
+    MAX_TITLE_LEN,
+    DiscoverMovieRead,
     Movie,
     MovieCreate,
+    MovieFromTmdb,
+    MovieGenreRead,
     MovieRead,
     MovieUpdate,
 )
 from app.plugins.movie.service import build_read
+from app.services.tmdb import (
+    SORT_KEYS,
+    TmdbError,
+    TmdbNotConfiguredError,
+    discover_movies,
+    fetch_poster_thumb,
+    get_genres,
+    get_movie,
+)
 
 router = APIRouter(
     prefix="/families/{family_id}/plugins/movie",
@@ -76,7 +92,7 @@ async def create_movie(
 ) -> ApiResponse[MovieRead]:
     """Create a movie from a (possibly title-only) entry. Saving returns
     immediately with `ai_status="pending"`; a background task then fills in the
-    intro / Douban rating / poster from the title. The client shows a "补充中"
+    intro / TMDB rating / poster from the title. The client shows a "补充中"
     state and refreshes to pick up the enriched data."""
     await require_membership(session, current_user.id, family_id)
     title = payload.title.strip()
@@ -200,3 +216,183 @@ async def get_movie_poster(
     except FileNotFoundError as exc:
         raise AppError(ErrorCode.INTERNAL, "海报文件丢失", status_code=500) from exc
     return Response(content=data, media_type=row.poster_content_type or "image/jpeg")
+
+
+# ---- 片库 (TMDB discover) ---------------------------------------------------
+
+
+def _tmdb_app_error(exc: TmdbError) -> AppError:
+    """Map a TMDB failure to a clean client-facing error."""
+    if isinstance(exc, TmdbNotConfiguredError):
+        return AppError(ErrorCode.INTERNAL, "影库暂未配置(TMDB)", status_code=503)
+    return AppError(ErrorCode.INTERNAL, "TMDB 暂时不可用,请稍后再试", status_code=502)
+
+
+def _parse_genre_ids(raw: str | None) -> list[int]:
+    """Parse a `?genres=18,36` query into ids, ignoring junk."""
+    if not raw:
+        return []
+    return [int(p) for p in (s.strip() for s in raw.split(",")) if p.isdigit()]
+
+
+# A TMDB poster path looks like `/wftnLZBxBBijNqDr2H6.jpg` — used to build the
+# proxy URL and to validate the incoming `path` (anti-SSRF: no host, no
+# traversal, image extensions only).
+_POSTER_PATH_RE = re.compile(r"^/[\w-]+\.(?:jpg|jpeg|png|webp)$", re.IGNORECASE)
+
+
+def _discover_poster_url(family_id: UUID, poster_path: str | None) -> str | None:
+    """Host-relative URL of the backend thumbnail proxy for a TMDB poster path,
+    so clients load 片库 thumbnails through us (not image.tmdb.org directly)."""
+    if not poster_path:
+        return None
+    return (
+        f"/api/v1/families/{family_id}/plugins/movie/discover/poster"
+        f"?path={quote(poster_path, safe='')}"
+    )
+
+
+@router.get("/discover/genres", response_model=ApiResponse[list[MovieGenreRead]])
+async def list_genres(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[list[MovieGenreRead]]:
+    """The TMDB movie-genre catalogue (localized) for the 片库 filter chips."""
+    await require_membership(session, current_user.id, family_id)
+    try:
+        genres = await get_genres()
+    except TmdbError as exc:
+        raise _tmdb_app_error(exc) from exc
+    return ok([MovieGenreRead(id=g.id, name=g.name) for g in genres])
+
+
+@router.get("/discover", response_model=ApiResponse[list[DiscoverMovieRead]])
+async def discover(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    genres: str | None = None,
+    sort: str = "popular",
+    page: int = 1,
+) -> ApiResponse[list[DiscoverMovieRead]]:
+    """Browse TMDB by genre + sort. `genres` is a comma-separated id list (AND);
+    `sort` is one of popular/rating/newest; `page` is 1-based (TMDB caps at 500).
+    Each result flags whether it's already in this family's list."""
+    await require_membership(session, current_user.id, family_id)
+    sort_key = sort if sort in SORT_KEYS else "popular"
+    page = max(1, min(page, 500))
+    try:
+        results = await discover_movies(
+            genre_ids=_parse_genre_ids(genres), sort=sort_key, page=page
+        )
+    except TmdbError as exc:
+        raise _tmdb_app_error(exc) from exc
+
+    existing = set(
+        (
+            await session.execute(
+                select(Movie.tmdb_id).where(
+                    Movie.family_id == family_id,
+                    Movie.tmdb_id.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return ok(
+        [
+            DiscoverMovieRead(
+                tmdb_id=m.id,
+                title=m.title,
+                overview=m.overview,
+                release_date=m.release_date,
+                tmdb_rating=m.vote_average,
+                poster_url=_discover_poster_url(family_id, m.poster_path),
+                already_added=m.id in existing,
+            )
+            for m in results
+        ]
+    )
+
+
+@router.post(
+    "/movies/from_tmdb", response_model=ApiResponse[MovieRead], status_code=201
+)
+async def add_from_tmdb(
+    family_id: UUID,
+    payload: MovieFromTmdb,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    background: BackgroundTasks,
+) -> ApiResponse[MovieRead]:
+    """Add a 片库 result to the family's 想看 list by its TMDB id. Pre-fills the
+    title / intro / rating from TMDB and schedules the background poster
+    download, returning immediately with `ai_status="pending"`."""
+    await require_membership(session, current_user.id, family_id)
+
+    dup = (
+        (
+            await session.execute(
+                select(Movie).where(
+                    Movie.family_id == family_id,
+                    Movie.tmdb_id == payload.tmdb_id,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if dup is not None:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR, "这部已经在片单里了", status_code=400
+        )
+
+    try:
+        match = await get_movie(payload.tmdb_id)
+    except TmdbError as exc:
+        raise _tmdb_app_error(exc) from exc
+    if match is None:
+        raise AppError(ErrorCode.NOT_FOUND, "未找到该电影", status_code=404)
+
+    row = Movie(
+        title=(match.title or "未命名")[:MAX_TITLE_LEN],
+        family_id=family_id,
+        created_by=current_user.id,
+        tmdb_id=match.id,
+        intro=match.overview[:MAX_INTRO_LEN] if match.overview else None,
+        tmdb_rating=match.vote_average,
+        ai_status="pending",
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    # Background: re-fetch by id + download the poster, then mark ready.
+    background.add_task(enrich_movie, row.id)
+    return ok(build_read(row))
+
+
+@router.get("/discover/poster")
+async def get_discover_poster(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    path: str,
+) -> Response:
+    """Proxy a TMDB browse thumbnail through the backend so family clients don't
+    need to reach image.tmdb.org directly. `path` is a TMDB poster path (e.g.
+    `/abc.jpg`); only well-formed image paths are allowed (anti-SSRF). The bytes
+    are immutable for a path, so they're cached hard."""
+    await require_membership(session, current_user.id, family_id)
+    if not _POSTER_PATH_RE.match(path):
+        raise AppError(ErrorCode.VALIDATION_ERROR, "海报路径不合法", status_code=400)
+    fetched = await fetch_poster_thumb(path)
+    if fetched is None:
+        raise AppError(ErrorCode.NOT_FOUND, "海报不存在", status_code=404)
+    content, content_type = fetched
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=2592000, immutable"},
+    )

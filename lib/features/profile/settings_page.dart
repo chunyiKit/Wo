@@ -40,9 +40,10 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
             const ListTile(title: Text('语言'), trailing: Icon(Icons.chevron_right)),
-            const ListTile(
-              title: Text('清除缓存'),
-              trailing: Icon(Icons.chevron_right),
+            ListTile(
+              title: const Text('清除缓存'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(WoRoutes.clearCache),
             ),
           ],
         ),

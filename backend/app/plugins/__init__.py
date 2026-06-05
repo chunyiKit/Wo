@@ -14,11 +14,13 @@ from app.plugins import (  # noqa: F401
     anniversary,
     calendar,
     chore,
+    expiry,
     memory,
     movie,
     photo,
     plant,
     recipe,
+    retirement,
     stock,
     subscription,
 )

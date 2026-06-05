@@ -240,6 +240,39 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
     }
   }
 
+  Future<void> _deleteLog(PlantLog log) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除这条记录'),
+        content: const Text('会删除这条养护记录和它的照片,正在进行的 AI 分析也会停止。确定吗?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final session = WoScope.of(context);
+    final fid = session.currentFamilyId;
+    if (fid == null) return;
+    try {
+      await session.api.deletePlantLog(fid, widget.plantId, log.id);
+      if (mounted) await _refreshSilently();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('删除失败:$e')));
+      }
+    }
+  }
+
   Future<void> _reanalyze(PlantLog log) async {
     final session = WoScope.of(context);
     final fid = session.currentFamilyId;
@@ -327,6 +360,7 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
               log: log,
               onAdopt: () => _adopt(log),
               onRetry: () => _reanalyze(log),
+              onDelete: () => _deleteLog(log),
             ),
       ],
     );
@@ -429,11 +463,13 @@ class _LogCard extends StatelessWidget {
     required this.log,
     required this.onAdopt,
     required this.onRetry,
+    required this.onDelete,
   });
 
   final PlantLog log;
   final VoidCallback onAdopt;
   final VoidCallback onRetry;
+  final VoidCallback onDelete;
 
   String _dateText() {
     final d = log.createdAt;
@@ -530,6 +566,15 @@ class _LogCard extends StatelessWidget {
                     ],
                   ],
                 ),
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: wo.fgDim),
+                onSelected: (v) {
+                  if (v == 'delete') onDelete();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'delete', child: Text('删除记录')),
+                ],
               ),
             ],
           ),

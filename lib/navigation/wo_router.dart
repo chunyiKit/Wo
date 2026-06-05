@@ -15,6 +15,7 @@ import '../features/messages/messages_page.dart';
 import '../features/onboarding/onboarding_page.dart';
 import '../features/profile/about_page.dart';
 import '../features/profile/appearance_page.dart';
+import '../features/profile/cache_cleanup_page.dart';
 import '../features/profile/change_password_page.dart';
 import '../features/profile/notification_prefs_page.dart';
 import '../features/profile/profile_page.dart';
@@ -144,6 +145,10 @@ GoRouter buildRouter() {
                       GoRoute(
                         path: 'password',
                         builder: (_, __) => const ChangePasswordPage(),
+                      ),
+                      GoRoute(
+                        path: 'cache',
+                        builder: (_, __) => const CacheCleanupPage(),
                       ),
                     ],
                   ),
