@@ -361,6 +361,7 @@ async def add_from_tmdb(
         family_id=family_id,
         created_by=current_user.id,
         tmdb_id=match.id,
+        tmdb_media_type=match.media_type,
         intro=match.overview[:MAX_INTRO_LEN] if match.overview else None,
         tmdb_rating=match.vote_average,
         ai_status="pending",

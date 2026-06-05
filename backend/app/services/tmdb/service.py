@@ -64,6 +64,17 @@ async def search_movie(
     return await client.search_movie(query)
 
 
+async def search_title(
+    query: str,
+    *,
+    client: TmdbClient | None = None,
+) -> TmdbMovie | None:
+    """Search movies AND TV by title (the watch-list holds both), returning the
+    best movie/tv match or None. This is what enrichment uses for a typed title."""
+    client = client or get_tmdb_client()
+    return await client.search_multi(query)
+
+
 async def get_movie(
     tmdb_id: int,
     *,
@@ -71,6 +82,20 @@ async def get_movie(
 ) -> TmdbMovie | None:
     """Look up an exact TMDB movie by id (None when it no longer exists)."""
     client = client or get_tmdb_client()
+    return await client.get_movie(tmdb_id)
+
+
+async def get_by_id(
+    tmdb_id: int,
+    media_type: str = "movie",
+    *,
+    client: TmdbClient | None = None,
+) -> TmdbMovie | None:
+    """Look up an exact title by id, hitting the right endpoint for its kind
+    (/tv/{id} for shows, /movie/{id} otherwise). Used to re-enrich a saved row."""
+    client = client or get_tmdb_client()
+    if media_type == "tv":
+        return await client.get_tv(tmdb_id)
     return await client.get_movie(tmdb_id)
 
 
@@ -115,7 +140,9 @@ __all__ = [
     "get_tmdb_client",
     "clear_tmdb_cache",
     "search_movie",
+    "search_title",
     "get_movie",
+    "get_by_id",
     "get_genres",
     "discover_movies",
     "fetch_poster_thumb",

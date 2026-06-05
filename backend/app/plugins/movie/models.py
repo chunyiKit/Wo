@@ -72,9 +72,12 @@ class Movie(MovieBase, table=True):
     intro: str | None = Field(default=None, max_length=MAX_INTRO_LEN)
     # TMDB's community score (vote_average), 0–10. None when unrated/unknown.
     tmdb_rating: float | None = Field(default=None)
-    # The matched TMDB movie id, kept so a re-enrich / future deep-link can refer
-    # back to the exact entry. None until a match is found.
+    # The matched TMDB id + its media kind ("movie"/"tv"), so a re-enrich hits
+    # the right detail endpoint (/movie/{id} vs /tv/{id}). The watch-list holds
+    # both films and shows — enrichment searches TMDB's combined index. None
+    # until a match is found; tmdb_media_type defaults to movie for older rows.
     tmdb_id: int | None = Field(default=None)
+    tmdb_media_type: str | None = Field(default=None, max_length=8)
     # Poster lives in blob storage (COS/local); we keep only the key + type here
     # and serve bytes via the /poster route. `poster_version` busts client image
     # caches when a re-enrichment overwrites the same key.

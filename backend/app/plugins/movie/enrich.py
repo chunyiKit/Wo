@@ -29,9 +29,9 @@ from app.plugins.movie.models import MAX_INTRO_LEN, Movie
 from app.services.tmdb import (
     TmdbError,
     TmdbMovie,
-    get_movie,
+    get_by_id,
     get_tmdb_client,
-    search_movie,
+    search_title,
 )
 from app.services.tmdb.images import download_tmdb_image
 
@@ -66,6 +66,7 @@ def _apply_match(movie: Movie, match: TmdbMovie) -> None:
         movie.intro = match.overview[:MAX_INTRO_LEN]
     movie.tmdb_rating = match.vote_average
     movie.tmdb_id = match.id
+    movie.tmdb_media_type = match.media_type
 
 
 async def enrich_movie(movie_id: UUID) -> None:
@@ -77,13 +78,16 @@ async def enrich_movie(movie_id: UUID) -> None:
         title = movie.title.strip()
 
         try:
-            # Movies added from 片库 carry the exact TMDB id → look up by id
-            # (accurate, no title ambiguity). Title-typed movies fall back to a
-            # search by name.
+            # Entries with an exact TMDB id (added from 片库, or a prior enrich)
+            # look up by id via the right endpoint for their kind. Title-typed
+            # entries search TMDB's combined movie+TV index so shows/anime match
+            # too, not just films.
             if movie.tmdb_id is not None:
-                match = await get_movie(movie.tmdb_id)
+                match = await get_by_id(
+                    movie.tmdb_id, movie.tmdb_media_type or "movie"
+                )
             else:
-                match = await search_movie(title)
+                match = await search_title(title)
         except TmdbError as exc:
             # Covers TmdbNotConfiguredError too: retrying won't help without a
             # key, but "failed" is the honest signal and keeps the UI consistent.

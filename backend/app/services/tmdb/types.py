@@ -44,6 +44,10 @@ class TmdbMovie:
     release_date: str | None = None
     vote_average: float | None = None
     vote_count: int | None = None
+    # "movie" or "tv". TV results map `name`/`first_air_date` onto the title/date
+    # fields above, so consumers treat both uniformly; this records which detail
+    # endpoint (/movie/{id} vs /tv/{id}) a re-lookup must use.
+    media_type: str = "movie"
 
 
 @dataclass(frozen=True)
@@ -70,7 +74,11 @@ class TmdbProvider(Protocol):
 
     def search_movie(self, query: str) -> Awaitable[TmdbMovie | None]: ...
 
+    def search_multi(self, query: str) -> Awaitable[TmdbMovie | None]: ...
+
     def get_movie(self, tmdb_id: int) -> Awaitable[TmdbMovie | None]: ...
+
+    def get_tv(self, tmdb_id: int) -> Awaitable[TmdbMovie | None]: ...
 
     def genres(self) -> Awaitable[list[TmdbGenre]]: ...
 

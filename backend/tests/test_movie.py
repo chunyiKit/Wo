@@ -170,13 +170,13 @@ _FAKE_MATCH = TmdbMovie(
 
 
 def _install_fake_search(monkeypatch, *, match=_FAKE_MATCH, raises: bool = False):
-    """Replace the TMDB search inside movie.enrich with a deterministic stub."""
+    """Replace the combined movie+TV search inside movie.enrich with a stub."""
     async def fake(query):
         if raises:
             raise TmdbError("boom")
         return match
 
-    monkeypatch.setattr("app.plugins.movie.enrich.search_movie", fake)
+    monkeypatch.setattr("app.plugins.movie.enrich.search_title", fake)
 
 
 def _install_fake_poster(monkeypatch, *, ok: bool = True):
@@ -253,6 +253,39 @@ async def test_enrich_no_match_sets_failed(
     assert got["tmdb_rating"] is None
 
 
+_FAKE_TV_MATCH = TmdbMovie(
+    id=53052,
+    title="来自新世界",
+    original_title="新世界より",
+    overview="一段来自 TMDB 的剧集简介，用于测试电视剧也能被补充。",
+    poster_path="/tv.jpg",
+    release_date="2012-09-29",
+    vote_average=8.3,
+    media_type="tv",
+)
+
+
+async def test_enrich_finds_tv_series_via_multi_search(
+    client: AsyncClient, monkeypatch
+) -> None:
+    """A TV series (e.g.「来自新世界」, no movie match) is found via the combined
+    movie+TV search and enriches normally — the watch-list isn't films-only."""
+    fid = await _create_family(client)
+    mid = (
+        await client.post(MOVIE_BASE.format(fid=fid), json={"title": "来自新世界"})
+    ).json()["data"]["id"]
+
+    _install_fake_search(monkeypatch, match=_FAKE_TV_MATCH)
+    _install_fake_poster(monkeypatch, ok=True)
+    await enrich_movie(uuid.UUID(mid))
+
+    got = (await client.get(MOVIE_BASE.format(fid=fid))).json()["data"][0]
+    assert got["ai_status"] == "ready"
+    assert got["intro"] == _FAKE_TV_MATCH.overview
+    assert got["tmdb_rating"] == 8.3
+    assert got["poster_url"] is not None
+
+
 async def test_enrich_poster_fail_still_ready(
     client: AsyncClient, monkeypatch
 ) -> None:
@@ -298,13 +331,16 @@ DISCOVER_BASE = "/api/v1/families/{fid}/plugins/movie/discover"
 
 
 def _install_fake_get_movie(monkeypatch, *, match=_FAKE_MATCH):
-    """Stub the by-id lookup used by BOTH the from_tmdb route and the background
-    enrich, so adding from 片库 is deterministic end-to-end."""
-    async def fake(tmdb_id):
+    """Stub the by-id lookups used by BOTH the from_tmdb route (get_movie) and the
+    background enrich (get_by_id), so adding from 片库 is deterministic end-to-end."""
+    async def fake_route(tmdb_id):
         return match
 
-    monkeypatch.setattr("app.plugins.movie.routes.get_movie", fake)
-    monkeypatch.setattr("app.plugins.movie.enrich.get_movie", fake)
+    async def fake_enrich(tmdb_id, media_type="movie"):
+        return match
+
+    monkeypatch.setattr("app.plugins.movie.routes.get_movie", fake_route)
+    monkeypatch.setattr("app.plugins.movie.enrich.get_by_id", fake_enrich)
 
 
 async def test_discover_genres(client: AsyncClient, monkeypatch) -> None:

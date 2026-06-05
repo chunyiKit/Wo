@@ -9,6 +9,7 @@ from app.services.tmdb.client import (
     TmdbClient,
     parse_discover,
     parse_genres,
+    parse_multi,
     parse_search,
 )
 
@@ -203,6 +204,75 @@ async def test_genres_call() -> None:
     c = _client(httpx.MockTransport(handler))
     genres = await c.genres()
     assert (genres[0].id, genres[0].name) == (28, "动作")
+
+
+# ---- multi search (movies + TV) --------------------------------------------
+
+_MULTI_BODY = {
+    "results": [
+        {"media_type": "person", "id": 100, "name": "某演员"},  # skipped
+        {
+            "media_type": "tv",
+            "id": 53052,
+            "name": "来自新世界",
+            "original_name": "新世界より",
+            "overview": "理想乡的少年少女……",
+            "poster_path": "/tv.jpg",
+            "first_air_date": "2012-09-29",
+            "vote_average": 8.3,
+            "vote_count": 500,
+        },
+        {"media_type": "movie", "id": 1, "title": "某电影", "release_date": "2020-01-01"},
+    ]
+}
+
+
+def test_parse_multi_skips_person_and_maps_tv_fields() -> None:
+    m = parse_multi(_MULTI_BODY)
+    assert m is not None
+    assert m.media_type == "tv"
+    assert m.id == 53052
+    assert m.title == "来自新世界"  # TV `name` → title
+    assert m.original_title == "新世界より"  # TV `original_name`
+    assert m.release_date == "2012-09-29"  # TV `first_air_date` → release_date
+    assert m.vote_average == pytest.approx(8.3)
+
+
+def test_parse_multi_empty_or_person_only_returns_none() -> None:
+    assert parse_multi({"results": []}) is None
+    assert parse_multi({"results": [{"media_type": "person", "id": 9}]}) is None
+    assert parse_multi({}) is None
+
+
+async def test_search_multi_hits_multi_endpoint() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        return httpx.Response(200, json=_MULTI_BODY)
+
+    c = _client(httpx.MockTransport(handler))
+    m = await c.search_multi("来自新世界")
+    assert seen["path"].endswith("/search/multi")
+    assert m is not None and m.id == 53052 and m.media_type == "tv"
+
+
+async def test_get_tv_by_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/tv/53052")
+        return httpx.Response(
+            200,
+            json={
+                "id": 53052,
+                "name": "来自新世界",
+                "first_air_date": "2012-09-29",
+                "vote_average": 8.3,
+            },
+        )
+
+    c = _client(httpx.MockTransport(handler))
+    m = await c.get_tv(53052)
+    assert m is not None and m.media_type == "tv" and m.title == "来自新世界"
 
 
 # ---- thumbnail download (backend proxy) ------------------------------------

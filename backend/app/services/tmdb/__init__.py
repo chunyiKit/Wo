@@ -26,10 +26,12 @@ from app.services.tmdb.service import (
     clear_tmdb_cache,
     discover_movies,
     fetch_poster_thumb,
+    get_by_id,
     get_genres,
     get_movie,
     get_tmdb_client,
     search_movie,
+    search_title,
 )
 from app.services.tmdb.types import (
     TmdbError,
@@ -41,7 +43,9 @@ from app.services.tmdb.types import (
 
 __all__ = [
     "search_movie",
+    "search_title",
     "get_movie",
+    "get_by_id",
     "get_genres",
     "discover_movies",
     "fetch_poster_thumb",

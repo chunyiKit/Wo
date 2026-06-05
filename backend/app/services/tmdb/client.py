@@ -69,9 +69,9 @@ def _clean(value: Any) -> str | None:
 
 
 def _parse_movie(item: Any) -> TmdbMovie | None:
-    """Shape one TMDB movie object (search result, discover result, or the
-    details payload — they share these fields) into a `TmdbMovie`. None when the
-    object has no usable id."""
+    """Shape one TMDB *movie* object (search result, discover result, or the
+    /movie/{id} details payload — they share these fields) into a `TmdbMovie`.
+    None when the object has no usable id."""
     if not isinstance(item, dict):
         return None
     mid = _to_int(item.get("id"))
@@ -86,7 +86,56 @@ def _parse_movie(item: Any) -> TmdbMovie | None:
         release_date=_clean(item.get("release_date")),
         vote_average=_to_float(item.get("vote_average")),
         vote_count=_to_int(item.get("vote_count")),
+        media_type="movie",
     )
+
+
+def _parse_tv(item: Any) -> TmdbMovie | None:
+    """Shape one TMDB *TV* object into a `TmdbMovie`, mapping TV-specific field
+    names (`name`/`original_name`/`first_air_date`) onto the shared fields so
+    callers treat movies and shows uniformly."""
+    if not isinstance(item, dict):
+        return None
+    mid = _to_int(item.get("id"))
+    if mid is None:
+        return None
+    return TmdbMovie(
+        id=mid,
+        title=_clean(item.get("name")) or _clean(item.get("original_name")) or "",
+        original_title=_clean(item.get("original_name")),
+        overview=_clean(item.get("overview")),
+        poster_path=_clean(item.get("poster_path")),
+        release_date=_clean(item.get("first_air_date")),
+        vote_average=_to_float(item.get("vote_average")),
+        vote_count=_to_int(item.get("vote_count")),
+        media_type="tv",
+    )
+
+
+def _parse_multi_item(item: Any) -> TmdbMovie | None:
+    """Dispatch one `/search/multi` result by its `media_type`. Returns None for
+    persons (and anything unrecognized)."""
+    if not isinstance(item, dict):
+        return None
+    media_type = item.get("media_type")
+    if media_type == "movie":
+        return _parse_movie(item)
+    if media_type == "tv":
+        return _parse_tv(item)
+    return None
+
+
+def parse_multi(body: dict[str, Any]) -> TmdbMovie | None:
+    """Best movie/tv match from a `/search/multi` response — the first result
+    that's a movie or show (persons are skipped). Pure."""
+    results = body.get("results")
+    if not isinstance(results, list):
+        return None
+    for item in results:
+        parsed = _parse_multi_item(item)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def parse_search(body: dict[str, Any]) -> TmdbMovie | None:
@@ -239,6 +288,24 @@ class TmdbClient:
         )
         return parse_search(body or {})
 
+    async def search_multi(self, query: str) -> TmdbMovie | None:
+        """Search movies AND TV together (the 看电影 watch-list holds both), best
+        movie/tv match or None. Persons are ignored."""
+        self._ensure_configured()
+        title = query.strip()
+        if not title:
+            return None
+        body = await self._request(
+            "/search/multi",
+            {
+                "query": title,
+                "language": self.language,
+                "include_adult": "false",
+                "page": "1",
+            },
+        )
+        return parse_multi(body or {})
+
     async def get_movie(self, tmdb_id: int) -> TmdbMovie | None:
         self._ensure_configured()
         body = await self._request(
@@ -247,6 +314,15 @@ class TmdbClient:
             none_on_404=True,
         )
         return None if body is None else _parse_movie(body)
+
+    async def get_tv(self, tmdb_id: int) -> TmdbMovie | None:
+        self._ensure_configured()
+        body = await self._request(
+            f"/tv/{tmdb_id}",
+            {"language": self.language},
+            none_on_404=True,
+        )
+        return None if body is None else _parse_tv(body)
 
     async def genres(self) -> list[TmdbGenre]:
         self._ensure_configured()
@@ -280,6 +356,7 @@ class TmdbClient:
 __all__ = [
     "TmdbClient",
     "parse_search",
+    "parse_multi",
     "parse_discover",
     "parse_genres",
 ]
