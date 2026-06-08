@@ -3,21 +3,20 @@
 Public surface (import from here, not the submodules):
 
     from app.services.ai import (
-        ai_complete, ai_complete_text,   # call the model
+        ai_complete, ai_complete_text,   # call the model (by family + type)
         AiMessage, AiResult, AiUsage,    # data types
         AiError, AiNotConfiguredError,   # failures to catch
-        get_ai_provider,                 # the configured provider, if needed
     )
 
-Currently backed by Kimi (Moonshot); selecting another provider is a config
-change (`ai_provider`), invisible to callers.
+The concrete model + key is resolved per family + capability type from
+app.services.ai_config; callers never reference a vendor or a specific model.
 """
 
+from app.services.ai.client import OpenAICompatibleClient
 from app.services.ai.service import (
     ai_complete,
     ai_complete_text,
     ai_complete_vision,
-    get_ai_provider,
 )
 from app.services.ai.types import (
     AiError,
@@ -35,7 +34,7 @@ __all__ = [
     "ai_complete",
     "ai_complete_text",
     "ai_complete_vision",
-    "get_ai_provider",
+    "OpenAICompatibleClient",
     "AiProvider",
     "AiMessage",
     "AiResult",

@@ -1,51 +1,85 @@
-"""AI module entry point — provider selection + convenience callers.
+"""AI module entry point — resolve a family's model by capability type, then call.
 
-Plugins use this module, not a vendor client directly:
+Plugins use this module, not a vendor client directly. They request a *type*
+(multimodal / text / …) for a family; the family's configured model + key (see
+app.services.ai_config) is loaded and called:
 
-    from app.services.ai import ai_complete, ai_complete_text, AiMessage
+    from app.services.ai import ai_complete_vision
 
-    result = await ai_complete_text(
-        system="你是记账助手，只输出分类名。",
-        user="星巴克拿铁 35 元",
+    result = await ai_complete_vision(
+        session=session, family_id=family_id,
+        system="你是记账助手", user="识别这张小票", image_data=photo,
     )
-    print(result.content)
 
-Swapping providers is a config change (`ai_provider`), not a code change in the
-calling plugin.
+When the family has no model configured for that type, `AiNotConfiguredError` is
+raised with an actionable message pointing at 我的 → 设置 → AI 集成设置.
+
+Tests (and any caller holding a pre-built client) may pass `provider=` to skip
+resolution entirely — then `session`/`family_id` are not needed.
 """
 
 from __future__ import annotations
 
-from app.core.config import Settings, settings
-from app.services.ai.kimi import KimiClient
-from app.services.ai.types import AiError, AiMessage, AiProvider, AiResult
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.services.ai.client import OpenAICompatibleClient
+from app.services.ai.types import (
+    AiMessage,
+    AiNotConfiguredError,
+    AiProvider,
+    AiResult,
+)
 
 
-def get_ai_provider(cfg: Settings | None = None) -> AiProvider:
-    """Build the configured provider. `cfg` is injectable for tests; defaults to
-    the process settings singleton."""
-    cfg = cfg or settings
-    provider = cfg.ai_provider.lower()
-    if provider == "kimi":
-        return KimiClient.from_settings(cfg)
-    raise AiError(f"不支持的 AI provider: {cfg.ai_provider!r}")
+async def _resolve_provider(
+    *,
+    session: AsyncSession | None,
+    family_id: UUID | None,
+    ai_type: str,
+) -> AiProvider:
+    """Build the family's provider for `ai_type`, or raise an actionable error."""
+    # Imported lazily to avoid a config→models import cycle at module load.
+    from app.services.ai_config import TYPE_LABELS, resolve_model
+
+    if session is None or family_id is None:
+        raise AiNotConfiguredError("缺少家庭上下文，无法选择 AI 模型")
+    resolved = await resolve_model(session, family_id, ai_type)
+    if resolved is None:
+        label = TYPE_LABELS.get(ai_type, ai_type)
+        raise AiNotConfiguredError(
+            f"当前家庭未配置「{label}」AI 模型，请到 我的 → 设置 → AI 集成设置 中配置"
+        )
+    return OpenAICompatibleClient(
+        api_key=resolved.api_key,
+        base_url=resolved.base_url,
+        model=resolved.model,
+        timeout_seconds=settings.ai_timeout_seconds,
+    )
 
 
 async def ai_complete(
     messages: list[AiMessage],
     *,
+    session: AsyncSession | None = None,
+    family_id: UUID | None = None,
+    ai_type: str = "text",
     temperature: float | None = None,
     max_tokens: int | None = None,
     provider: AiProvider | None = None,
 ) -> AiResult:
-    """Run a multi-turn completion through the configured provider.
+    """Run a multi-turn completion through the family's model for `ai_type`.
 
-    Pass `provider` to override (e.g. an already-built client); otherwise the
-    one selected by settings is used. `temperature` defaults to None (the
-    provider's own default) — some models reject explicit values. Raises
-    `AiNotConfiguredError` when the provider has no key, `AiError` on failure.
+    Pass `provider` to use an already-built client (skips resolution; no
+    session/family needed). `temperature` defaults to None (the provider's own
+    default). Raises `AiNotConfiguredError` when no model is configured for the
+    type, `AiError` on a provider/transport failure.
     """
-    prov = provider or get_ai_provider()
+    prov = provider or await _resolve_provider(
+        session=session, family_id=family_id, ai_type=ai_type
+    )
     if max_tokens is None and settings.ai_default_max_tokens is not None:
         max_tokens = settings.ai_default_max_tokens
     return await prov.complete(
@@ -57,18 +91,24 @@ async def ai_complete_text(
     *,
     user: str,
     system: str | None = None,
+    session: AsyncSession | None = None,
+    family_id: UUID | None = None,
+    ai_type: str = "text",
     temperature: float | None = None,
     max_tokens: int | None = None,
     provider: AiProvider | None = None,
 ) -> AiResult:
     """Convenience for the common single-prompt case: an optional system
-    instruction plus one user message."""
+    instruction plus one user message. Defaults to the family's `text` model."""
     messages: list[AiMessage] = []
     if system:
         messages.append(AiMessage(role="system", content=system))
     messages.append(AiMessage(role="user", content=user))
     return await ai_complete(
         messages,
+        session=session,
+        family_id=family_id,
+        ai_type=ai_type,
         temperature=temperature,
         max_tokens=max_tokens,
         provider=provider,
@@ -81,13 +121,16 @@ async def ai_complete_vision(
     image_data: bytes,
     content_type: str = "image/jpeg",
     system: str | None = None,
+    session: AsyncSession | None = None,
+    family_id: UUID | None = None,
+    ai_type: str = "multimodal",
     temperature: float | None = None,
     max_tokens: int | None = None,
     provider: AiProvider | None = None,
 ) -> AiResult:
     """Convenience for the common single-photo case: an optional system
     instruction plus one user message carrying a text prompt and one inline
-    image. Requires a vision-capable model (see `config.kimi_model`)."""
+    image. Defaults to the family's `multimodal` model (vision-capable)."""
     messages: list[AiMessage] = []
     if system:
         messages.append(AiMessage(role="system", content=system))
@@ -96,6 +139,9 @@ async def ai_complete_vision(
     )
     return await ai_complete(
         messages,
+        session=session,
+        family_id=family_id,
+        ai_type=ai_type,
         temperature=temperature,
         max_tokens=max_tokens,
         provider=provider,
@@ -103,7 +149,6 @@ async def ai_complete_vision(
 
 
 __all__ = [
-    "get_ai_provider",
     "ai_complete",
     "ai_complete_text",
     "ai_complete_vision",

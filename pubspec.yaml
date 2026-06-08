@@ -1,7 +1,7 @@
 name: wo
 description: 窝（Wo）— 插件化家庭事务 App
 publish_to: "none"
-version: 0.3.14+30
+version: 0.3.15+31
 
 environment:
   sdk: ">=3.6.0 <4.0.0"

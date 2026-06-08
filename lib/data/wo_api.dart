@@ -110,6 +110,47 @@ class WoApi {
     return NotificationPreferences.fromJson(data as Map<String, dynamic>);
   }
 
+  // ── AI 集成设置（按家庭 × 类型）─────────────────────────────
+  /// 读取当前家庭四类 AI 模型配置（key 已脱敏，仅 has_key + 末 4 位）。
+  Future<List<AiModelConfig>> aiModels(String familyId) async {
+    final data = await _client.get('/families/$familyId/ai-models') as List;
+    return data
+        .map((e) => AiModelConfig.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 新建 / 更新某类型的模型配置（仅管理员）。
+  /// [apiKey] 省略或为空表示保留原 key（编辑时无需重填）。
+  Future<AiModelConfig> updateAiModel(
+    String familyId,
+    String aiType, {
+    required String label,
+    required String baseUrl,
+    required String model,
+    String? apiKey,
+    bool enabled = true,
+  }) async {
+    final data = await _client.put(
+      '/families/$familyId/ai-models/$aiType',
+      body: {
+        'label': label,
+        'base_url': baseUrl,
+        'model': model,
+        if (apiKey != null && apiKey.isNotEmpty) 'api_key': apiKey,
+        'enabled': enabled,
+      },
+    );
+    return AiModelConfig.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 删除某类型配置（仅管理员）。
+  Future<void> deleteAiModel(String familyId, String aiType) =>
+      _client.delete('/families/$familyId/ai-models/$aiType');
+
+  /// 连通测试（仅多模态 / 文本）。成功无返回，失败抛 ApiException。
+  Future<void> testAiModel(String familyId, String aiType) =>
+      _client.post('/families/$familyId/ai-models/$aiType/test');
+
   /// 移除头像，回退到 emoji。返回更新后的用户。
   Future<WoUser> deleteMyAvatar() async {
     final data = await _client.delete('/me/avatar');

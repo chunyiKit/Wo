@@ -1959,3 +1959,49 @@ class RetireLedgerEntry {
         createdAt: _parseDate(j['created_at']),
       );
 }
+
+/// 「AI 集成设置」里一个能力类型(多模态/文本/图片生成/视频生成)的配置。
+///
+/// API Key 永不下发明文,只有 [hasKey] + [keyHint](末 4 位)。[callable] 表示后端
+/// 当前是否真的会调用这类(多模态/文本=true;图片/视频生成暂为占位)。
+class AiModelConfig {
+  const AiModelConfig({
+    required this.aiType,
+    required this.typeLabel,
+    required this.callable,
+    required this.configured,
+    this.label,
+    this.baseUrl,
+    this.model,
+    this.hasKey = false,
+    this.keyHint = '',
+    this.enabled = false,
+    this.updatedAt,
+  });
+
+  final String aiType; // multimodal | text | image | video
+  final String typeLabel; // 中文名
+  final bool callable;
+  final bool configured;
+  final String? label;
+  final String? baseUrl;
+  final String? model;
+  final bool hasKey;
+  final String keyHint;
+  final bool enabled;
+  final DateTime? updatedAt;
+
+  factory AiModelConfig.fromJson(Map<String, dynamic> j) => AiModelConfig(
+        aiType: j['ai_type'] as String,
+        typeLabel: j['type_label'] as String? ?? '',
+        callable: j['callable'] as bool? ?? false,
+        configured: j['configured'] as bool? ?? false,
+        label: j['label'] as String?,
+        baseUrl: j['base_url'] as String?,
+        model: j['model'] as String?,
+        hasKey: j['has_key'] as bool? ?? false,
+        keyHint: j['key_hint'] as String? ?? '',
+        enabled: j['enabled'] as bool? ?? false,
+        updatedAt: _parseDate(j['updated_at']),
+      );
+}

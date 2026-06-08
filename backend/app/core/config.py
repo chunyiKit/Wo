@@ -143,24 +143,27 @@ class Settings(BaseSettings):
     expiry_reminder_poll_seconds: float = 3600.0
 
     # ---- AI (generic LLM access for plugins) ------------------------------
-    # A shared module any server-side plugin can call to get model output
-    # (see app.services.ai). Provider-agnostic; `ai_provider` selects the
-    # backend. Each provider no-ops/raises clearly when its key is blank, so
-    # dev/tests run without credentials.
-    ai_provider: str = "kimi"
-    # LLM calls are slow — K2.6 is a *thinking* model, and multimodal (vision)
-    # calls (e.g. the plant plugin analyzing a photo) routinely run past a
-    # minute. Keep a generous ceiling so vision/thinking calls aren't cut off;
-    # text-only calls return well under it anyway.
+    # AI model config is now stored PER FAMILY (see app.services.ai_config and
+    # the family_ai_models table) and configured in-app under
+    # 我的 → 设置 → AI 集成设置. Plugins request a *type* (multimodal / text / …)
+    # and the family's configured model for that type is used.
+    #
+    # `ai_timeout_seconds` / `ai_default_max_tokens` are still global runtime
+    # knobs for every provider call.
     ai_timeout_seconds: float = 180.0
     # Default output cap when a caller doesn't pass one; None = provider default.
     ai_default_max_tokens: int | None = None
-    # Kimi / Moonshot — OpenAI-compatible chat-completions API. `kimi-k2.6` is
-    # the multimodal (vision) model, required so plugins can send images (e.g.
-    # the plant plugin's photo analysis); it also handles text-only calls. Base
-    # URL defaults to the China endpoint (the server runs in-region); switch to
-    # https://api.moonshot.ai/v1 for the international platform. Blank key → the
-    # client raises a clear "not configured" error rather than calling out.
+    # Symmetric key (Fernet) encrypting per-family AI API keys at rest. Generate:
+    #   python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+    # Blank → saving an API key raises a clear "server not configured" error.
+    ai_secret_key: str = ""
+
+    # DEPRECATED static config — kept ONLY as the one-time migration seed: on a
+    # family's first AI use, if it has no multimodal model configured and these
+    # are set, app.services.ai_config seeds a multimodal row from them (encrypted)
+    # so accounting/plant keep working without manual setup. Not read on the hot
+    # path otherwise; remove once all families are migrated.
+    ai_provider: str = "kimi"
     kimi_api_key: str = ""
     kimi_base_url: str = "https://api.moonshot.cn/v1"
     kimi_model: str = "kimi-k2.6"

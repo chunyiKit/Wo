@@ -1,18 +1,20 @@
-"""Kimi (Moonshot) provider — OpenAI-compatible chat-completions client.
+"""OpenAI-compatible chat-completions client.
 
-Mirrors the shape of `app.services.push.JPushClient`: a frozen dataclass built
-`from_settings`, a `configured` guard, and a single httpx call wrapped so any
-transport failure surfaces as the module's domain error (`AiError`).
+Most providers we target (Kimi/Moonshot, DeepSeek, 通义/DashScope-compat, 豆包,
+OpenAI itself) speak the same `/chat/completions` dialect, so one client
+parameterized by `(api_key, base_url, model)` covers them all. It's built per
+call from the requesting family's configured model (see app.services.ai_config),
+not from global settings.
 
-The request/response shaping is split into pure functions (`build_payload`,
-`parse_response`) so they're unit-testable without a network.
+`build_payload` / `parse_response` are pure functions split out for unit testing
+without a network.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 
@@ -23,9 +25,6 @@ from app.services.ai.types import (
     AiResult,
     AiUsage,
 )
-
-if TYPE_CHECKING:
-    from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -90,23 +89,13 @@ def parse_response(body: dict[str, Any], *, fallback_model: str) -> AiResult:
 
 
 @dataclass(frozen=True)
-class KimiClient:
+class OpenAICompatibleClient:
     api_key: str
     base_url: str
     model: str
     timeout_seconds: float
     # Injectable for tests (httpx.MockTransport). None → real network transport.
     transport: httpx.AsyncBaseTransport | None = None
-
-    @classmethod
-    def from_settings(cls, settings: Settings) -> KimiClient:
-        return cls(
-            api_key=settings.kimi_api_key,
-            # Tolerate a trailing slash in the configured base URL.
-            base_url=settings.kimi_base_url.rstrip("/"),
-            model=settings.kimi_model,
-            timeout_seconds=settings.ai_timeout_seconds,
-        )
 
     @property
     def configured(self) -> bool:
@@ -120,7 +109,7 @@ class KimiClient:
         max_tokens: int | None = None,
     ) -> AiResult:
         if not self.configured:
-            raise AiNotConfiguredError("Kimi 未配置 API Key")
+            raise AiNotConfiguredError("AI 模型未配置 API Key")
         if not messages:
             raise AiError("messages 不能为空")
 
@@ -130,7 +119,7 @@ class KimiClient:
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        url = f"{self.base_url}/chat/completions"
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with httpx.AsyncClient(
@@ -141,18 +130,18 @@ class KimiClient:
             # str(exc) is often empty for timeouts — include the type so the log
             # distinguishes a timeout (ReadTimeout) from a connect failure, etc.
             detail = str(exc) or type(exc).__name__
-            raise AiError(f"Kimi 请求失败: {detail}") from exc
+            raise AiError(f"AI 请求失败: {detail}") from exc
 
         if resp.status_code != 200:
             # Don't echo the request (it carries the prompt); the provider's
             # error text is enough to diagnose. Never logs the API key.
-            raise AiError(f"Kimi 返回错误: {resp.status_code} {resp.text}")
+            raise AiError(f"AI 返回错误: {resp.status_code} {resp.text}")
 
         try:
             body = resp.json()
         except ValueError as exc:
-            raise AiError("Kimi 返回非 JSON 内容") from exc
+            raise AiError("AI 返回非 JSON 内容") from exc
         return parse_response(body, fallback_model=self.model)
 
 
-__all__ = ["KimiClient", "build_payload", "parse_response"]
+__all__ = ["OpenAICompatibleClient", "build_payload", "parse_response"]

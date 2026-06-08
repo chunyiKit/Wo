@@ -224,11 +224,12 @@ async def receipt_scan(
     content_type, _ext, _w, _h = validate_image(content)
 
     try:
-        draft = await scan_receipt(content, content_type=content_type)
+        draft = await scan_receipt(
+            session, family_id, content, content_type=content_type
+        )
     except AiNotConfiguredError as exc:
-        raise AppError(
-            ErrorCode.INTERNAL, "小票识别暂未开通，请手动记一笔", status_code=503
-        ) from exc
+        # Surface the actionable message (points the user at AI 集成设置).
+        raise AppError(ErrorCode.INTERNAL, str(exc), status_code=503) from exc
     except AiError as exc:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,

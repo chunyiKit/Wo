@@ -14,6 +14,7 @@ import '../features/marketplace/plugin_detail_page.dart';
 import '../features/messages/messages_page.dart';
 import '../features/onboarding/onboarding_page.dart';
 import '../features/profile/about_page.dart';
+import '../features/profile/ai_integration_page.dart';
 import '../features/profile/appearance_page.dart';
 import '../features/profile/cache_cleanup_page.dart';
 import '../features/profile/change_password_page.dart';
@@ -141,6 +142,10 @@ GoRouter buildRouter() {
                       GoRoute(
                         path: 'notifications',
                         builder: (_, __) => const NotificationPrefsPage(),
+                      ),
+                      GoRoute(
+                        path: 'ai-integration',
+                        builder: (_, __) => const AiIntegrationPage(),
                       ),
                       GoRoute(
                         path: 'password',

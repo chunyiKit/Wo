@@ -30,6 +30,12 @@ class SettingsPage extends StatelessWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push(WoRoutes.notificationPrefs),
             ),
+            ListTile(
+              title: const Text('AI 集成设置'),
+              subtitle: const Text('配置各类型 AI 的模型与密钥'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(WoRoutes.aiIntegration),
+            ),
             ValueListenableBuilder<ThemeMode>(
               valueListenable: session.themeMode,
               builder: (context, mode, _) => ListTile(

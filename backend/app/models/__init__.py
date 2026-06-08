@@ -3,6 +3,7 @@ them with SQLModel.metadata. Alembic's env.py also imports `app.plugins`
 separately to register per-plugin tables.
 """
 
+from app.models.ai_model import FamilyAiModel
 from app.models.auth_session import AuthSession
 from app.models.device_token import DeviceToken
 from app.models.family import Family
@@ -17,6 +18,7 @@ __all__ = [
     "AuthSession",
     "DeviceToken",
     "Family",
+    "FamilyAiModel",
     "InstalledPlugin",
     "Invitation",
     "Membership",

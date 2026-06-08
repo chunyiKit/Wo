@@ -18,6 +18,8 @@ dependencies = [
     "lunardate>=0.2.2",
     "httpx>=0.28.0",
     "cos-python-sdk-v5>=1.9.30",
+    # Symmetric encryption (Fernet) for AI API keys stored per-family at rest.
+    "cryptography>=43.0.0",
 ]
 
 [dependency-groups]

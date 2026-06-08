@@ -188,6 +188,9 @@ async def analyze_log(log_id: UUID) -> None:
                     AiMessage(role="system", content=_SYSTEM_PROMPT),
                     AiMessage(role="user", content=parts),
                 ],
+                session=session,
+                family_id=plant.family_id,
+                ai_type="multimodal",
                 max_tokens=_MAX_TOKENS,
             )
             data = json.loads(_strip_fence(result.content))

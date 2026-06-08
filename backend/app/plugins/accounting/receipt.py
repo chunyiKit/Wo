@@ -20,12 +20,16 @@ from __future__ import annotations
 import json
 import logging
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.plugins.accounting.models import ALLOWED_CATEGORIES
 from app.services.ai import AiError, ai_complete_vision
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -138,13 +142,22 @@ def parse_receipt_json(raw: str) -> ReceiptScanResult:
     )
 
 
-async def scan_receipt(image_data: bytes, *, content_type: str) -> ReceiptScanResult:
-    """Ask the model to read one receipt photo into a draft expense.
+async def scan_receipt(
+    session: AsyncSession,
+    family_id: UUID,
+    image_data: bytes,
+    *,
+    content_type: str,
+) -> ReceiptScanResult:
+    """Ask the family's multimodal model to read one receipt photo into a draft.
 
-    Raises `AiNotConfiguredError` when no provider key is set and `AiError` on a
-    provider/transport failure or an unparseable answer.
+    Raises `AiNotConfiguredError` when the family has no multimodal model set and
+    `AiError` on a provider/transport failure or an unparseable answer.
     """
     result = await ai_complete_vision(
+        session=session,
+        family_id=family_id,
+        ai_type="multimodal",
         system=_SYSTEM_PROMPT,
         user=_build_prompt(),
         image_data=image_data,

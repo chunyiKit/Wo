@@ -1,10 +1,9 @@
 """AI module tests — payload/response pure functions, the not-configured guard,
-provider selection, and an end-to-end call against a mocked transport."""
+and end-to-end calls against a mocked transport (provider override path)."""
 
 import httpx
 import pytest
 
-from app.core.config import Settings
 from app.services.ai import (
     AiError,
     AiMessage,
@@ -13,9 +12,12 @@ from app.services.ai import (
     TextPart,
     ai_complete_text,
     ai_complete_vision,
-    get_ai_provider,
 )
-from app.services.ai.kimi import KimiClient, build_payload, parse_response
+from app.services.ai.client import (
+    OpenAICompatibleClient,
+    build_payload,
+    parse_response,
+)
 
 # ---- pure functions --------------------------------------------------------
 
@@ -106,27 +108,13 @@ def test_parse_response_missing_content_raises() -> None:
         )
 
 
-# ---- provider selection ----------------------------------------------------
-
-
-def test_get_provider_kimi() -> None:
-    cfg = Settings(ai_provider="kimi", kimi_api_key="sk-test")
-    provider = get_ai_provider(cfg)
-    assert isinstance(provider, KimiClient)
-    assert provider.configured is True
-
-
-def test_get_provider_unknown_raises() -> None:
-    cfg = Settings(ai_provider="does-not-exist")
-    with pytest.raises(AiError):
-        get_ai_provider(cfg)
-
-
 # ---- not configured --------------------------------------------------------
 
 
 async def test_complete_unconfigured_raises() -> None:
-    client = KimiClient(api_key="", base_url="https://x/v1", model="m", timeout_seconds=5)
+    client = OpenAICompatibleClient(
+        api_key="", base_url="https://x/v1", model="m", timeout_seconds=5
+    )
     with pytest.raises(AiNotConfiguredError):
         await client.complete([AiMessage(role="user", content="hi")])
 
@@ -155,7 +143,7 @@ async def test_complete_success_via_mock_transport() -> None:
             },
         )
 
-    client = KimiClient(
+    client = OpenAICompatibleClient(
         api_key="sk-secret",
         base_url="https://api.moonshot.cn/v1",
         model="kimi-k2.5",
@@ -172,7 +160,7 @@ async def test_complete_error_status_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": {"message": "bad key"}})
 
-    client = KimiClient(
+    client = OpenAICompatibleClient(
         api_key="sk-bad",
         base_url="https://api.moonshot.cn/v1",
         model="kimi-k2.5",
@@ -195,7 +183,7 @@ async def test_ai_complete_text_threads_system_and_user() -> None:
             json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
         )
 
-    client = KimiClient(
+    client = OpenAICompatibleClient(
         api_key="sk-x",
         base_url="https://x/v1",
         model="m",
@@ -292,7 +280,7 @@ async def test_ai_complete_vision_sends_image_block() -> None:
             json={"choices": [{"message": {"content": "健康"}, "finish_reason": "stop"}]},
         )
 
-    client = KimiClient(
+    client = OpenAICompatibleClient(
         api_key="sk-x",
         base_url="https://x/v1",
         model="kimi-k2.6",
@@ -312,6 +300,8 @@ async def test_ai_complete_vision_sends_image_block() -> None:
 
 
 async def test_complete_vision_unconfigured_raises() -> None:
-    client = KimiClient(api_key="", base_url="https://x/v1", model="m", timeout_seconds=5)
+    client = OpenAICompatibleClient(
+        api_key="", base_url="https://x/v1", model="m", timeout_seconds=5
+    )
     with pytest.raises(AiNotConfiguredError):
         await ai_complete_vision(user="x", image_data=b"ABC", provider=client)
