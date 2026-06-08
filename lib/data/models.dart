@@ -964,6 +964,20 @@ class MemoryMedia {
         durationMs: (j['duration_ms'] as num?)?.toInt(),
         sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
       );
+
+  /// 本地缓存用：键名与 [fromJson] 对称，可直接回灌。
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'memory_id': memoryId,
+        'kind': kind,
+        'url': url,
+        'content_type': contentType,
+        'size_bytes': sizeBytes,
+        'width': width,
+        'height': height,
+        'duration_ms': durationMs,
+        'sort_order': sortOrder,
+      };
 }
 
 /// 另一半在回忆下的一条留言。
@@ -1063,6 +1077,26 @@ class Memory {
             .map((e) => MemoryComment.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
+
+  /// 本地缓存用：键名与 [fromJson] 对称。留言不入缓存（列表不展示，详情页会自己拉），
+  /// 缓存体积更小。
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'family_id': familyId,
+        'title': title,
+        'body': body,
+        'mood': mood,
+        'location': location,
+        'visibility': visibility,
+        'event_date': eventDate.toIso8601String(),
+        'created_by': createdBy,
+        'author_name': authorName,
+        'author_emoji': authorEmoji,
+        'author_avatar_url': authorAvatarUrl,
+        'created_at': createdAt?.toIso8601String(),
+        'media': media.map((m) => m.toJson()).toList(),
+        'comment_count': commentCount,
+      };
 }
 
 // ── 看电影插件 ────────────────────────────────────────────────────────────

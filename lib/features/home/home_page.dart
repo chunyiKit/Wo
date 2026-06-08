@@ -6,12 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
+import '../../data/memory_cache.dart';
 import '../../data/models.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/color_token.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_open_container.dart';
 import '../../widgets/wo_widget_grid.dart';
 import '../plugins/plugin_pages.dart';
 import '../plugins/stock/stock_page.dart';
@@ -181,24 +183,35 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 点击卡片进入对应插件页（仅非编辑态）。
-  ///
-  /// 纪念日：绑定卡 → 直接进入所绑定纪念日的编辑页；总览卡（或绑定项已删）
-  /// → 进入纪念日列表页。
-  Future<void> _openPlugin(InstalledPlugin ip) async {
+  /// 非编辑态的插件卡片：用 [WoOpenContainer] 把「点击进详情」做成卡片放大形变成
+  /// 详情页、返回缩回卡片。没有注册详情页的插件回退成普通卡片（点击无形变）。
+  Widget _buildPluginTile(InstalledPlugin ip) {
+    Widget card(VoidCallback? onTap) => _WidgetCard(
+          installed: ip,
+          editing: false,
+          onTap: onTap,
+          onLongPress: () => setState(() => _editing = true),
+          onRemove: () => _remove(ip),
+        );
+
     final page = pluginPageFor(ip);
-    if (page == null) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => page),
+    if (page == null) return card(null);
+
+    return WoOpenContainer(
+      closedBuilder: (context, open) => card(open),
+      openBuilder: (context) => page,
+      onClosed: (_) => _afterPluginReturn(),
     );
-    if (mounted) {
-      // 进过任何插件回来都顺手刷一下采买计数：囤货铺里勾掉一项 / 菜谱里加新
-      // 食材入采买 / 别的任何会改 stock_buys 的路径都涵盖了。
-      await Future.wait([
-        WoScope.of(context).refresh(),
-        _refreshShoppingSources(),
-      ]);
-    }
+  }
+
+  /// 从任意插件详情页返回后：顺手刷一下 bootstrap 与采买计数（囤货勾项 / 菜谱加食材
+  /// 入采买 / 任何会改 stock_buys 的路径都涵盖）。
+  Future<void> _afterPluginReturn() async {
+    if (!mounted) return;
+    await Future.wait([
+      WoScope.of(context).refresh(),
+      _refreshShoppingSources(),
+    ]);
   }
 
   /// 进 [StockPage] 并直接定位到指定 tab（0 囤货 / 1 采买）。供采买 banner 用。
@@ -339,8 +352,21 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     // initState 里拿不到 InheritedWidget,延迟到第一帧后再去 WoScope 拉数据。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _refreshShoppingSources();
+      if (!mounted) return;
+      _refreshShoppingSources();
+      _prewarmMemory();
     });
+  }
+
+  /// 主页加载后后台预取「回忆」前几条内容 + 封面图，让用户点进回忆时秒开。
+  /// 每次启动每个家庭只做一次（[MemoryCache.prefetch] 内部去重），未装回忆则跳过。
+  void _prewarmMemory() {
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    final installed = session.bootstrap?.installedPlugins ?? const [];
+    if (!installed.any((p) => p.pluginId == 'memory')) return;
+    unawaited(MemoryCache.prefetch(session.api, familyId));
   }
 
   /// 编辑态下给纪念日卡绑定某个纪念日（或切回总览）。
@@ -493,14 +519,7 @@ class _HomePageState extends State<HomePage> {
                                         ? () => _openBindSheet(plugins[i])
                                         : null,
                                   )
-                                : _WidgetCard(
-                                    installed: plugins[i],
-                                    editing: false,
-                                    onTap: () => _openPlugin(plugins[i]),
-                                    onLongPress: () =>
-                                        setState(() => _editing = true),
-                                    onRemove: () => _remove(plugins[i]),
-                                  ),
+                                : _buildPluginTile(plugins[i]),
                           ),
                       ],
                     ),

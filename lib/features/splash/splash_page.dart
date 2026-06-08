@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
+import '../../data/memory_cache.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 
@@ -80,6 +82,15 @@ class _SplashPageState extends State<SplashPage> {
       }
       target =
           session.currentFamily != null ? WoRoutes.home : WoRoutes.joinLanding;
+      // 转圈期间后台预热「回忆」媒体：杀进程重进后内存缓存没了，这里用磁盘已有内容
+      // 把媒体重新拉热（离线可用），并顺带网络刷新，让随后进回忆秒开。不阻塞跳转。
+      unawaited(
+        MemoryCache.warmOnLaunch(
+          session.api,
+          session.currentFamilyId,
+          session.bootstrap?.installedPlugins ?? const [],
+        ),
+      );
     }
 
     // 补足最短停留：bootstrap 再快也要让品牌画面停够 1.5s。

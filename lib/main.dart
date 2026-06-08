@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/api_config.dart';
@@ -12,8 +13,22 @@ import 'data/wo_session.dart';
 import 'navigation/wo_router.dart';
 import 'theme/wo_theme.dart';
 
+/// 申请 Android 高刷新率：Flutter 默认把渲染锁在 60fps，即便屏幕是 90/120Hz，
+/// 动画就会偏卡。这里请求当前分辨率下的最高刷新率；不支持高刷 / 取模式失败都忽略，
+/// 维持系统默认。部分 OEM 在退后台后会重置，故回到前台时还会再申请一次。
+Future<void> _applyHighRefreshRate() async {
+  if (!Platform.isAndroid) return;
+  try {
+    await FlutterDisplayMode.setHighRefreshRate();
+  } catch (_) {
+    // 忽略：维持默认刷新率。
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 尽早申请高刷新率，让首帧起就跑满屏幕刷新率。
+  await _applyHighRefreshRate();
   // 信任内置私有 CA(裸 IP + 自签证书的 HTTPS)。必须在任何网络请求前装好。
   HttpOverrides.global = await WoHttpOverrides.load();
   SystemChrome.setSystemUIOverlayStyle(
@@ -58,9 +73,11 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 从后台回到前台时刷新消息中心：推送多在后台到达，回来要能立刻看到。
-    if (state == AppLifecycleState.resumed && widget.session.isLoggedIn) {
-      widget.session.requestMessagesRefresh();
+    if (state == AppLifecycleState.resumed) {
+      // 部分 OEM 退后台会把刷新率重置回 60Hz，回前台重申请一次。
+      unawaited(_applyHighRefreshRate());
+      // 从后台回到前台时刷新消息中心：推送多在后台到达，回来要能立刻看到。
+      if (widget.session.isLoggedIn) widget.session.requestMessagesRefresh();
     }
   }
 

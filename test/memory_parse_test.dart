@@ -70,5 +70,62 @@ void main() {
       expect(m.comments, isEmpty);
       expect(m.visibility, 'family');
     });
+
+    test('toJson → fromJson 回环保真（本地缓存依赖）', () {
+      final original = Memory.fromJson({
+        'id': 'm1',
+        'family_id': 'f1',
+        'title': '搬家纪念',
+        'body': '新家第一晚。',
+        'mood': '🥹',
+        'location': '新家',
+        'visibility': 'private',
+        'event_date': '2026-05-25',
+        'created_by': 'u1',
+        'author_name': '小柚',
+        'author_emoji': '🌼',
+        'author_avatar_url': '/api/v1/a?v=3',
+        'created_at': '2026-05-25T10:00:00Z',
+        'media': [
+          {
+            'id': 'media1',
+            'memory_id': 'm1',
+            'kind': 'photo',
+            'url': '/api/v1/x/raw',
+            'content_type': 'image/jpeg',
+            'size_bytes': 1234,
+            'width': 100,
+            'height': 80,
+            'sort_order': 0,
+          },
+        ],
+        'comment_count': 2,
+      });
+
+      // 模拟「落盘再读回」：toJson 出来的 Map 应能被 fromJson 无损还原关键字段。
+      final restored = Memory.fromJson(original.toJson());
+
+      expect(restored.id, original.id);
+      expect(restored.familyId, original.familyId);
+      expect(restored.title, original.title);
+      expect(restored.body, original.body);
+      expect(restored.mood, original.mood);
+      expect(restored.location, original.location);
+      expect(restored.visibility, 'private');
+      expect(restored.eventDate, original.eventDate);
+      expect(restored.createdBy, original.createdBy);
+      expect(restored.authorName, original.authorName);
+      expect(restored.authorEmoji, original.authorEmoji);
+      expect(restored.authorAvatarUrl, original.authorAvatarUrl);
+      expect(restored.createdAt, original.createdAt);
+      expect(restored.commentCount, 2);
+      expect(restored.media, hasLength(1));
+      expect(restored.media.first.id, 'media1');
+      expect(restored.media.first.url, '/api/v1/x/raw');
+      expect(restored.media.first.sizeBytes, 1234);
+      expect(restored.media.first.width, 100);
+      // 留言不入缓存（详情页会自己拉），回环后为空是预期行为。
+      expect(restored.comments, isEmpty);
+    });
   });
 }

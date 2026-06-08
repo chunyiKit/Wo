@@ -1,7 +1,7 @@
 name: wo
 description: 窝（Wo）— 插件化家庭事务 App
 publish_to: "none"
-version: 0.3.10+25
+version: 0.3.14+30
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -44,6 +44,15 @@ dependencies:
   add_2_calendar: ^3.0.1
   # 植物日记：读取设备定位，作为家庭默认环境拉取当地天气（安卓优先，iOS 兼容）。
   geolocator: ^13.0.1
+  # ── 视觉升级三件套（与 Material 3 主题共存，不替换组件体系）─────────
+  # 链式声明动画：列表卡片错峰入场（fadeIn + slideY），一行即用、零侵入。
+  flutter_animate: ^4.5.0
+  # 官方 Material 动效：OpenContainer 让卡片点击时形变放大成详情页。
+  animations: ^2.0.11
+  # 骨架屏微光：首屏加载用骨架替代转圈，符合「列表不闪」约束。
+  shimmer: ^3.0.0
+  # 申请 Android 高刷新率：Flutter 默认锁 60fps，即便是 90/120Hz 屏，导致动画偏卡。
+  flutter_displaymode: ^0.6.0
 
 dev_dependencies:
   flutter_test:

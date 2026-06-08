@@ -53,13 +53,25 @@ class RecipeCover extends StatelessWidget {
     final url = api.recipeCoverUrl(recipe);
     if (url == null) return emoji;
 
-    return CachedNetworkImage(
-      imageUrl: url,
-      httpHeaders: api.imageHeaders,
-      fit: BoxFit.cover,
-      // 完整 URL（含 ?v=）即缓存键，无需自定义 cacheKey。
-      placeholder: (_, __) => _EmojiCover(recipe: recipe, size: emojiSize),
-      errorWidget: (_, __, ___) => _EmojiCover(recipe: recipe, size: emojiSize),
+    // 按实际显示尺寸解码（memCacheWidth = 显示宽 × dpr），不把封面原图整张解进内存——
+    // 列表宫格里一张小图也不该吃一张大图的内存，详情 hero 同理。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dpr = MediaQuery.of(context).devicePixelRatio;
+        final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? (constraints.maxWidth * dpr).round()
+            : null;
+        return CachedNetworkImage(
+          imageUrl: url,
+          httpHeaders: api.imageHeaders,
+          fit: BoxFit.cover,
+          memCacheWidth: w,
+          // 完整 URL（含 ?v=）即缓存键，无需自定义 cacheKey。
+          placeholder: (_, __) => _EmojiCover(recipe: recipe, size: emojiSize),
+          errorWidget: (_, __, ___) =>
+              _EmojiCover(recipe: recipe, size: emojiSize),
+        );
+      },
     );
   }
 }

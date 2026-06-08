@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
+import '../../../widgets/wo_network_image.dart';
 
 /// 单个媒体方块：照片走网络图，视频走暖色占位 + 播放角标 + 时长。
 ///
@@ -47,30 +47,15 @@ class MemoryMediaTile extends StatelessWidget {
         ],
       );
     } else {
-      // 关键:按缩略图实际显示尺寸解码(memCacheWidth),而不是把 2400px 原图
-      // 整张解进内存——否则一屏宫格就能撑爆 ImageCache,看完大图返回时缩略图
-      // 被挤掉、全部重新解码,非常卡。memCacheWidth 只影响本控件的内存解码尺寸,
-      // 不动磁盘缓存的原图(大图页仍按屏幕分辨率解码同一份原图,不受影响)。
-      content = LayoutBuilder(
-        builder: (context, constraints) {
-          final dpr = MediaQuery.of(context).devicePixelRatio;
-          final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
-              ? (constraints.maxWidth * dpr).round()
-              : null;
-          return CachedNetworkImage(
-            imageUrl: url,
-            httpHeaders: api.imageHeaders,
-            fit: fit,
-            memCacheWidth: w,
-            placeholder: (_, __) => ColoredBox(color: wo.memory),
-            errorWidget: (_, __, ___) => ColoredBox(
-              color: wo.memory,
-              child: const Center(
-                child: Icon(Icons.broken_image_outlined, color: Colors.white70),
-              ),
-            ),
-          );
-        },
+      // 统一走 WoNetworkImage:按显示尺寸解码（不把 2400px 原图整张解进内存，否则一屏
+      // 宫格就能撑爆 ImageCache）；并 deferUntilRouteSettled——等卡片放大形变转场跑完
+      // 再解码，避免解码/纹理上传跟动画抢光栅线程导致掉帧。
+      content = WoNetworkImage(
+        url: url,
+        headers: api.imageHeaders,
+        fit: fit,
+        placeholderColor: wo.memory,
+        deferUntilRouteSettled: true,
       );
     }
 

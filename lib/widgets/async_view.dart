@@ -19,11 +19,15 @@ class AsyncView<T> extends StatelessWidget {
     required this.future,
     required this.builder,
     this.onRetry,
+    this.loadingBuilder,
   });
 
   final Future<T> future;
   final Widget Function(BuildContext context, T data) builder;
   final VoidCallback? onRetry;
+
+  /// 首屏加载占位。默认转圈；传入可换成骨架屏等更高级的占位。
+  final WidgetBuilder? loadingBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +35,8 @@ class AsyncView<T> extends StatelessWidget {
       future: future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return loadingBuilder?.call(context) ??
+              const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
           return _ErrorState(error: snap.error!, onRetry: onRetry);

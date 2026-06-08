@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -9,6 +8,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
+import '../../../widgets/wo_network_image.dart';
 import 'plant_edit_sheet.dart';
 
 /// 植物详情:头部(封面 + 周期设置) + 养护时间线。
@@ -408,12 +408,13 @@ class _Header extends StatelessWidget {
           AspectRatio(
             aspectRatio: 16 / 9,
             child: plant.coverUrl != null && plant.coverUrl!.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: '${api.baseUrl}${plant.coverUrl!}',
-                    httpHeaders: api.imageHeaders,
+                ? WoNetworkImage(
+                    url: '${api.baseUrl}${plant.coverUrl!}',
+                    headers: api.imageHeaders,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(color: wo.plant),
-                    errorWidget: (_, __, ___) => Container(color: wo.plant),
+                    placeholderColor: wo.plant,
+                    // 详情大图:等卡片形变转场跑完再解码,避免和动画抢线程掉帧。
+                    deferUntilRouteSettled: true,
                   )
                 : Container(
                     color: wo.plant,
@@ -502,19 +503,19 @@ class _LogCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: log.photoUrl != null && log.photoUrl!.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: '${api.baseUrl}${log.photoUrl!}',
-                        httpHeaders: api.imageHeaders,
-                        width: 72,
-                        height: 72,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) =>
-                            Container(width: 72, height: 72, color: wo.bgTint),
-                        errorWidget: (_, __, ___) =>
-                            Container(width: 72, height: 72, color: wo.bgTint),
-                      )
-                    : Container(width: 72, height: 72, color: wo.bgTint),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: log.photoUrl != null && log.photoUrl!.isNotEmpty
+                      ? WoNetworkImage(
+                          url: '${api.baseUrl}${log.photoUrl!}',
+                          headers: api.imageHeaders,
+                          fit: BoxFit.cover,
+                          decodeWidth: 72,
+                          placeholderColor: wo.bgTint,
+                        )
+                      : ColoredBox(color: wo.bgTint),
+                ),
               ),
               const SizedBox(width: WoTokens.space3),
               Expanded(
@@ -590,16 +591,16 @@ class _LogCard extends StatelessWidget {
                     const SizedBox(width: WoTokens.space2),
                 itemBuilder: (_, i) => ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: '${api.baseUrl}${log.photoUrls[i + 1]}',
-                    httpHeaders: api.imageHeaders,
+                  child: SizedBox(
                     width: 64,
                     height: 64,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) =>
-                        Container(width: 64, height: 64, color: wo.bgTint),
-                    errorWidget: (_, __, ___) =>
-                        Container(width: 64, height: 64, color: wo.bgTint),
+                    child: WoNetworkImage(
+                      url: '${api.baseUrl}${log.photoUrls[i + 1]}',
+                      headers: api.imageHeaders,
+                      fit: BoxFit.cover,
+                      decodeWidth: 64,
+                      placeholderColor: wo.bgTint,
+                    ),
                   ),
                 ),
               ),

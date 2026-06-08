@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'api_config.dart';
 import 'app_update.dart';
+import 'memory_cache.dart';
 import 'models.dart';
 import 'push_service.dart';
 import 'wo_api.dart';
@@ -148,6 +149,8 @@ class WoSession extends ChangeNotifier {
       // 尽力而为。
     }
     await _clearLocalAuth();
+    // 清掉「回忆」本地缓存（内容 + 进程内热缓存），避免登出后残留上一个账号的数据。
+    await MemoryCache.clearAll();
     _bootstrap = null;
     _error = null;
     notifyListeners();
