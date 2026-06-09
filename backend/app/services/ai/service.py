@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.ai.client import OpenAICompatibleClient
+from app.services.ai.image_client import ImageGenerationClient
 from app.services.ai.types import (
     AiMessage,
     AiNotConfiguredError,
@@ -148,8 +149,47 @@ async def ai_complete_vision(
     )
 
 
+async def ai_generate_image(
+    *,
+    prompt: str,
+    session: AsyncSession | None = None,
+    family_id: UUID | None = None,
+    image_data: bytes | None = None,
+    content_type: str = "image/jpeg",
+    size: str = "2048x2048",
+    client: ImageGenerationClient | None = None,
+) -> tuple[bytes, str]:
+    """Generate (or restyle) an image via the family's configured `image` model.
+
+    `image_data` present → img2img (restyle the source). Returns (bytes,
+    content_type). Pass `client` to use a pre-built one (tests). Raises
+    `AiNotConfiguredError` when no image model is configured.
+    """
+    if client is None:
+        # Lazy import avoids a config→models import cycle at module load.
+        from app.services.ai_config import resolve_model
+
+        if session is None or family_id is None:
+            raise AiNotConfiguredError("缺少家庭上下文，无法选择图片生成模型")
+        resolved = await resolve_model(session, family_id, "image")
+        if resolved is None:
+            raise AiNotConfiguredError(
+                "当前家庭未配置「图片生成」AI 模型，请到 我的 → 设置 → AI 集成设置 中配置"
+            )
+        client = ImageGenerationClient(
+            api_key=resolved.api_key,
+            base_url=resolved.base_url,
+            model=resolved.model,
+            timeout_seconds=settings.ai_timeout_seconds,
+        )
+    return await client.generate(
+        prompt, image_data=image_data, content_type=content_type, size=size
+    )
+
+
 __all__ = [
     "ai_complete",
     "ai_complete_text",
     "ai_complete_vision",
+    "ai_generate_image",
 ]

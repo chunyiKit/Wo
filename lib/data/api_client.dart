@@ -83,8 +83,9 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => _http.get(_uri(path, query), headers: _headers));
 
-  Future<dynamic> post(String path, {Object? body}) => _send(
+  Future<dynamic> post(String path, {Object? body, Duration? timeout}) => _send(
         () => _http.post(_uri(path), headers: _headers, body: _encode(body)),
+        timeout: timeout,
       );
 
   Future<dynamic> patch(String path, {Object? body}) => _send(
@@ -150,10 +151,13 @@ class ApiClient {
   String? _encode(Object? body) => body == null ? null : jsonEncode(body);
 
   /// 执行请求 + 拆信封。成功返回 `data`，失败抛 [ApiException] / [NetworkException]。
-  Future<dynamic> _send(Future<http.Response> Function() run) async {
+  Future<dynamic> _send(
+    Future<http.Response> Function() run, {
+    Duration? timeout,
+  }) async {
     final http.Response res;
     try {
-      res = await run().timeout(_timeout);
+      res = await run().timeout(timeout ?? _timeout);
     } on TimeoutException {
       throw NetworkException('请求超时，请检查网络');
     } catch (e) {

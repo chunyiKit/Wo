@@ -23,6 +23,7 @@ from app.plugins import (  # noqa: F401
     retirement,
     stock,
     subscription,
+    travel,
 )
 from app.plugins.registry import registry  # noqa: F401  re-export for convenience
 

@@ -1,7 +1,7 @@
 name: wo
 description: 窝（Wo）— 插件化家庭事务 App
 publish_to: "none"
-version: 0.3.15+31
+version: 0.3.16+35
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -64,3 +64,6 @@ flutter:
   assets:
     # 自签 CA 公钥证书,App 启动时加载并据此信任后端 HTTPS。
     - assets/certs/wo_ca.crt
+    # 旅行插件:真实中国省界(简化 GeoJSON)+ 地级市经纬度。
+    - assets/maps/china_provinces.json
+    - assets/maps/china_cities.json

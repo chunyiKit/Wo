@@ -13,6 +13,7 @@ import 'recipe/recipe_list_page.dart';
 import 'retirement/retirement_page.dart';
 import 'stock/stock_page.dart';
 import 'subscription/subscription_page.dart';
+import 'travel/travel_home_page.dart';
 
 /// 根据已安装插件构建它的详情页。
 typedef PluginPageBuilder = Widget Function(InstalledPlugin ip);
@@ -34,6 +35,7 @@ const Map<String, PluginPageBuilder> _pluginPages = {
   'plant': _plantPage,
   'retirement': _retirementPage,
   'expiry': _expiryPage,
+  'travel': _travelPage,
 };
 
 Widget _accountingPage(InstalledPlugin ip) => const AccountingPage();
@@ -48,6 +50,7 @@ Widget _subscriptionPage(InstalledPlugin ip) => const SubscriptionPage();
 Widget _plantPage(InstalledPlugin ip) => const PlantListPage();
 Widget _retirementPage(InstalledPlugin ip) => const RetirementPage();
 Widget _expiryPage(InstalledPlugin ip) => const ExpiryPage();
+Widget _travelPage(InstalledPlugin ip) => const TravelListPage();
 
 /// 返回插件对应的详情页；未注册的插件返回 null（卡片点击无动作）。
 Widget? pluginPageFor(InstalledPlugin ip) =>

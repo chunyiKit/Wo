@@ -151,6 +151,53 @@ class WoApi {
   Future<void> testAiModel(String familyId, String aiType) =>
       _client.post('/families/$familyId/ai-models/$aiType/test');
 
+  // ── 旅行插件 ─────────────────────────────────────────────────
+  /// 当前家庭的全部旅行记录(按时间倒序;供地图与列表)。
+  Future<List<TravelTrip>> travelTrips(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/travel/trips') as List;
+    return data
+        .map((e) => TravelTrip.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 新建旅行:上传一张原图 + 城市(名+经纬度)+ 可选具体地点 + 可选文案。
+  /// 保存即返回;后台会用默认提示词(+地点)图生图、好了替换成生成图。
+  Future<TravelTrip> createTravelTrip(
+    String familyId, {
+    required List<int> imageBytes,
+    required String cityName,
+    required double lng,
+    required double lat,
+    String? place,
+    String? caption,
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/plugins/travel/trips',
+      bytes: imageBytes,
+      filename: 'travel.jpg',
+      fields: {
+        'city_name': cityName,
+        'city_lng': '$lng',
+        'city_lat': '$lat',
+        if (place != null && place.isNotEmpty) 'place': place,
+        if (caption != null && caption.isNotEmpty) 'caption': caption,
+      },
+    );
+    return TravelTrip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 重试生成(用于 ai_status=failed 的记录)。
+  Future<TravelTrip> retryTravelImage(String familyId, String tripId) async {
+    final data = await _client
+        .post('/families/$familyId/plugins/travel/trips/$tripId/retry');
+    return TravelTrip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 删除一段旅行(连同图片)。
+  Future<void> deleteTravelTrip(String familyId, String tripId) =>
+      _client.delete('/families/$familyId/plugins/travel/trips/$tripId');
+
   /// 移除头像，回退到 emoji。返回更新后的用户。
   Future<WoUser> deleteMyAvatar() async {
     final data = await _client.delete('/me/avatar');

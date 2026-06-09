@@ -74,6 +74,11 @@ class WoTokens {
   // 到期管家：沉稳的灰紫,像证件/档案/印章的庄重感,与订阅(偏蓝靛紫)、看电影(浅薰衣草)区分开。
   static const expiryLight = Color(0xFFCBC6DA);
   static const expiryDark = Color(0xFF2A2833);
+  // 旅行：远山青绿,与暖橙互补;travelInk 用于地图上去过城市的强调点/文字。
+  static const travelLight = Color(0xFFCBDAD2);
+  static const travelDark = Color(0xFF24302B);
+  static const travelInkLight = Color(0xFF3E7A66);
+  static const travelInkDark = Color(0xFF8FC4AE);
   static const memoryInkLight = Color(0xFF8B5A3C);
   static const memoryInkDark = Color(0xFFE6B89A);
 
@@ -137,6 +142,8 @@ class WoColors extends ThemeExtension<WoColors> {
     required this.plant,
     required this.retire,
     required this.expiry,
+    required this.travel,
+    required this.travelInk,
     required this.warning,
     required this.danger,
   });
@@ -167,6 +174,8 @@ class WoColors extends ThemeExtension<WoColors> {
   final Color plant;
   final Color retire;
   final Color expiry;
+  final Color travel;
+  final Color travelInk;
   final Color warning;
   final Color danger;
 
@@ -195,6 +204,8 @@ class WoColors extends ThemeExtension<WoColors> {
     plant: WoTokens.plantLight,
     retire: WoTokens.retireLight,
     expiry: WoTokens.expiryLight,
+    travel: WoTokens.travelLight,
+    travelInk: WoTokens.travelInkLight,
     warning: WoTokens.warningLight,
     danger: WoTokens.dangerLight,
   );
@@ -224,6 +235,8 @@ class WoColors extends ThemeExtension<WoColors> {
     plant: WoTokens.plantDark,
     retire: WoTokens.retireDark,
     expiry: WoTokens.expiryDark,
+    travel: WoTokens.travelDark,
+    travelInk: WoTokens.travelInkDark,
     warning: WoTokens.warningDark,
     danger: WoTokens.dangerDark,
   );
@@ -254,6 +267,8 @@ class WoColors extends ThemeExtension<WoColors> {
     Color? plant,
     Color? retire,
     Color? expiry,
+    Color? travel,
+    Color? travelInk,
     Color? warning,
     Color? danger,
   }) {
@@ -282,6 +297,8 @@ class WoColors extends ThemeExtension<WoColors> {
       plant: plant ?? this.plant,
       retire: retire ?? this.retire,
       expiry: expiry ?? this.expiry,
+      travel: travel ?? this.travel,
+      travelInk: travelInk ?? this.travelInk,
       warning: warning ?? this.warning,
       danger: danger ?? this.danger,
     );
@@ -315,6 +332,8 @@ class WoColors extends ThemeExtension<WoColors> {
       plant: Color.lerp(plant, other.plant, t)!,
       retire: Color.lerp(retire, other.retire, t)!,
       expiry: Color.lerp(expiry, other.expiry, t)!,
+      travel: Color.lerp(travel, other.travel, t)!,
+      travelInk: Color.lerp(travelInk, other.travelInk, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
     );

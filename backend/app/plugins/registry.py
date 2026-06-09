@@ -36,6 +36,7 @@ ColorToken = Literal[
     "plant",
     "retire",
     "expiry",
+    "travel",
     "accent",
 ]
 # Optional emphasis applied to a card's `secondary` text. None = normal color.

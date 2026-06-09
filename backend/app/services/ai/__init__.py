@@ -13,10 +13,12 @@ app.services.ai_config; callers never reference a vendor or a specific model.
 """
 
 from app.services.ai.client import OpenAICompatibleClient
+from app.services.ai.image_client import ImageGenerationClient
 from app.services.ai.service import (
     ai_complete,
     ai_complete_text,
     ai_complete_vision,
+    ai_generate_image,
 )
 from app.services.ai.types import (
     AiError,
@@ -34,7 +36,9 @@ __all__ = [
     "ai_complete",
     "ai_complete_text",
     "ai_complete_vision",
+    "ai_generate_image",
     "OpenAICompatibleClient",
+    "ImageGenerationClient",
     "AiProvider",
     "AiMessage",
     "AiResult",

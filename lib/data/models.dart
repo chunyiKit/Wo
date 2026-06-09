@@ -563,7 +563,8 @@ class AccountingSummary {
 /// 拍小票识别出的一笔「草稿」支出。后端不落库、不存图，仅用于预填「记一笔」
 /// 表单，由用户确认后再正式记账。[amount] 为空表示没认出金额（让用户手填）。
 class ReceiptDraft {
-  const ReceiptDraft({this.amount, required this.category, this.merchant, this.note});
+  const ReceiptDraft(
+      {this.amount, required this.category, this.merchant, this.note});
 
   final double? amount;
   final String category;
@@ -2003,5 +2004,64 @@ class AiModelConfig {
         keyHint: j['key_hint'] as String? ?? '',
         enabled: j['enabled'] as bool? ?? false,
         updatedAt: _parseDate(j['updated_at']),
+      );
+}
+
+/// 「旅行」插件:钉在地图上的一段旅行(一座城市 + 可选具体地点 + 一张图)。
+///
+/// 用户传一张照片,后台用默认提示词(+具体地点)图生图、好了**替换**成生成图(原图不留)。
+/// [imageUrl] 是这条记录的当前展示图(生成前是原图,生成后是 AI 图);[aiStatus] 表示
+/// 后台生成进度:generating / ready / failed。URL 为 host 相对地址,展示时前缀 baseUrl + 鉴权头。
+class TravelTrip {
+  const TravelTrip({
+    required this.id,
+    required this.cityName,
+    required this.cityLng,
+    required this.cityLat,
+    this.place,
+    this.caption,
+    required this.imageUrl,
+    required this.aiStatus,
+    this.createdAt,
+  });
+
+  final String id;
+  final String cityName;
+  final double cityLng;
+  final double cityLat;
+  final String? place;
+  final String? caption;
+  final String imageUrl;
+  final String aiStatus; // generating | ready | failed
+  final DateTime? createdAt;
+
+  bool get isGenerating => aiStatus == 'generating';
+  bool get isFailed => aiStatus == 'failed';
+
+  factory TravelTrip.fromJson(Map<String, dynamic> j) => TravelTrip(
+        id: j['id'] as String,
+        cityName: j['city_name'] as String? ?? '',
+        cityLng: (j['city_lng'] as num?)?.toDouble() ?? 0,
+        cityLat: (j['city_lat'] as num?)?.toDouble() ?? 0,
+        place: j['place'] as String?,
+        caption: j['caption'] as String?,
+        imageUrl: j['image_url'] as String? ?? '',
+        aiStatus: j['ai_status'] as String? ?? 'ready',
+        createdAt: _parseDate(j['created_at']),
+      );
+}
+
+/// 一座城市(来自 bundle 的 china_cities.json),用于地图标注与添加记录的城市选择。
+class TravelCity {
+  const TravelCity({required this.name, required this.lng, required this.lat});
+
+  final String name;
+  final double lng;
+  final double lat;
+
+  factory TravelCity.fromJson(Map<String, dynamic> j) => TravelCity(
+        name: j['name'] as String? ?? '',
+        lng: (j['lng'] as num?)?.toDouble() ?? 0,
+        lat: (j['lat'] as num?)?.toDouble() ?? 0,
       );
 }

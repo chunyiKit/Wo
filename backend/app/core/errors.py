@@ -6,10 +6,14 @@ and `RequestValidationError`, mapping them into the same envelope so the client
 sees a consistent shape regardless of where the failure originated.
 """
 
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger(__name__)
 
 
 # Error codes — keep this list in sync with docs/backend-contract.md §4.6.
@@ -92,7 +96,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        logger.warning(
+            "validation 422: %s %s errors=%s",
+            request.method,
+            request.url.path,
+            exc.errors(),
+        )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=_error_body(

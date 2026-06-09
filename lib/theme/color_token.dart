@@ -33,6 +33,8 @@ extension WoColorTokenX on WoColors {
         return retire;
       case 'expiry':
         return expiry;
+      case 'travel':
+        return travel;
       case 'accent':
       default:
         return accent;
