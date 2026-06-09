@@ -83,6 +83,20 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => _http.get(_uri(path, query), headers: _headers));
 
+  /// 同 [get]，但额外带回信封里的 `meta`（分页元数据）。返回 (data, meta)：
+  /// 普通接口 meta 为 null，分页接口里含 total / cursor / limit。
+  Future<({dynamic data, Map<String, dynamic>? meta})> getWithMeta(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final envelope = await _sendEnvelope(
+        () => _http.get(_uri(path, query), headers: _headers));
+    return (
+      data: envelope['data'],
+      meta: envelope['meta'] as Map<String, dynamic>?
+    );
+  }
+
   Future<dynamic> post(String path, {Object? body, Duration? timeout}) => _send(
         () => _http.post(_uri(path), headers: _headers, body: _encode(body)),
         timeout: timeout,
@@ -154,6 +168,15 @@ class ApiClient {
   Future<dynamic> _send(
     Future<http.Response> Function() run, {
     Duration? timeout,
+  }) async =>
+      (await _sendEnvelope(run, timeout: timeout))['data'];
+
+  /// 执行请求并返回完整信封（含 data / meta）。成功返回整个 map，失败抛
+  /// [ApiException] / [NetworkException]。[_send] 与 [getWithMeta] 共用此逻辑，
+  /// 区别只在前者取 `data`、后者还要 `meta`。
+  Future<Map<String, dynamic>> _sendEnvelope(
+    Future<http.Response> Function() run, {
+    Duration? timeout,
   }) async {
     final http.Response res;
     try {
@@ -181,7 +204,7 @@ class ApiClient {
         details: err?['details'] as Map<String, dynamic>?,
       );
     }
-    return envelope['data'];
+    return envelope;
   }
 
   void close() => _http.close();

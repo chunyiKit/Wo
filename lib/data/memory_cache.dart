@@ -122,14 +122,15 @@ class MemoryCache {
     await prefetch(api, familyId);
   }
 
-  /// 主页后台预取：拉列表 → 存内容 → 预热全部照片。每次启动每个家庭只做一次。
+  /// 主页后台预取：拉**首页**（覆盖缓存的前 [_keep] 条即够）→ 存内容 → 预热照片。
+  /// 每次启动每个家庭只做一次。时间线分页后，缓存只关心首屏，故只取首页不翻全量。
   static Future<void> prefetch(WoApi api, String familyId) async {
     if (_prefetched.contains(familyId)) return;
     _prefetched.add(familyId);
     try {
-      final list = await api.memories(familyId);
-      await save(familyId, list);
-      await prewarmImages(api, list);
+      final page = await api.memories(familyId, limit: _keep);
+      await save(familyId, page.items);
+      await prewarmImages(api, page.items);
     } catch (_) {
       _prefetched.remove(familyId); // 失败允许下次再试。
     }

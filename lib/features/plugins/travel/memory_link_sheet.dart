@@ -50,7 +50,7 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
 
   Future<void> _load() async {
     try {
-      final list = await _session.api.memories(_session.currentFamilyId!);
+      final list = await _session.api.memoriesAll(_session.currentFamilyId!);
       if (mounted) setState(() => _all = list);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
@@ -64,7 +64,10 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
     if (q.isEmpty) return all;
     bool inLoc(Memory m) => (m.location ?? '').toLowerCase().contains(q);
     bool inTitle(Memory m) => m.title.toLowerCase().contains(q);
-    final loc = [for (final m in all) if (inLoc(m)) m];
+    final loc = [
+      for (final m in all)
+        if (inLoc(m)) m
+    ];
     final titleOnly = [
       for (final m in all)
         if (!inLoc(m) && inTitle(m)) m,
@@ -78,7 +81,8 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
     final list = _filtered();
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         height: MediaQuery.of(context).size.height * 0.7,
         decoration: BoxDecoration(
@@ -100,14 +104,19 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
               child: Row(
                 children: [
-                  Text('关联回忆',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: wo.fg,),),
+                  Text(
+                    '关联回忆',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: wo.fg,
+                    ),
+                  ),
                   const Spacer(),
-                  Text('按地点搜索',
-                      style: TextStyle(fontSize: 12, color: wo.fgDim),),
+                  Text(
+                    '按地点搜索',
+                    style: TextStyle(fontSize: 12, color: wo.fgDim),
+                  ),
                 ],
               ),
             ),
@@ -138,10 +147,14 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
 
   Widget _body(WoColors wo, List<Memory> list) {
     if (_failed) {
-      return _Hint(wo: wo, text: '加载回忆失败,请稍后再试', onRetry: () {
-        setState(() => _failed = false);
-        _load();
-      },);
+      return _Hint(
+        wo: wo,
+        text: '加载回忆失败,请稍后再试',
+        onRetry: () {
+          setState(() => _failed = false);
+          _load();
+        },
+      );
     }
     if (_all == null) {
       return const Center(child: CircularProgressIndicator());
@@ -201,9 +214,10 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: wo.fg,),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: wo.fg,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Row(

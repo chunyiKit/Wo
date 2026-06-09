@@ -65,9 +65,56 @@ async def test_create_and_list_memory(client: AsyncClient) -> None:
 
     listed = await client.get(MEM_BASE.format(fid=fid))
     assert listed.status_code == 200
-    data = listed.json()["data"]
+    body = listed.json()
+    data = body["data"]
     assert len(data) == 1
     assert data[0]["title"] == "搬家纪念"
+    # Paginated envelope: full count in meta.total, no further page.
+    assert body["meta"]["total"] == 1
+    assert body["meta"]["cursor"] is None
+
+
+async def test_timeline_pagination(client: AsyncClient) -> None:
+    """Keyset paging walks the whole timeline once, newest-first, no dupes."""
+    fid = await _create_family(client)
+    total = 25
+    for i in range(total):
+        resp = await client.post(MEM_BASE.format(fid=fid), json={"title": f"m{i}"})
+        assert resp.status_code == 201, resp.text
+
+    seen: list[str] = []
+    cursor: str | None = None
+    pages = 0
+    while True:
+        params = {"limit": 10}
+        if cursor is not None:
+            params["cursor"] = cursor
+        resp = await client.get(MEM_BASE.format(fid=fid), params=params)
+        assert resp.status_code == 200, resp.text
+        envelope = resp.json()
+        page = envelope["data"]
+        meta = envelope["meta"]
+        assert meta["total"] == total  # full count is stable across pages
+        seen.extend(m["id"] for m in page)
+        pages += 1
+        cursor = meta["cursor"]
+        if cursor is None:
+            break
+        assert len(page) == 10  # non-final pages are full
+
+    assert pages == 3  # 10 + 10 + 5
+    assert len(seen) == total
+    assert len(set(seen)) == total  # no memory appears on two pages
+
+    # Newest-first: the first id paged is the last memory created ("m24").
+    first = await client.get(MEM_BASE.format(fid=fid), params={"limit": 1})
+    assert first.json()["data"][0]["title"] == "m24"
+
+
+async def test_pagination_rejects_bad_cursor(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    resp = await client.get(MEM_BASE.format(fid=fid), params={"cursor": "not-a-real-cursor"})
+    assert resp.status_code == 400
 
 
 async def test_empty_title_rejected(client: AsyncClient) -> None:
@@ -78,9 +125,9 @@ async def test_empty_title_rejected(client: AsyncClient) -> None:
 
 async def test_upload_photo_attaches_media(client: AsyncClient, png_bytes: bytes) -> None:
     fid = await _create_family(client)
-    mid = (
-        await client.post(MEM_BASE.format(fid=fid), json={"title": "第一张"})
-    ).json()["data"]["id"]
+    mid = (await client.post(MEM_BASE.format(fid=fid), json={"title": "第一张"})).json()["data"][
+        "id"
+    ]
 
     up = await client.post(
         f"{MEM_BASE.format(fid=fid)}/{mid}/media",
@@ -138,9 +185,9 @@ async def test_raw_redirects_to_presigned_url_when_storage_is_cos(
     monkeypatch.setattr(memory_routes, "storage", fake)
 
     fid = await _create_family(client)
-    mid = (
-        await client.post(MEM_BASE.format(fid=fid), json={"title": "去 COS"})
-    ).json()["data"]["id"]
+    mid = (await client.post(MEM_BASE.format(fid=fid), json={"title": "去 COS"})).json()["data"][
+        "id"
+    ]
 
     up = await client.post(
         f"{MEM_BASE.format(fid=fid)}/{mid}/media",
@@ -164,9 +211,7 @@ async def test_raw_redirects_to_presigned_url_when_storage_is_cos(
 
 async def test_garbage_upload_rejected(client: AsyncClient) -> None:
     fid = await _create_family(client)
-    mid = (
-        await client.post(MEM_BASE.format(fid=fid), json={"title": "x"})
-    ).json()["data"]["id"]
+    mid = (await client.post(MEM_BASE.format(fid=fid), json={"title": "x"})).json()["data"]["id"]
     resp = await client.post(
         f"{MEM_BASE.format(fid=fid)}/{mid}/media",
         files={"file": ("a.bin", b"not an image or video", "image/png")},
@@ -176,9 +221,7 @@ async def test_garbage_upload_rejected(client: AsyncClient) -> None:
 
 async def test_comment_flow(client: AsyncClient) -> None:
     fid = await _family_with_xiaolin(client)
-    mid = (
-        await client.post(MEM_BASE.format(fid=fid), json={"title": "散步"})
-    ).json()["data"]["id"]
+    mid = (await client.post(MEM_BASE.format(fid=fid), json={"title": "散步"})).json()["data"]["id"]
 
     add = await client.post(
         f"{MEM_BASE.format(fid=fid)}/{mid}/comments",
@@ -261,9 +304,7 @@ async def test_preview_shows_latest_title_and_count(client: AsyncClient) -> None
     assert preview.image_urls is None
 
 
-async def test_preview_image_urls_for_carousel(
-    client: AsyncClient, png_bytes: bytes
-) -> None:
+async def test_preview_image_urls_for_carousel(client: AsyncClient, png_bytes: bytes) -> None:
     """Memory's home preview surfaces the latest photos for the 4×2 carousel.
 
     Order is newest-first (by media created_at), capped at 5. Photos from
@@ -290,9 +331,7 @@ async def test_preview_image_urls_for_carousel(
         headers=XIAOLIN,
     )
 
-    pub = (
-        await client.post(MEM_BASE.format(fid=fid), json={"title": "公开"})
-    ).json()["data"]
+    pub = (await client.post(MEM_BASE.format(fid=fid), json={"title": "公开"})).json()["data"]
     for name in ("a.png", "b.png"):
         await client.post(
             f"{MEM_BASE.format(fid=fid)}/{pub['id']}/media",
@@ -320,9 +359,7 @@ async def test_author_avatar_url_surfaced_and_servable(
 
     # 小林 records a memory without an avatar → author_avatar_url is null.
     no_av = (
-        await client.post(
-            MEM_BASE.format(fid=fid), json={"title": "无头像"}, headers=XIAOLIN
-        )
+        await client.post(MEM_BASE.format(fid=fid), json={"title": "无头像"}, headers=XIAOLIN)
     ).json()["data"]
     assert no_av["author_avatar_url"] is None
 
@@ -331,9 +368,7 @@ async def test_author_avatar_url_surfaced_and_servable(
         "/api/v1/me/avatar",
         files={"file": ("a.png", png_bytes, "image/png")},
     )
-    mem = (
-        await client.post(MEM_BASE.format(fid=fid), json={"title": "有头像"})
-    ).json()["data"]
+    mem = (await client.post(MEM_BASE.format(fid=fid), json={"title": "有头像"})).json()["data"]
     url = mem["author_avatar_url"]
     assert url is not None
     assert f"/families/{fid}/members/" in url and "/avatar" in url
@@ -344,9 +379,7 @@ async def test_author_avatar_url_surfaced_and_servable(
     assert raw.content == png_bytes
 
 
-async def test_member_avatar_blocked_for_non_member(
-    client: AsyncClient, png_bytes: bytes
-) -> None:
+async def test_member_avatar_blocked_for_non_member(client: AsyncClient, png_bytes: bytes) -> None:
     fid = await _create_family(client)  # 老陈 only
     await client.post(
         "/api/v1/me/avatar",

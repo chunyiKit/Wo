@@ -6,6 +6,7 @@ images go through the shared Pillow check; videos are recognized by their ISO
 base-media-file `ftyp` box (mp4 / mov) and accepted by an allow-list.
 """
 
+import base64
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app.core.errors import AppError, ErrorCode
 from app.core.images import validate_image
 from app.models.plugin import InstalledPlugin
 from app.plugins.memory.models import (
@@ -76,10 +78,7 @@ def build_storage_key(family_id: UUID, memory_id: UUID, media_id: UUID, ext: str
 
 def build_media_url(family_id: UUID, memory_id: UUID, media_id: UUID) -> str:
     """Relative URL of a media item's raw-bytes endpoint."""
-    return (
-        f"/api/v1/families/{family_id}/plugins/memory/memories/"
-        f"{memory_id}/media/{media_id}/raw"
-    )
+    return f"/api/v1/families/{family_id}/plugins/memory/memories/{memory_id}/media/{media_id}/raw"
 
 
 # ---- Read composition -----------------------------------------------------
@@ -137,17 +136,38 @@ def build_read(
         update={
             "author_name": info.name if info else None,
             "author_emoji": info.emoji if info else None,
-            "author_avatar_url": _author_avatar_url(
-                memory.family_id, memory.created_by, info
-            ),
+            "author_avatar_url": _author_avatar_url(memory.family_id, memory.created_by, info),
             "media": [to_media_read(m) for m in ordered],
             "comment_count": comment_count,
-            "comments": [
-                to_comment_read(c, members, memory.family_id)
-                for c in (comments or [])
-            ],
+            "comments": [to_comment_read(c, members, memory.family_id) for c in (comments or [])],
         }
     )
+
+
+# ---- Timeline cursor (keyset pagination) ----------------------------------
+
+
+def encode_cursor(memory: Memory) -> str:
+    """Opaque keyset cursor for the timeline: the page's last row's sort key
+    `(event_date, created_at, id)`, base64url-encoded so the client carries it
+    as a token it never has to parse."""
+    raw = f"{memory.event_date.isoformat()}|{memory.created_at.isoformat()}|{memory.id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def decode_cursor(token: str) -> tuple[date, datetime, UUID]:
+    """Parse a cursor produced by `encode_cursor`. The cursor is client-supplied,
+    so anything malformed is a 400 rather than a 500."""
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        date_str, created_str, id_str = raw.split("|")
+        return (
+            date.fromisoformat(date_str),
+            datetime.fromisoformat(created_str),
+            UUID(id_str),
+        )
+    except (ValueError, TypeError) as exc:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "翻页游标不合法", status_code=400) from exc
 
 
 # ---- Visibility -----------------------------------------------------------
@@ -179,9 +199,7 @@ async def preview_hook(
         private_ok = private_ok | (Memory.created_by == viewer_id)
 
     count_stmt = (
-        select(func.count())
-        .select_from(Memory)
-        .where(Memory.family_id == family_id, private_ok)
+        select(func.count()).select_from(Memory).where(Memory.family_id == family_id, private_ok)
     )
     total = int((await session.execute(count_stmt)).scalar_one())
 
@@ -220,9 +238,7 @@ async def preview_hook(
         .limit(5)
     )
     photos = list((await session.execute(photos_stmt)).scalars().all())
-    image_urls = [
-        build_media_url(family_id, p.memory_id, p.id) for p in photos
-    ]
+    image_urls = [build_media_url(family_id, p.memory_id, p.id) for p in photos]
 
     return PluginPreview(
         primary=title,
@@ -237,6 +253,8 @@ __all__ = [
     "build_media_url",
     "build_read",
     "build_storage_key",
+    "decode_cursor",
+    "encode_cursor",
     "member_map",
     "preview_hook",
     "to_comment_read",

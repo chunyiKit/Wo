@@ -1100,6 +1100,16 @@ class Memory {
       };
 }
 
+/// 回忆时间线的一页（keyset 游标分页）。[nextCursor] 为 null 表示已到最早一条、
+/// 没有更多；[total] 是当前用户可见的总条数（驱动「共 N 条」表头）。
+class MemoryPage {
+  const MemoryPage({required this.items, this.nextCursor, this.total});
+
+  final List<Memory> items;
+  final String? nextCursor;
+  final int? total;
+}
+
 // ── 看电影插件 ────────────────────────────────────────────────────────────
 
 /// 一部想看 / 看过的电影。

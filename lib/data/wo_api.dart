@@ -932,11 +932,39 @@ class WoApi {
   }
 
   // ── 回忆插件 ────────────────────────────────────────────────
-  /// 时间线列表（按 event_date 倒序，含每条的媒体与留言数）。
-  Future<List<Memory>> memories(String familyId) async {
-    final data = await _client
-        .get('/families/$familyId/plugins/memory/memories') as List;
-    return data.map((e) => Memory.fromJson(e as Map<String, dynamic>)).toList();
+  /// 时间线一页（按 event_date 倒序，含每条的媒体与留言数）。keyset 游标分页：
+  /// 传上一页 [MemoryPage.nextCursor] 取下一页，为 null 表示已到最早一条。
+  Future<MemoryPage> memories(
+    String familyId, {
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final res = await _client.getWithMeta(
+      '/families/$familyId/plugins/memory/memories',
+      query: {'limit': limit, if (cursor != null) 'cursor': cursor},
+    );
+    final items = (res.data as List)
+        .map((e) => Memory.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final meta = res.meta;
+    return MemoryPage(
+      items: items,
+      nextCursor: meta?['cursor'] as String?,
+      total: (meta?['total'] as num?)?.toInt(),
+    );
+  }
+
+  /// 翻完所有分页、返回全部回忆。仅供「需在全量里搜索」的场景（如旅行关联选择器），
+  /// 时间线本身请用分页的 [memories]，不要一次拉全。
+  Future<List<Memory>> memoriesAll(String familyId) async {
+    final all = <Memory>[];
+    String? cursor;
+    do {
+      final page = await memories(familyId, cursor: cursor, limit: 50);
+      all.addAll(page.items);
+      cursor = page.nextCursor;
+    } while (cursor != null);
+    return all;
   }
 
   /// 单条回忆详情（含媒体与全部留言）。

@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, Query, UploadFile
 from sqlalchemy import func
 from sqlmodel import select
 from starlette.responses import RedirectResponse, Response
@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.ids import new_uuid7
 from app.core.permissions import require_membership
-from app.core.response import ApiResponse, ok
+from app.core.response import ApiResponse, Meta, ok
 from app.core.storage import PresignableStorage, storage
 from app.plugins.memory.models import (
     VISIBILITY_VALUES,
@@ -42,6 +42,8 @@ from app.plugins.memory.models import (
 from app.plugins.memory.service import (
     build_read,
     build_storage_key,
+    decode_cursor,
+    encode_cursor,
     member_map,
     to_comment_read,
     to_media_read,
@@ -54,6 +56,11 @@ router = APIRouter(
     prefix="/families/{family_id}/plugins/memory",
     tags=["memory"],
 )
+
+# Timeline page size: the default the app requests, and a hard cap so a crafted
+# `limit` can't pull the whole table in one shot.
+TIMELINE_PAGE_DEFAULT = 20
+TIMELINE_PAGE_MAX = 50
 
 
 # ---- Loaders / guards -----------------------------------------------------
@@ -77,9 +84,7 @@ async def _media_for(session: SessionDep, memory_id: UUID) -> list[MemoryMedia]:
 
 async def _comment_count(session: SessionDep, memory_id: UUID) -> int:
     stmt = (
-        select(func.count())
-        .select_from(MemoryComment)
-        .where(MemoryComment.memory_id == memory_id)
+        select(func.count()).select_from(MemoryComment).where(MemoryComment.memory_id == memory_id)
     )
     return int((await session.execute(stmt)).scalar_one())
 
@@ -106,24 +111,55 @@ async def list_memories(
     family_id: UUID,
     session: SessionDep,
     current_user: CurrentUserDep,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=TIMELINE_PAGE_MAX)] = TIMELINE_PAGE_DEFAULT,
 ) -> ApiResponse[list[MemoryRead]]:
-    """Timeline, newest first by event_date then recency. `private` memories
-    only show to their author. Each entry carries its media + comment count."""
+    """Timeline page, newest first by event_date then recency. Keyset-paginated:
+    pass the previous page's `meta.cursor` to fetch the next `limit` entries;
+    `meta.cursor` is null once the oldest entry is reached. `private` memories
+    only show to their author. Each entry carries its media + comment count, and
+    `meta.total` is the full visible count (drives the "共 N 条" header)."""
     await require_membership(session, current_user.id, family_id)
 
-    private_ok = (Memory.visibility != "private") | (
-        Memory.created_by == current_user.id
-    )
-    stmt = (
-        select(Memory)
-        .where(Memory.family_id == family_id, private_ok)
-        .order_by(Memory.event_date.desc(), Memory.created_at.desc())
-    )
-    memories = list((await session.execute(stmt)).scalars().all())
-    if not memories:
-        return ok([])
+    private_ok = (Memory.visibility != "private") | (Memory.created_by == current_user.id)
 
-    ids = [m.id for m in memories]
+    stmt = select(Memory).where(Memory.family_id == family_id, private_ok)
+    if cursor is not None:
+        c_date, c_created, c_id = decode_cursor(cursor)
+        # "Strictly older than the cursor row" under ORDER BY
+        # (event_date, created_at, id) all-DESC — written out instead of a
+        # row-value comparison so it behaves identically on every backend.
+        stmt = stmt.where(
+            (Memory.event_date < c_date)
+            | ((Memory.event_date == c_date) & (Memory.created_at < c_created))
+            | (
+                (Memory.event_date == c_date)
+                & (Memory.created_at == c_created)
+                & (Memory.id < c_id)
+            )
+        )
+    # +1 sentinel row tells us whether a further page exists without a second query.
+    stmt = stmt.order_by(
+        Memory.event_date.desc(), Memory.created_at.desc(), Memory.id.desc()
+    ).limit(limit + 1)
+
+    rows = list((await session.execute(stmt)).scalars().all())
+    has_more = len(rows) > limit
+    page = rows[:limit]
+
+    # Full visible count for the header — cheap on the family_id/visibility index
+    # and independent of the page window, so it stays correct as the user scrolls.
+    total_stmt = (
+        select(func.count()).select_from(Memory).where(Memory.family_id == family_id, private_ok)
+    )
+    total = int((await session.execute(total_stmt)).scalar_one())
+    next_cursor = encode_cursor(page[-1]) if (has_more and page) else None
+    meta = Meta(total=total, cursor=next_cursor, limit=limit)
+
+    if not page:
+        return ok([], meta=meta)
+
+    ids = [m.id for m in page]
 
     media_stmt = (
         select(MemoryMedia)
@@ -150,8 +186,9 @@ async def list_memories(
                 members,
                 comment_count=counts.get(m.id, 0),
             )
-            for m in memories
-        ]
+            for m in page
+        ],
+        meta=meta,
     )
 
 
@@ -360,9 +397,7 @@ async def upload_media(
     return ok(to_media_read(media))
 
 
-@router.delete(
-    "/memories/{memory_id}/media/{media_id}", response_model=ApiResponse[dict]
-)
+@router.delete("/memories/{memory_id}/media/{media_id}", response_model=ApiResponse[dict])
 async def delete_media(
     family_id: UUID,
     memory_id: UUID,
@@ -460,9 +495,7 @@ async def add_comment(
     return ok(to_comment_read(comment, members, family_id))
 
 
-@router.delete(
-    "/memories/{memory_id}/comments/{comment_id}", response_model=ApiResponse[dict]
-)
+@router.delete("/memories/{memory_id}/comments/{comment_id}", response_model=ApiResponse[dict])
 async def delete_comment(
     family_id: UUID,
     memory_id: UUID,
@@ -473,11 +506,7 @@ async def delete_comment(
     """Only the comment's author can remove it."""
     await require_membership(session, current_user.id, family_id)
     comment = await session.get(MemoryComment, comment_id)
-    if (
-        comment is None
-        or comment.memory_id != memory_id
-        or comment.family_id != family_id
-    ):
+    if comment is None or comment.memory_id != memory_id or comment.family_id != family_id:
         raise AppError(ErrorCode.NOT_FOUND, "留言不存在", status_code=404)
     if comment.created_by != current_user.id:
         raise AppError(ErrorCode.FORBIDDEN, "只能删除自己的留言", status_code=403)
