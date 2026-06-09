@@ -49,6 +49,16 @@ class TravelTrip(SQLModel, table=True):
     # (kept the original). Set on create; a background task updates it.
     ai_status: str = Field(default="generating", max_length=16)
 
+    # Optional 1:1 link to a memory (回忆插件). A trip links at most one memory;
+    # deleting that memory sets this back to NULL (the trip just becomes unlinked).
+    memory_id: UUID | None = Field(
+        default=None,
+        foreign_key="memory_memories.id",
+        ondelete="SET NULL",
+        nullable=True,
+        index=True,
+    )
+
     # DEPRECATED — left for table compatibility, no longer used by the new flow.
     ai_key: str | None = Field(default=None)
     ai_content_type: str | None = Field(default=None, max_length=40)

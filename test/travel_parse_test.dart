@@ -3,52 +3,64 @@ import 'package:wo/data/models.dart';
 
 void main() {
   group('TravelTrip / TravelCity parsing', () {
-    test('TravelTrip parses cover/ai fields', () {
+    test('TravelTrip parses fields + linked memory', () {
       final t = TravelTrip.fromJson({
         'id': 't1',
         'city_name': '三亚',
         'city_lng': 109.51,
         'city_lat': 18.25,
+        'place': '亚龙湾',
         'caption': '蜜月最后一晚',
-        'chosen': 'ai',
-        'has_ai': true,
-        'ai_prompt': '吉卜力黄昏',
-        'ai_style': '吉卜力',
-        'original_url': '/api/v1/families/f/plugins/travel/trips/t1/image/original',
-        'ai_url': '/api/v1/families/f/plugins/travel/trips/t1/image/ai',
-        'cover_url': '/api/v1/families/f/plugins/travel/trips/t1/image/ai',
+        'image_url': '/api/v1/families/f/plugins/travel/trips/t1/image?v=1',
+        'ai_status': 'ready',
         'created_at': '2026-06-08T10:00:00Z',
+        'memory_id': 'm1',
+        'memory': {
+          'id': 'm1',
+          'title': '海边的傍晚',
+          'event_date': '2026-06-08',
+          'cover_url': '/api/v1/families/f/plugins/memory/memories/m1/media/x/raw',
+        },
       });
       expect(t.cityName, '三亚');
       expect(t.cityLng, closeTo(109.51, 1e-6));
-      expect(t.chosen, 'ai');
-      expect(t.hasAi, isTrue);
-      expect(t.aiStyle, '吉卜力');
-      expect(t.coverUrl.endsWith('/image/ai'), isTrue);
-      expect(t.aiUrl, isNotNull);
+      expect(t.place, '亚龙湾');
+      expect(t.aiStatus, 'ready');
+      expect(t.isGenerating, isFalse);
+      expect(t.memoryId, 'm1');
+      expect(t.memory, isNotNull);
+      expect(t.memory!.title, '海边的傍晚');
+      expect(t.memory!.eventDate, isNotNull);
+      expect(t.memory!.eventDate!.year, 2026);
+      expect(t.memory!.eventDate!.month, 6);
+      expect(t.memory!.eventDate!.day, 8);
+      expect(t.memory!.coverUrl!.endsWith('/raw'), isTrue);
     });
 
-    test('TravelTrip without AI defaults to original cover', () {
+    test('TravelTrip without a link parses memory as null', () {
       final t = TravelTrip.fromJson({
         'id': 't2',
         'city_name': '北京',
         'city_lng': 116.4,
         'city_lat': 39.9,
-        'chosen': 'original',
-        'has_ai': false,
-        'original_url': '/x/original',
-        'cover_url': '/x/original',
+        'image_url': '/x/image?v=2',
+        'ai_status': 'generating',
       });
-      expect(t.hasAi, isFalse);
-      expect(t.aiUrl, isNull);
-      expect(t.chosen, 'original');
+      expect(t.isGenerating, isTrue);
+      expect(t.memoryId, isNull);
+      expect(t.memory, isNull);
     });
 
-    test('TravelCity parses name + coords', () {
-      final c = TravelCity.fromJson({'name': '杭州', 'lng': 120.15, 'lat': 30.27});
-      expect(c.name, '杭州');
-      expect(c.lng, closeTo(120.15, 1e-6));
-      expect(c.lat, closeTo(30.27, 1e-6));
+    test('TravelCity parses name + coords + region', () {
+      final c = TravelCity.fromJson({
+        'name': '余杭区',
+        'lng': 119.98,
+        'lat': 30.27,
+        'region': '杭州市',
+      });
+      expect(c.name, '余杭区');
+      expect(c.lng, closeTo(119.98, 1e-6));
+      expect(c.region, '杭州市');
     });
   });
 }

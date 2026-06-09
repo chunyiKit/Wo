@@ -171,6 +171,7 @@ class WoApi {
     required double lat,
     String? place,
     String? caption,
+    String? memoryId,
   }) async {
     final data = await _client.uploadFile(
       '/families/$familyId/plugins/travel/trips',
@@ -182,6 +183,7 @@ class WoApi {
         'city_lat': '$lat',
         if (place != null && place.isNotEmpty) 'place': place,
         if (caption != null && caption.isNotEmpty) 'caption': caption,
+        if (memoryId != null && memoryId.isNotEmpty) 'memory_id': memoryId,
       },
     );
     return TravelTrip.fromJson(data as Map<String, dynamic>);
@@ -191,6 +193,19 @@ class WoApi {
   Future<TravelTrip> retryTravelImage(String familyId, String tripId) async {
     final data = await _client
         .post('/families/$familyId/plugins/travel/trips/$tripId/retry');
+    return TravelTrip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 设置 / 清除一段旅行关联的回忆(1 对 1)。传 null 解除关联。
+  Future<TravelTrip> setTravelTripMemory(
+    String familyId,
+    String tripId,
+    String? memoryId,
+  ) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/travel/trips/$tripId/memory',
+      body: {'memory_id': memoryId},
+    );
     return TravelTrip.fromJson(data as Map<String, dynamic>);
   }
 

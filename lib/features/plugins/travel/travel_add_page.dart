@@ -8,6 +8,7 @@ import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
+import 'memory_link_sheet.dart';
 import 'travel_map.dart';
 
 /// 添加旅行记录:选城市 → 填具体地点(可选)→ 传一张图 → 保存。
@@ -22,6 +23,7 @@ class TravelAddPage extends StatefulWidget {
 class _TravelAddPageState extends State<TravelAddPage> {
   Uint8List? _bytes;
   TravelCity? _city;
+  Memory? _memory; // 可选关联的回忆(1 对 1)
   final _place = TextEditingController();
   final _caption = TextEditingController();
   bool _busy = false;
@@ -61,6 +63,13 @@ class _TravelAddPageState extends State<TravelAddPage> {
     if (city != null && mounted) setState(() => _city = city);
   }
 
+  Future<void> _pickMemory() async {
+    // 进场用具体地点 / 城市预填搜索,方便就近找到对应回忆。
+    final seed = _place.text.trim().isNotEmpty ? _place.text.trim() : _city?.name;
+    final mem = await showMemoryLinkSheet(context, seedQuery: seed);
+    if (mem != null && mounted) setState(() => _memory = mem);
+  }
+
   Future<void> _save() async {
     if (_busy) return;
     if (_city == null) {
@@ -81,6 +90,7 @@ class _TravelAddPageState extends State<TravelAddPage> {
         lat: _city!.lat,
         place: _place.text.trim(),
         caption: _caption.text.trim(),
+        memoryId: _memory?.id,
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -129,6 +139,8 @@ class _TravelAddPageState extends State<TravelAddPage> {
             _cityRow(wo, t),
             const SizedBox(height: 12),
             _placeField(wo, t),
+            const SizedBox(height: 12),
+            _memoryRow(wo, t),
             const SizedBox(height: 16),
             _imageBlock(wo),
             const SizedBox(height: 16),
@@ -178,10 +190,15 @@ class _TravelAddPageState extends State<TravelAddPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('城市', style: t.labelSmall?.copyWith(color: wo.fgMid)),
+                    Text('城市 / 区县',
+                        style: t.labelSmall?.copyWith(color: wo.fgMid),),
                     const SizedBox(height: 1),
                     Text(
-                      _city?.name ?? '搜索城市…',
+                      _city == null
+                          ? '搜索城市 / 区县…'
+                          : (_city!.region == null
+                              ? _city!.name
+                              : '${_city!.name} · ${_city!.region}'),
                       style: t.titleSmall?.copyWith(
                         color: _city == null ? wo.fgDim : wo.fg,
                         fontWeight: FontWeight.w600,
@@ -221,6 +238,59 @@ class _TravelAddPageState extends State<TravelAddPage> {
         ),
       );
 
+  Widget _memoryRow(WoColors wo, TextTheme t) {
+    final mem = _memory;
+    final subtitle = mem == null
+        ? '搜索回忆来关联(可选)'
+        : [
+            if (mem.location != null && mem.location!.isNotEmpty) mem.location!,
+            mem.title.isEmpty ? '一段回忆' : mem.title,
+          ].join(' · ');
+    return InkWell(
+      onTap: _pickMemory,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: wo.bgTint,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const Text('🔗', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('关联回忆',
+                      style: t.labelSmall?.copyWith(color: wo.fgMid),),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleSmall?.copyWith(
+                      color: mem == null ? wo.fgDim : wo.fg,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (mem != null)
+              GestureDetector(
+                onTap: () => setState(() => _memory = null),
+                child: Icon(Icons.close, size: 20, color: wo.fgDim),
+              )
+            else
+              Icon(Icons.chevron_right, color: wo.fgDim),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _imageBlock(WoColors wo) {
     if (_bytes == null) {
       return AspectRatio(
@@ -253,7 +323,7 @@ class _TravelAddPageState extends State<TravelAddPage> {
                     borderRadius: BorderRadius.circular(100),
                   ),
                   child: const Text('换一张',
-                      style: TextStyle(color: Colors.white, fontSize: 11)),
+                      style: TextStyle(color: Colors.white, fontSize: 11),),
                 ),
               ),
             ),
@@ -300,7 +370,7 @@ class DottedPlaceholder extends StatelessWidget {
           const SizedBox(height: 8),
           Text('选一张照片',
               style: TextStyle(
-                  color: wo.fgMid, fontSize: 14, fontWeight: FontWeight.w500)),
+                  color: wo.fgMid, fontSize: 14, fontWeight: FontWeight.w500,),),
           const SizedBox(height: 2),
           Text('每段旅行只留一张', style: TextStyle(color: wo.fgDim, fontSize: 12)),
         ],
@@ -324,8 +394,9 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
   @override
   void initState() {
     super.initState();
-    loadTravelCities().then((c) {
-      if (mounted) setState(() => _all = c);
+    // 城市在前、区县在后:搜索「杭州」时先出地级市,再出同名区县。
+    Future.wait([loadTravelCities(), loadTravelDistricts()]).then((r) {
+      if (mounted) setState(() => _all = [...r[0], ...r[1]]);
     });
   }
 
@@ -363,7 +434,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                 autofocus: true,
                 onChanged: (v) => setState(() => _q = v),
                 decoration: InputDecoration(
-                  hintText: '搜索城市',
+                  hintText: '搜索城市 / 区县',
                   prefixIcon: const Icon(Icons.search),
                   filled: true,
                   fillColor: wo.bgTint,
@@ -377,11 +448,15 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
             Expanded(
               child: ListView.builder(
                 itemCount: list.length,
-                itemBuilder: (_, i) => ListTile(
-                  leading: const Text('📍', style: TextStyle(fontSize: 18)),
-                  title: Text(list[i].name),
-                  onTap: () => Navigator.of(context).pop(list[i]),
-                ),
+                itemBuilder: (_, i) {
+                  final c = list[i];
+                  return ListTile(
+                    leading: const Text('📍', style: TextStyle(fontSize: 18)),
+                    title: Text(c.name),
+                    subtitle: c.region == null ? null : Text(c.region!),
+                    onTap: () => Navigator.of(context).pop(c),
+                  );
+                },
               ),
             ),
           ],

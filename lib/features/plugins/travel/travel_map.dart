@@ -23,11 +23,16 @@ final double _mapH = (_latMax - _latMin) * _scaleY;
 Offset _project(double lng, double lat) =>
     Offset((lng - _lngMin) * _scaleX, (_latMax - lat) * _scaleY);
 
-/// 解析一次的地图数据：省界 Path(地图坐标系)+ 城市投影点。
+// 「去过」城市的缩略图卡尺寸(屏幕像素,恒定)+ 去重叠时卡间最小留白。
+const double _thumbW = 84, _thumbH = 80, _thumbGap = 8;
+
+/// 解析一次的地图数据：省界 Path(地图坐标系)+ 地级市投影点 + 区县投影点。
+/// 区县点只在放大到接近最大时才绘制(给更细的地理参照),平时不画。
 class TravelMapData {
-  TravelMapData(this.landPath, this.cities);
+  TravelMapData(this.landPath, this.cities, this.districts);
   final Path landPath;
   final List<({String name, Offset p})> cities;
+  final List<({String name, Offset p})> districts;
 }
 
 Future<TravelMapData>? _cached;
@@ -35,8 +40,9 @@ Future<TravelMapData>? _cached;
 Future<TravelMapData> loadTravelMapData() => _cached ??= _load();
 
 List<TravelCity>? _citiesCache;
+List<TravelCity>? _districtsCache;
 
-/// 读取地级市列表(带经纬度),用于「添加记录」的城市选择 + 搜索。结果缓存。
+/// 读取地级市列表(带经纬度),用于「添加记录」的地点选择 + 搜索。结果缓存。
 Future<List<TravelCity>> loadTravelCities() async {
   if (_citiesCache != null) return _citiesCache!;
   final str = await rootBundle.loadString('assets/maps/china_cities.json');
@@ -45,6 +51,17 @@ Future<List<TravelCity>> loadTravelCities() async {
       TravelCity.fromJson(e as Map<String, dynamic>),
   ];
   return _citiesCache!;
+}
+
+/// 读取区县列表(带经纬度 + 所属地级市 region),用于「添加记录」搜索到区县。结果缓存。
+Future<List<TravelCity>> loadTravelDistricts() async {
+  if (_districtsCache != null) return _districtsCache!;
+  final str = await rootBundle.loadString('assets/maps/china_districts.json');
+  _districtsCache = [
+    for (final e in jsonDecode(str) as List)
+      TravelCity.fromJson(e as Map<String, dynamic>),
+  ];
+  return _districtsCache!;
 }
 
 Future<TravelMapData> _load() async {
@@ -82,7 +99,19 @@ Future<TravelMapData> _load() async {
         ),
       ),
   ];
-  return TravelMapData(path, cities);
+  final distStr =
+      await rootBundle.loadString('assets/maps/china_districts.json');
+  final districts = [
+    for (final e in jsonDecode(distStr) as List)
+      (
+        name: (e['name'] as String?) ?? '',
+        p: _project(
+          (e['lng'] as num).toDouble(),
+          (e['lat'] as num).toDouble(),
+        ),
+      ),
+  ];
+  return TravelMapData(path, cities, districts);
 }
 
 /// 一座「去过」的城市(把该城市的所有旅行记录聚合而来)。
@@ -126,11 +155,18 @@ class _TravelMapState extends State<TravelMap> {
   double _gScale = 1;
   Offset _gFocalMap = Offset.zero;
 
+  // 缩略图总开关:去过的城市多时,一次全亮会很挤。隐藏后地图只剩点,
+  // 点亮某个城市点可单独「点开」它的缩略图(存进 _revealed)。
+  bool _thumbsHidden = false;
+  final Set<String> _revealed = {};
+
   double get _fit =>
       math.min(_viewport.width / _mapW, _viewport.height / _mapH);
   double get _minScale => _fit * 0.85;
   double get _maxScale => _fit * 5.0;
   double get _thumbThreshold => _fit * 1.5;
+  // 区县小点只在放大到接近最大(≥ 0.7×最大倍率)时才显示,避免平时太密。
+  double get _districtThreshold => _fit * 3.5;
 
   @override
   void initState() {
@@ -261,8 +297,24 @@ class _TravelMapState extends State<TravelMap> {
         // 首帧 / 主题切换时一次性把省界渲染成纹理(内部去重,不会每帧重做)。
         _ensureLand(data, isDark);
 
-        final showThumbs = _scale >= _thumbThreshold;
         final visited = _visited();
+        // 要显示缩略图卡的城市:
+        // · 隐藏模式:只显示用户点亮的那几座(_revealed);
+        // · 显示模式:放大过阈值后全部显示(沿用旧行为)。
+        final List<_Visited> shownCities;
+        if (_thumbsHidden) {
+          shownCities = [
+            for (final v in visited)
+              if (_revealed.contains(v.name)) v,
+          ];
+        } else if (_scale >= _thumbThreshold) {
+          shownCities = visited;
+        } else {
+          shownCities = const [];
+        }
+        final thumbs = shownCities.isEmpty
+            ? const <({_Visited v, Offset dot, Offset topLeft})>[]
+            : _layoutThumbs(shownCities);
 
         // 手势层只包住地图;缩略图与控件作为兄弟放在最上层(可点击),
         // 避免缩放识别器在竞技场里抢走它们的点击。
@@ -270,6 +322,8 @@ class _TravelMapState extends State<TravelMap> {
           children: [
             Positioned.fill(
               child: GestureDetector(
+                // 隐藏模式下:轻点「亮起的」城市点 → 单独点开 / 收起它的缩略图。
+                onTapUp: (d) => _handleDotTap(d.localPosition, visited),
                 onScaleStart: (d) {
                   _gScale = _scale;
                   _gFocalMap = Offset(
@@ -296,28 +350,88 @@ class _TravelMapState extends State<TravelMap> {
                     isDark: isDark,
                     wo: wo,
                     visited: visited,
-                    showThumbs: showThumbs,
+                    thumbs: thumbs,
                     labelThreshold: _fit * 1.25,
+                    districtThreshold: _districtThreshold,
                   ),
                 ),
               ),
             ),
-            // 缩略图卡片(恒定尺寸,可点击进城市图集)
-            if (showThumbs)
-              for (final v in visited) _thumbnail(api, wo, v),
-            _controls(wo),
+            // 缩略图卡片(恒定尺寸,可点击进城市图集;已去重叠排布)
+            for (final pl in thumbs) _thumbnail(api, wo, pl),
+            _controls(wo, showThumbToggle: visited.isNotEmpty),
           ],
         );
       },
     );
   }
 
-  Widget _thumbnail(api, WoColors wo, _Visited v) {
-    final anchor = _toScreen(v.point) + const Offset(48, -42);
+  /// 命中半径内最近的「去过」城市点;隐藏模式下切换它的缩略图显隐。
+  void _handleDotTap(Offset p, List<_Visited> visited) {
+    if (!_thumbsHidden) return; // 显示模式下点开缩略图卡即可,点点不另处理
+    _Visited? hit;
+    var best = 26.0; // 触摸命中半径(px)
+    for (final v in visited) {
+      final dist = (_toScreen(v.point) - p).distance;
+      if (dist < best) {
+        best = dist;
+        hit = v;
+      }
+    }
+    if (hit == null) return;
+    setState(() {
+      if (!_revealed.remove(hit!.name)) _revealed.add(hit.name);
+    });
+  }
+
+  /// 给「去过」城市的缩略图卡做去重叠排布:每张卡先放在城市点的右上方,再两两
+  /// 沿「最小穿透方向」互相推开,直到彼此不重叠(去过的城市通常不多,迭代很快)。
+  /// 返回每张卡的屏幕左上角;leader 线由城市点连到卡片最近边。
+  List<({_Visited v, Offset dot, Offset topLeft})> _layoutThumbs(
+    List<_Visited> visited,
+  ) {
+    final dots = [for (final v in visited) _toScreen(v.point)];
+    // 初始位置沿用旧版「右上方」观感:卡左上 = 点 +(6, -72)。
+    final pos = [for (final d in dots) Offset(d.dx + 6, d.dy - 72)];
+    for (var iter = 0; iter < 60; iter++) {
+      var moved = false;
+      for (var i = 0; i < pos.length; i++) {
+        for (var j = i + 1; j < pos.length; j++) {
+          final ox = (_thumbW + _thumbGap) - (pos[i].dx - pos[j].dx).abs();
+          final oy = (_thumbH + _thumbGap) - (pos[i].dy - pos[j].dy).abs();
+          if (ox <= 0 || oy <= 0) continue; // 不重叠
+          moved = true;
+          if (ox < oy) {
+            final push = ox / 2 + 0.5;
+            final dir = pos[i].dx <= pos[j].dx ? -1.0 : 1.0;
+            pos[i] = pos[i].translate(dir * push, 0);
+            pos[j] = pos[j].translate(-dir * push, 0);
+          } else {
+            final push = oy / 2 + 0.5;
+            final dir = pos[i].dy <= pos[j].dy ? -1.0 : 1.0;
+            pos[i] = pos[i].translate(0, dir * push);
+            pos[j] = pos[j].translate(0, -dir * push);
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    return [
+      for (var i = 0; i < visited.length; i++)
+        (v: visited[i], dot: dots[i], topLeft: pos[i]),
+    ];
+  }
+
+  Widget _thumbnail(
+    api,
+    WoColors wo,
+    ({_Visited v, Offset dot, Offset topLeft}) pl,
+  ) {
+    final v = pl.v;
     final cover = v.cover;
     return Positioned(
-      left: anchor.dx - 42,
-      top: anchor.dy - 30,
+      left: pl.topLeft.dx,
+      top: pl.topLeft.dy,
       child: GestureDetector(
         onTap: () => _openCity(v),
         child: Container(
@@ -368,7 +482,7 @@ class _TravelMapState extends State<TravelMap> {
                         top: 4,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
+                              horizontal: 5, vertical: 1,),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(8),
@@ -378,7 +492,7 @@ class _TravelMapState extends State<TravelMap> {
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,
-                                fontWeight: FontWeight.w600),
+                                fontWeight: FontWeight.w600,),
                           ),
                         ),
                       ),
@@ -405,7 +519,7 @@ class _TravelMapState extends State<TravelMap> {
     );
   }
 
-  Widget _controls(WoColors wo) {
+  Widget _controls(WoColors wo, {required bool showThumbToggle}) {
     Widget btn(String s, VoidCallback onTap, {bool border = false}) => InkWell(
           onTap: onTap,
           child: Container(
@@ -427,11 +541,39 @@ class _TravelMapState extends State<TravelMap> {
             ),
           ),
         );
+    Widget iconBtn(IconData icon, VoidCallback onTap, {Color? color}) =>
+        Material(
+          color: wo.bgElev,
+          borderRadius: BorderRadius.circular(12),
+          elevation: 2,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, size: 18, color: color ?? wo.fg),
+            ),
+          ),
+        );
+
     return Positioned(
       right: 14,
       bottom: 150,
       child: Column(
         children: [
+          // 缩略图显隐总开关:隐藏后只剩点,点亮的点可单独点开查看。
+          if (showThumbToggle) ...[
+            iconBtn(
+              _thumbsHidden ? Icons.hide_image_outlined : Icons.image_outlined,
+              () => setState(() {
+                _thumbsHidden = !_thumbsHidden;
+                _revealed.clear();
+              }),
+              color: _thumbsHidden ? wo.accent : wo.fg,
+            ),
+            const SizedBox(height: 10),
+          ],
           Material(
             color: wo.bgElev,
             borderRadius: BorderRadius.circular(14),
@@ -448,19 +590,7 @@ class _TravelMapState extends State<TravelMap> {
             ),
           ),
           const SizedBox(height: 10),
-          Material(
-            color: wo.bgElev,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 2,
-            child: InkWell(
-              onTap: () => setState(_fitView),
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.my_location_outlined, size: 18, color: wo.fg),
-              ),
-            ),
-          ),
+          iconBtn(Icons.my_location_outlined, () => setState(_fitView)),
         ],
       ),
     );
@@ -477,16 +607,18 @@ class _MapPainter extends CustomPainter {
     required this.isDark,
     required this.wo,
     required this.visited,
-    required this.showThumbs,
+    required this.thumbs,
     required this.labelThreshold,
+    required this.districtThreshold,
   });
 
   final TravelMapData data;
   final ui.Image? landImage;
-  final double scale, tx, ty, labelThreshold;
-  final bool isDark, showThumbs;
+  final double scale, tx, ty, labelThreshold, districtThreshold;
+  final bool isDark;
   final WoColors wo;
   final List<_Visited> visited;
+  final List<({_Visited v, Offset dot, Offset topLeft})> thumbs;
 
   Offset _toScreen(Offset p) => Offset(tx + p.dx * scale, ty + p.dy * scale);
 
@@ -517,6 +649,17 @@ class _MapPainter extends CustomPainter {
     final showDots = scale >= labelThreshold;
     final rect = Offset.zero & size;
 
+    // 区县小点:只在放大到接近最大倍率时才显示(更细的地理参照),画在城市点之下、
+    // 不标名(2700+ 个区县,标名会糊成一片)。去过的区县由下方统一画大点+名。
+    if (scale >= districtThreshold) {
+      for (final d in data.districts) {
+        final s = _toScreen(d.p);
+        if (!rect.inflate(40).contains(s)) continue;
+        if (visitedNames.contains(d.name)) continue;
+        _districtDot(canvas, s);
+      }
+    }
+
     // 城市点(恒定屏幕尺寸,裁剪到视口)。
     for (final c in data.cities) {
       final s = _toScreen(c.p);
@@ -535,17 +678,23 @@ class _MapPainter extends CustomPainter {
       _label(canvas, v.name, s, true);
     }
 
-    // 缩略图连接虚线(在缩略图卡之下)。
-    if (showThumbs) {
+    // 缩略图 leader 虚线(在缩略图卡之下):从城市点连到「去重叠后」卡片的最近边,
+    // 卡片移到哪线就跟到哪,既不重叠又始终指回对应城市。
+    if (thumbs.isNotEmpty) {
       final dash = Paint()
         ..style = PaintingStyle.stroke
         ..color = wo.accent
         ..strokeWidth = 1.5;
-      for (final v in visited) {
-        final s = _toScreen(v.point);
-        final anchor = s + const Offset(48, -42);
-        _dashLine(canvas, s, anchor, dash);
-        canvas.drawCircle(anchor, 3, Paint()..color = wo.accent);
+      for (final pl in thumbs) {
+        final card =
+            Rect.fromLTWH(pl.topLeft.dx, pl.topLeft.dy, _thumbW, _thumbH);
+        final near = Offset(
+          pl.dot.dx.clamp(card.left, card.right),
+          pl.dot.dy.clamp(card.top, card.bottom),
+        );
+        if ((near - pl.dot).distanceSquared < 4) continue; // 点落在卡内,免画
+        _dashLine(canvas, pl.dot, near, dash);
+        canvas.drawCircle(near, 3, Paint()..color = wo.accent);
       }
     }
   }
@@ -554,21 +703,30 @@ class _MapPainter extends CustomPainter {
     if (visited) {
       canvas.drawCircle(
         s,
-        7,
+        5,
         Paint()..color = wo.accent.withValues(alpha: 0.18),
       );
-      canvas.drawCircle(s, 4.5, Paint()..color = wo.accent);
+      canvas.drawCircle(s, 3, Paint()..color = wo.accent);
       canvas.drawCircle(
         s,
-        4.5,
+        3,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2
+          ..strokeWidth = 1.5
           ..color = isDark ? wo.bgElev : Colors.white,
       );
     } else {
-      canvas.drawCircle(s, 2.4, Paint()..color = wo.fgDim);
+      canvas.drawCircle(s, 1.7, Paint()..color = wo.fgDim);
     }
+  }
+
+  // 区县点:比地级市点更小、更淡,读起来是「更细一级」的参照。
+  void _districtDot(Canvas canvas, Offset s) {
+    canvas.drawCircle(
+      s,
+      1.2,
+      Paint()..color = wo.fgDim.withValues(alpha: 0.55),
+    );
   }
 
   void _label(Canvas canvas, String name, Offset s, bool visited) {
@@ -608,7 +766,7 @@ class _MapPainter extends CustomPainter {
       old.tx != tx ||
       old.ty != ty ||
       old.isDark != isDark ||
-      old.showThumbs != showThumbs ||
+      old.thumbs.length != thumbs.length ||
       old.landImage != landImage ||
       old.visited.length != visited.length;
 }

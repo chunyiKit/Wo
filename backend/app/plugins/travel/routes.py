@@ -9,10 +9,12 @@ family membership.
 from __future__ import annotations
 
 import contextlib
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, File, Form, UploadFile
+from pydantic import BaseModel
 from sqlmodel import select
 from starlette.responses import RedirectResponse, Response
 
@@ -25,13 +27,21 @@ from app.core.images import validate_image
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
 from app.core.storage import PresignableStorage, storage
+from app.plugins.memory.models import Memory
 from app.plugins.travel.models import TravelTrip
 from app.plugins.travel.service import (
     TripRead,
     build_storage_key,
     generate_for_trip,
+    linked_memory_map,
     to_trip_read,
 )
+
+
+class SetMemoryBody(BaseModel):
+    """Body for PUT /trips/{id}/memory — set (or clear, with null) the link."""
+
+    memory_id: UUID | None = None
 
 router = APIRouter(prefix="/families/{family_id}/plugins/travel", tags=["travel"])
 
@@ -43,6 +53,22 @@ async def _load_trip(
     if trip is None or trip.family_id != family_id:
         raise AppError(ErrorCode.NOT_FOUND, "旅行记录不存在", status_code=404)
     return trip
+
+
+async def _resolve_family_memory(
+    session: SessionDep, family_id: UUID, memory_id: UUID | None
+) -> UUID | None:
+    """Return memory_id only if it exists in this family; else None.
+
+    Guards against linking a memory from another family (or a stale id). Visibility
+    isn't enforced here — the client can only pick memories it can already see.
+    """
+    if memory_id is None:
+        return None
+    mem = await session.get(Memory, memory_id)
+    if mem is None or mem.family_id != family_id:
+        return None
+    return memory_id
 
 
 @router.get("/trips", response_model=ApiResponse[list[TripRead]])
@@ -63,7 +89,10 @@ async def list_trips(
         .scalars()
         .all()
     )
-    return ok([to_trip_read(t) for t in rows])
+    linked = await linked_memory_map(
+        session, family_id, current_user.id, [t.memory_id for t in rows]
+    )
+    return ok([to_trip_read(t, linked.get(t.memory_id)) for t in rows])
 
 
 @router.post("/trips", response_model=ApiResponse[TripRead], status_code=201)
@@ -78,6 +107,7 @@ async def create_trip(
     city_lat: Annotated[float, Form()],
     place: Annotated[str | None, Form()] = None,
     caption: Annotated[str | None, Form()] = None,
+    memory_id: Annotated[UUID | None, Form()] = None,
 ) -> ApiResponse[TripRead]:
     """Pin one photo to a city, then kick off background AI restyling."""
     await require_membership(session, current_user.id, family_id)
@@ -98,6 +128,7 @@ async def create_trip(
     if not name:
         raise AppError(ErrorCode.VALIDATION_ERROR, "请填写城市", status_code=400)
 
+    linked_id = await _resolve_family_memory(session, family_id, memory_id)
     trip_id = new_uuid7()
     storage_key = build_storage_key(family_id, trip_id, "original", ext)
     await storage.put(storage_key, content, content_type)
@@ -115,6 +146,7 @@ async def create_trip(
             original_width=width,
             original_height=height,
             ai_status="generating",
+            memory_id=linked_id,
             created_by=current_user.id,
         )
         session.add(trip)
@@ -127,7 +159,10 @@ async def create_trip(
 
     # Restyle in the background; the client polls the list for ai_status.
     background.add_task(generate_for_trip, trip_id)
-    return ok(to_trip_read(trip))
+    linked = await linked_memory_map(
+        session, family_id, current_user.id, [trip.memory_id]
+    )
+    return ok(to_trip_read(trip, linked.get(trip.memory_id)))
 
 
 @router.post("/trips/{trip_id}/retry", response_model=ApiResponse[TripRead])
@@ -146,7 +181,40 @@ async def retry_trip(
     await session.commit()
     await session.refresh(trip)
     background.add_task(generate_for_trip, trip_id)
-    return ok(to_trip_read(trip))
+    linked = await linked_memory_map(
+        session, family_id, current_user.id, [trip.memory_id]
+    )
+    return ok(to_trip_read(trip, linked.get(trip.memory_id)))
+
+
+@router.put("/trips/{trip_id}/memory", response_model=ApiResponse[TripRead])
+async def set_trip_memory(
+    family_id: UUID,
+    trip_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    body: Annotated[SetMemoryBody, Body()],
+) -> ApiResponse[TripRead]:
+    """Set (or clear, with memory_id=null) the trip's 1:1 link to a memory."""
+    await require_membership(session, current_user.id, family_id)
+    trip = await _load_trip(session, family_id, trip_id)
+    if body.memory_id is not None:
+        linked_id = await _resolve_family_memory(
+            session, family_id, body.memory_id
+        )
+        if linked_id is None:
+            raise AppError(ErrorCode.NOT_FOUND, "回忆不存在", status_code=404)
+        trip.memory_id = linked_id
+    else:
+        trip.memory_id = None
+    trip.updated_at = datetime.now(UTC)
+    session.add(trip)
+    await session.commit()
+    await session.refresh(trip)
+    linked = await linked_memory_map(
+        session, family_id, current_user.id, [trip.memory_id]
+    )
+    return ok(to_trip_read(trip, linked.get(trip.memory_id)))
 
 
 @router.delete("/trips/{trip_id}", response_model=ApiResponse[dict])

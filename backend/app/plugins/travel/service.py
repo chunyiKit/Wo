@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from datetime import UTC, datetime
+from collections.abc import Iterable
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -21,6 +22,9 @@ from sqlmodel import select
 from app.core.database import async_session_maker
 from app.core.storage import storage
 from app.models.plugin import InstalledPlugin
+from app.plugins.memory.models import Memory, MemoryMedia
+from app.plugins.memory.service import build_media_url as memory_media_url
+from app.plugins.memory.service import visible_to as memory_visible_to
 from app.plugins.registry import PluginPreview
 from app.plugins.travel.models import TravelTrip
 from app.services.ai import ai_generate_image
@@ -87,6 +91,16 @@ def _ver(trip: TravelTrip) -> int:
     return int(trip.updated_at.timestamp())
 
 
+class LinkedMemory(BaseModel):
+    """Lightweight summary of the memory a trip links to — enough for the viewer
+    to render a card (title + cover + date) and tap through, without refetching."""
+
+    id: UUID
+    title: str
+    event_date: date
+    cover_url: str | None
+
+
 class TripRead(BaseModel):
     id: UUID
     family_id: UUID
@@ -98,9 +112,16 @@ class TripRead(BaseModel):
     image_url: str
     ai_status: str  # generating | ready | failed
     created_at: datetime
+    # 1:1 link to a memory. Only surfaced when the memory is visible to the
+    # current viewer — otherwise both stay null (a private memory of someone
+    # else must not leak its title, and the trip reads as "unlinked" to them).
+    memory_id: UUID | None = None
+    memory: LinkedMemory | None = None
 
 
-def to_trip_read(trip: TravelTrip) -> TripRead:
+def to_trip_read(
+    trip: TravelTrip, linked: LinkedMemory | None = None
+) -> TripRead:
     return TripRead(
         id=trip.id,
         family_id=trip.family_id,
@@ -112,7 +133,72 @@ def to_trip_read(trip: TravelTrip) -> TripRead:
         image_url=image_url(trip.family_id, trip.id, v=_ver(trip)),
         ai_status=trip.ai_status,
         created_at=trip.created_at,
+        memory_id=linked.id if linked else None,
+        memory=linked,
     )
+
+
+async def linked_memory_map(
+    session: AsyncSession,
+    family_id: UUID,
+    viewer_id: UUID | None,
+    memory_ids: Iterable[UUID],
+) -> dict[UUID, LinkedMemory]:
+    """Resolve the linked-memory summaries for a batch of trips, in two queries.
+
+    Respects memory visibility — a `private` memory of another member is dropped
+    (so callers serialize the trip as unlinked for that viewer). Cover is each
+    memory's first photo (by sort_order, then recency).
+    """
+    ids = {mid for mid in memory_ids if mid is not None}
+    if not ids:
+        return {}
+
+    mems = (
+        (
+            await session.execute(
+                select(Memory).where(
+                    Memory.id.in_(ids), Memory.family_id == family_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    visible = [m for m in mems if memory_visible_to(m, viewer_id)]
+    if not visible:
+        return {}
+
+    covers: dict[UUID, MemoryMedia] = {}
+    media = (
+        (
+            await session.execute(
+                select(MemoryMedia)
+                .where(
+                    MemoryMedia.memory_id.in_([m.id for m in visible]),
+                    MemoryMedia.kind == "photo",
+                )
+                .order_by(MemoryMedia.sort_order, MemoryMedia.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for md in media:
+        covers.setdefault(md.memory_id, md)  # first wins (already ordered)
+
+    out: dict[UUID, LinkedMemory] = {}
+    for m in visible:
+        cover = covers.get(m.id)
+        out[m.id] = LinkedMemory(
+            id=m.id,
+            title=m.title,
+            event_date=m.event_date,
+            cover_url=(
+                memory_media_url(family_id, m.id, cover.id) if cover else None
+            ),
+        )
+    return out
 
 
 async def generate_for_trip(trip_id: UUID) -> None:
@@ -205,11 +291,13 @@ async def preview_hook(
 
 __all__ = [
     "DEFAULT_PROMPT",
+    "LinkedMemory",
     "TripRead",
     "build_prompt",
     "build_storage_key",
     "ext_from_ct",
     "image_url",
+    "linked_memory_map",
     "to_trip_read",
     "generate_for_trip",
     "preview_hook",

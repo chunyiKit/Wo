@@ -2023,6 +2023,8 @@ class TravelTrip {
     required this.imageUrl,
     required this.aiStatus,
     this.createdAt,
+    this.memoryId,
+    this.memory,
   });
 
   final String id;
@@ -2034,6 +2036,12 @@ class TravelTrip {
   final String imageUrl;
   final String aiStatus; // generating | ready | failed
   final DateTime? createdAt;
+
+  /// 1 对 1 关联的回忆 id(后端只在当前查看者可见该回忆时才返回;否则为 null)。
+  final String? memoryId;
+
+  /// 关联回忆的轻量摘要(标题 + 封面 + 日期),供「看图」页直接渲染关联卡。
+  final LinkedMemory? memory;
 
   bool get isGenerating => aiStatus == 'generating';
   bool get isFailed => aiStatus == 'failed';
@@ -2048,20 +2056,56 @@ class TravelTrip {
         imageUrl: j['image_url'] as String? ?? '',
         aiStatus: j['ai_status'] as String? ?? 'ready',
         createdAt: _parseDate(j['created_at']),
+        memoryId: j['memory_id'] as String?,
+        memory: j['memory'] == null
+            ? null
+            : LinkedMemory.fromJson(j['memory'] as Map<String, dynamic>),
       );
 }
 
-/// 一座城市(来自 bundle 的 china_cities.json),用于地图标注与添加记录的城市选择。
+/// 旅行所关联回忆的轻量摘要(后端 TripRead.memory)。仅用于在「看图」页展示
+/// 关联卡(封面 + 标题 + 日期)并跳转;完整回忆通过 `api.memory(id)` 再拉。
+class LinkedMemory {
+  const LinkedMemory({
+    required this.id,
+    required this.title,
+    this.eventDate,
+    this.coverUrl,
+  });
+
+  final String id;
+  final String title;
+  final DateTime? eventDate;
+  final String? coverUrl; // host 相对地址,展示时前缀 baseUrl + 鉴权头
+
+  factory LinkedMemory.fromJson(Map<String, dynamic> j) => LinkedMemory(
+        id: j['id'] as String,
+        title: j['title'] as String? ?? '',
+        eventDate: _parseDate(j['event_date']),
+        coverUrl: j['cover_url'] as String?,
+      );
+}
+
+/// 一座城市 / 区县(来自 bundle 的 china_cities.json / china_districts.json),
+/// 用于地图标注与添加记录的地点选择。`region` 为所属上级(如区县所属地级市),
+/// 仅用于搜索结果里的消歧展示——同名区县很多(如「鼓楼区」分属多市)。
 class TravelCity {
-  const TravelCity({required this.name, required this.lng, required this.lat});
+  const TravelCity({
+    required this.name,
+    required this.lng,
+    required this.lat,
+    this.region,
+  });
 
   final String name;
   final double lng;
   final double lat;
+  final String? region;
 
   factory TravelCity.fromJson(Map<String, dynamic> j) => TravelCity(
         name: j['name'] as String? ?? '',
         lng: (j['lng'] as num?)?.toDouble() ?? 0,
         lat: (j['lat'] as num?)?.toDouble() ?? 0,
+        region: j['region'] as String?,
       );
 }
