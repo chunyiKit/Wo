@@ -34,6 +34,7 @@ from app.plugins.accounting.service import (
     build_read,
     get_budget,
     month_bounds,
+    month_excluded_total,
     month_total,
 )
 from app.services.ai import AiError, AiNotConfiguredError
@@ -191,9 +192,20 @@ async def read_summary(
 ) -> ApiResponse[SummaryRead]:
     await require_membership(session, current_user.id, family_id)
     total = await month_total(session, family_id, year=year, month=month)
+    excluded = await month_excluded_total(session, family_id, year=year, month=month)
+    budgeted = total - excluded
     budget = await get_budget(session, family_id)
-    remaining = (budget - total) if budget is not None else None
-    return ok(SummaryRead(month_total=total, budget=budget, remaining=remaining))
+    # 预算只扣预算内支出（budgeted），预算外（excluded）不参与扣减。
+    remaining = (budget - budgeted) if budget is not None else None
+    return ok(
+        SummaryRead(
+            month_total=total,
+            budget=budget,
+            remaining=remaining,
+            budgeted_total=budgeted,
+            excluded_total=excluded,
+        )
+    )
 
 
 @router.post("/receipt-scan", response_model=ApiResponse[ReceiptScanResult])

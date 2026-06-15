@@ -410,6 +410,16 @@ class _SummaryCard extends StatelessWidget {
               letterSpacing: -1,
             ),
           ),
+          const SizedBox(height: WoTokens.space2),
+          // 本月支出拆分：预算内（计入预算扣除）+ 预算外（不计入）。小字展示。
+          Wrap(
+            spacing: WoTokens.space4,
+            runSpacing: WoTokens.space1,
+            children: [
+              _SplitStat(label: '预算内', value: summary.budgetedTotal),
+              _SplitStat(label: '预算外', value: summary.excludedTotal),
+            ],
+          ),
           const SizedBox(height: WoTokens.space4),
           Row(
             children: [
@@ -435,6 +445,31 @@ class _SummaryCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 本月支出旁的小字拆分项：「预算内 ¥X」/「预算外 ¥Y」。
+class _SplitStat extends StatelessWidget {
+  const _SplitStat({required this.label, required this.value});
+
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: t.labelMedium?.copyWith(color: wo.fgMid)),
+        const SizedBox(width: 4),
+        Text(
+          _money(value),
+          style: t.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
     );
   }
 }
@@ -536,9 +571,28 @@ class _ExpenseTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: WoTokens.space3),
-          Text(
-            _money(expense.amount),
-            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                _money(expense.amount),
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              if (expense.excludeFromBudget) ...[
+                const SizedBox(height: 3),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: wo.bgTint,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '预算外',
+                    style: t.labelSmall?.copyWith(color: wo.fgMid),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),

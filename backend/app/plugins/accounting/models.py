@@ -34,6 +34,8 @@ class TransactionBase(SQLModel):
     amount: Decimal = Field(sa_column=Column(Numeric(12, 2), nullable=False))
     category: str = Field(max_length=16)
     note: str | None = Field(default=None, max_length=200)
+    # True → 这笔仍计入「本月支出」，但不从月预算中扣除（预算外支出）。
+    exclude_from_budget: bool = Field(default=False)
 
 
 class Transaction(TransactionBase, table=True):
@@ -67,6 +69,7 @@ class TransactionUpdate(SQLModel):
     amount: Decimal | None = None
     category: str | None = Field(default=None, max_length=16)
     note: str | None = Field(default=None, max_length=200)
+    exclude_from_budget: bool | None = None
 
 
 class TransactionRead(TransactionBase):
@@ -117,3 +120,7 @@ class SummaryRead(SQLModel):
     month_total: Decimal
     budget: Decimal | None = None
     remaining: Decimal | None = None
+    # 拆分本月支出：预算内（计入预算扣除）+ 预算外（不计入）= month_total。
+    # remaining 只扣 budgeted_total。
+    budgeted_total: Decimal = Decimal(0)
+    excluded_total: Decimal = Decimal(0)

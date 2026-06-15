@@ -856,6 +856,7 @@ class WoApi {
     required double amount,
     required String category,
     String? note,
+    bool excludeFromBudget = false,
   }) async {
     final data = await _client.post(
       '/families/$familyId/plugins/accounting/transactions',
@@ -863,6 +864,7 @@ class WoApi {
         'amount': amount,
         'category': category,
         if (note != null && note.isNotEmpty) 'note': note,
+        'exclude_from_budget': excludeFromBudget,
       },
     );
     return Expense.fromJson(data as Map<String, dynamic>);
@@ -874,6 +876,7 @@ class WoApi {
     required double amount,
     required String category,
     String? note,
+    bool excludeFromBudget = false,
   }) async {
     final data = await _client.put(
       '/families/$familyId/plugins/accounting/transactions/$id',
@@ -881,6 +884,7 @@ class WoApi {
         'amount': amount,
         'category': category,
         'note': note,
+        'exclude_from_budget': excludeFromBudget,
       },
     );
     return Expense.fromJson(data as Map<String, dynamic>);

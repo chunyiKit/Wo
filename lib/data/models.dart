@@ -507,6 +507,7 @@ class Expense {
     required this.amount,
     required this.category,
     this.note,
+    this.excludeFromBudget = false,
     this.createdBy,
     this.creatorName,
     this.creatorEmoji,
@@ -519,6 +520,9 @@ class Expense {
   final double amount;
   final String category; // dining | shopping | utilities | car
   final String? note;
+
+  /// true 表示这笔仍计入「本月支出」，但不从月预算中扣除（预算外支出）。
+  final bool excludeFromBudget;
   final String? createdBy;
   final String? creatorName;
   final String? creatorEmoji;
@@ -533,6 +537,7 @@ class Expense {
         amount: _parseNum(j['amount']),
         category: j['category'] as String? ?? '',
         note: j['note'] as String?,
+        excludeFromBudget: j['exclude_from_budget'] as bool? ?? false,
         createdBy: j['created_by'] as String?,
         creatorName: j['creator_name'] as String?,
         creatorEmoji: j['creator_emoji'] as String?,
@@ -546,17 +551,25 @@ class AccountingSummary {
     required this.monthTotal,
     this.budget,
     this.remaining,
+    this.budgetedTotal = 0,
+    this.excludedTotal = 0,
   });
 
   final double monthTotal;
   final double? budget;
   final double? remaining;
 
+  /// 本月支出拆分：预算内（计入预算扣除）+ 预算外（不计入）= [monthTotal]。
+  final double budgetedTotal;
+  final double excludedTotal;
+
   factory AccountingSummary.fromJson(Map<String, dynamic> j) =>
       AccountingSummary(
         monthTotal: _parseNum(j['month_total']),
         budget: _parseNumOrNull(j['budget']),
         remaining: _parseNumOrNull(j['remaining']),
+        budgetedTotal: _parseNum(j['budgeted_total']),
+        excludedTotal: _parseNum(j['excluded_total']),
       );
 }
 

@@ -36,13 +36,38 @@ async def month_total(
     year: int | None = None,
     month: int | None = None,
 ) -> Decimal:
-    """Sum of this family's expenses in the given month (defaults to current)."""
+    """Sum of this family's expenses in the given month (defaults to current).
+
+    Includes 预算外 (exclude_from_budget) expenses — this is 本月支出 as shown on
+    the card, not the amount deducted from the budget.
+    """
     today = date.today()
     start, end = month_bounds(year or today.year, month or today.month)
     stmt = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
         Transaction.family_id == family_id,
         Transaction.created_at >= start,
         Transaction.created_at < end,
+    )
+    return Decimal((await session.execute(stmt)).scalar_one())
+
+
+async def month_excluded_total(
+    session: AsyncSession,
+    family_id: UUID,
+    year: int | None = None,
+    month: int | None = None,
+) -> Decimal:
+    """Sum of this month's 不计入预算 expenses (预算外支出).
+
+    预算内支出 = month_total - month_excluded_total，预算只扣预算内部分。
+    """
+    today = date.today()
+    start, end = month_bounds(year or today.year, month or today.month)
+    stmt = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        Transaction.family_id == family_id,
+        Transaction.created_at >= start,
+        Transaction.created_at < end,
+        Transaction.exclude_from_budget.is_(True),
     )
     return Decimal((await session.execute(stmt)).scalar_one())
 
@@ -104,7 +129,10 @@ async def preview_hook(
             emoji="💰",
         )
 
-    remaining = budget - total
+    # 预算只扣预算内支出；预算外（exclude_from_budget）不参与扣减。
+    excluded = await month_excluded_total(session, ip.family_id)
+    budgeted = total - excluded
+    remaining = budget - budgeted
     ratio = float(remaining / budget)
     tone: str | None = None
     if ratio < _DANGER_RATIO:

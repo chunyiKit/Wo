@@ -39,6 +39,8 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
   late final TextEditingController _note;
   late final FocusNode _noteFocus;
   bool _submitting = false;
+  // 勾选后这笔仍计入「本月支出」，但不从月预算中扣除（预算外支出）。默认不勾选。
+  bool _excludeFromBudget = false;
 
   // 计算器状态：金额输入不再调起系统输入法，由下方自绘键盘驱动。
   // _input  当前正在输入的操作数（字符串，允许带 `.`）。
@@ -68,6 +70,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
         ? _trimAmount(e.amount)
         : (d?.amount != null ? _trimAmount(d!.amount!) : '');
     _note = TextEditingController(text: e?.note ?? d?.note ?? '');
+    _excludeFromBudget = e?.excludeFromBudget ?? false;
     _noteFocus = FocusNode();
     _noteFocus.addListener(_onNoteFocusChange);
   }
@@ -283,6 +286,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
           amount: amount,
           category: _category,
           note: note.isEmpty ? null : note,
+          excludeFromBudget: _excludeFromBudget,
         );
       } else {
         await session.api.createExpense(
@@ -290,6 +294,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
           amount: amount,
           category: _category,
           note: note.isEmpty ? null : note,
+          excludeFromBudget: _excludeFromBudget,
         );
       }
       if (mounted) nav.pop(true);
@@ -387,6 +392,14 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                           hintText: '写点什么',
                         ),
                       ),
+                      const SizedBox(height: WoTokens.space2),
+                      _BudgetExcludeToggle(
+                        value: _excludeFromBudget,
+                        onChanged: (v) {
+                          if (_noteFocus.hasFocus) _noteFocus.unfocus();
+                          setState(() => _excludeFromBudget = v);
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -452,6 +465,53 @@ class _AmountDisplay extends StatelessWidget {
                     color: isError ? wo.danger : wo.fg,
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 「不计入预算扣除」开关：勾选后这笔仍计入本月支出，但不从月预算中扣除。
+class _BudgetExcludeToggle extends StatelessWidget {
+  const _BudgetExcludeToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final wo = context.wo;
+    final t = Theme.of(context).textTheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(WoTokens.chipRadius),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: WoTokens.space2),
+        child: Row(
+          children: [
+            Icon(
+              value ? Icons.check_box_rounded : Icons.check_box_outline_blank,
+              color: value ? wo.accent : wo.fgDim,
+              size: 24,
+            ),
+            const SizedBox(width: WoTokens.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '不计入预算扣除',
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '仍计入本月支出，但不从预算中扣除',
+                    style: t.bodySmall?.copyWith(color: wo.fgMid),
+                  ),
+                ],
               ),
             ),
           ],

@@ -158,6 +158,75 @@ async def test_budget_set_and_summary(client: AsyncClient) -> None:
     assert float(summary["remaining"]) == 700.0
 
 
+async def test_exclude_from_budget_defaults_false(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    created = await _add_expense(client, fid, amount="50.00")
+    assert created["exclude_from_budget"] is False
+
+
+async def test_exclude_from_budget_kept_in_total_but_not_deducted(
+    client: AsyncClient,
+) -> None:
+    fid = await _create_family(client)
+    await client.put(
+        f"/api/v1/families/{fid}/plugins/accounting/budget",
+        json={"monthly_amount": "1000.00"},
+    )
+    # 一笔预算内 + 一笔预算外。
+    await _add_expense(client, fid, amount="300.00")
+    excluded = await _add_expense(
+        client, fid, amount="200.00", exclude_from_budget=True
+    )
+    assert excluded["exclude_from_budget"] is True
+
+    summary = (
+        await client.get(f"/api/v1/families/{fid}/plugins/accounting/summary")
+    ).json()["data"]
+    # 本月支出含预算外；剩余只扣预算内 300。
+    assert float(summary["month_total"]) == 500.0
+    assert float(summary["budgeted_total"]) == 300.0
+    assert float(summary["excluded_total"]) == 200.0
+    assert float(summary["remaining"]) == 700.0
+
+
+async def test_update_toggles_exclude_from_budget(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    await client.put(
+        f"/api/v1/families/{fid}/plugins/accounting/budget",
+        json={"monthly_amount": "1000.00"},
+    )
+    created = await _add_expense(client, fid, amount="400.00")
+    # 改为预算外后，剩余应回到满额。
+    await client.put(
+        f"/api/v1/families/{fid}/plugins/accounting/transactions/{created['id']}",
+        json={"exclude_from_budget": True},
+    )
+    summary = (
+        await client.get(f"/api/v1/families/{fid}/plugins/accounting/summary")
+    ).json()["data"]
+    assert float(summary["month_total"]) == 400.0
+    assert float(summary["excluded_total"]) == 400.0
+    assert float(summary["remaining"]) == 1000.0
+
+
+async def test_preview_remaining_ignores_excluded(client: AsyncClient) -> None:
+    """首页卡片「剩余」只扣预算内支出；预算外不影响配色。"""
+    fid = await _create_family(client)
+    await client.post(
+        f"/api/v1/families/{fid}/plugins", json={"plugin_id": "accounting"}
+    )
+    await client.put(
+        f"/api/v1/families/{fid}/plugins/accounting/budget",
+        json={"monthly_amount": "1000.00"},
+    )
+    # 950 预算外 + 300 预算内：本月支出 1250，但剩余只扣 300 → 70%，normal。
+    await _add_expense(client, fid, amount="950.00", exclude_from_budget=True)
+    await _add_expense(client, fid, amount="300.00")
+    data = (await client.get(f"/api/v1/families/{fid}/plugins")).json()["data"][0]
+    assert "1250" in data["preview"]["primary"]
+    assert data["preview"]["secondary_tone"] is None
+
+
 async def test_month_filter_scopes_transactions_and_summary(
     client: AsyncClient,
 ) -> None:
