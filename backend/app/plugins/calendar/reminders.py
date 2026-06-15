@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import logging
 from datetime import date
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -48,18 +49,27 @@ def _build_message(item: CalendarItem, delta: int) -> tuple[str, str]:
 
 
 async def check_due_calendar_items(
-    session: AsyncSession, *, today: date | None = None
+    session: AsyncSession,
+    *,
+    today: date | None = None,
+    family_id: UUID | None = None,
 ) -> int:
     """One reminder pass. Returns how many items were notified.
 
     Stages notifications + flips `last_notified_occurrence`, then commits once so
     the two are atomic (no double-notify if a later pass races the same row).
+
+    `family_id` optionally scopes the scan to a single family; the production
+    loop leaves it `None` to sweep the whole DB, while tests pass their own
+    family so the count never depends on leftover rows from other families.
     """
     today = today or date.today()
     stmt = select(CalendarItem).where(
         CalendarItem.notify_enabled.is_(True),
         CalendarItem.done.is_(False),
     )
+    if family_id is not None:
+        stmt = stmt.where(CalendarItem.family_id == family_id)
     rows = list((await session.execute(stmt)).scalars().all())
 
     notified = 0

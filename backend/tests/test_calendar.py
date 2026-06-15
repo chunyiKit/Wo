@@ -208,9 +208,16 @@ async def test_due_reminder_fires_once(client: AsyncClient) -> None:
             "notify_days_before": 0,
         },
     )
+    # Scope the scan to this test's own family so the count never picks up
+    # due items left over from other tests in the shared dev DB.
+    family_id = uuid.UUID(fid)
     async with async_session_maker() as session:
-        first = await check_due_calendar_items(session, today=today)
-        second = await check_due_calendar_items(session, today=today)
+        first = await check_due_calendar_items(
+            session, today=today, family_id=family_id
+        )
+        second = await check_due_calendar_items(
+            session, today=today, family_id=family_id
+        )
     assert first == 1
     assert second == 0  # idempotent per occurrence
 
@@ -231,7 +238,12 @@ async def test_reminder_skips_outside_window(client: AsyncClient) -> None:
         },
     )
     async with async_session_maker() as session:
-        assert await check_due_calendar_items(session, today=today) == 0
+        assert (
+            await check_due_calendar_items(
+                session, today=today, family_id=uuid.UUID(fid)
+            )
+            == 0
+        )
 
 
 # ---- preview ---------------------------------------------------------------
