@@ -48,12 +48,15 @@ else
 fi
 
 echo "==> Publishing $APK as $NAME (code $CODE) → $WO_API_BASE_URL"
+# Text fields use --form-string (not -F): curl's -F interprets ';', '@' and '<'
+# in the value (e.g. ';type='), which would silently truncate notes containing a
+# semicolon. --form-string sends the value verbatim. Only the file upload uses -F.
 curl -fsS "${TLS[@]}" \
     -H "X-Release-Token: $WO_RELEASE_TOKEN" \
     -F "file=@${APK};type=application/vnd.android.package-archive" \
-    -F "version_name=${NAME}" \
-    -F "version_code=${CODE}" \
-    -F "notes=${NOTES}" \
+    --form-string "version_name=${NAME}" \
+    --form-string "version_code=${CODE}" \
+    --form-string "notes=${NOTES}" \
     "$WO_API_BASE_URL/api/v1/app/release"
 echo
 echo "==> Done."
