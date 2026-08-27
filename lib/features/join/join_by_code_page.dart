@@ -39,11 +39,11 @@ class _JoinByCodePageState extends State<JoinByCodePage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(
+    return WoScaffold(
+      appBar: WoAppBar(
         title: const Text('输入邀请码'),
         actions: [
-          IconButton(
+          WoIconButton(
             tooltip: '扫码',
             icon: const Icon(Icons.qr_code_scanner_rounded),
             onPressed: () => context.push(WoRoutes.joinByScan),
@@ -75,13 +75,13 @@ class _JoinByCodePageState extends State<JoinByCodePage> {
               const Spacer(),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
+                child: WoFilledButton(
                   onPressed: (_filled && !_busy) ? _join : null,
                   child: _busy
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: WoProgressIndicator(strokeWidth: 2),
                         )
                       : Text(_filled ? '加入这个家' : '请输入完整邀请码'),
                 ),
@@ -94,7 +94,7 @@ class _JoinByCodePageState extends State<JoinByCodePage> {
   }
 
   Widget _codeField(TextEditingController c) {
-    return TextField(
+    return WoTextField(
       controller: c,
       textAlign: TextAlign.center,
       maxLength: 4,

@@ -98,7 +98,7 @@ class _CalendarListPageState extends State<CalendarListPage> {
       await session.api.remindCalendarItem(familyId, c.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已提醒 ${c.assigneeName ?? '负责人'}')),
+          WoSnackBar(content: Text('已提醒 ${c.assigneeName ?? '负责人'}')),
         );
       }
     } catch (e) {
@@ -107,17 +107,17 @@ class _CalendarListPageState extends State<CalendarListPage> {
   }
 
   Future<void> _delete(CalendarItem c) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除'),
         content: Text('确定删除「${c.title}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -142,7 +142,7 @@ class _CalendarListPageState extends State<CalendarListPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   /// 把有日期的未完成项按到期远近分到固定的几个桶里。
@@ -157,10 +157,10 @@ class _CalendarListPageState extends State<CalendarListPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('家历')),
-      floatingActionButton: FloatingActionButton.extended(
+      appBar: WoAppBar(title: const Text('家历')),
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: () => _openEditor(),
         backgroundColor: wo.calendar,
         foregroundColor: wo.fg,
@@ -278,8 +278,12 @@ class _SectionHeader extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final danger = text == '已过期';
     return Padding(
-      padding:
-          const EdgeInsets.fromLTRB(4, WoTokens.space3, 4, WoTokens.space2),
+      padding: const EdgeInsets.fromLTRB(
+        4,
+        WoTokens.space3,
+        4,
+        WoTokens.space2,
+      ),
       child: Text(
         text,
         style: t.labelLarge?.copyWith(
@@ -313,7 +317,9 @@ class _DoneHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-              vertical: WoTokens.space2, horizontal: 4),
+            vertical: WoTokens.space2,
+            horizontal: 4,
+          ),
           child: Row(
             children: [
               Text(
@@ -399,10 +405,12 @@ class _ItemTile extends StatelessWidget {
               ),
             ),
             if (!done && item.isAssigned)
-              IconButton(
+              WoIconButton(
                 tooltip: '提醒 TA',
-                icon: Icon(Icons.notifications_active_outlined,
-                    color: wo.calendar),
+                icon: Icon(
+                  Icons.notifications_active_outlined,
+                  color: wo.calendar,
+                ),
                 onPressed: onRemind,
               ),
             PopupMenuButton<String>(
@@ -506,11 +514,7 @@ class _RepeatBadge extends StatelessWidget {
   const _RepeatBadge({required this.repeat});
   final String repeat;
 
-  static const _labels = {
-    'daily': '每天',
-    'weekly': '每周',
-    'monthly': '每月',
-  };
+  static const _labels = {'daily': '每天', 'weekly': '每周', 'monthly': '每月'};
 
   @override
   Widget build(BuildContext context) {
@@ -564,7 +568,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一项')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一项')),
           ],
         ),
       ),

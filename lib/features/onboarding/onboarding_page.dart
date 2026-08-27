@@ -58,7 +58,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
       body: SafeArea(
         child: Column(
@@ -82,7 +82,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       const SizedBox(width: WoTokens.space2),
                   ],
                   const SizedBox(width: WoTokens.space4),
-                  TextButton(
+                  WoTextButton(
                     onPressed: () => context.go(WoRoutes.login),
                     child: Text(
                       '跳过',
@@ -113,16 +113,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton(
+                    child: WoFilledButton(
                       onPressed: _next,
-                      child: Text(
-                        _index == _steps.length - 1 ? '现在开始' : '继续',
-                      ),
+                      child: Text(_index == _steps.length - 1 ? '现在开始' : '继续'),
                     ),
                   ),
                   if (_index == _steps.length - 1) ...[
                     const SizedBox(height: WoTokens.space2),
-                    TextButton(
+                    WoTextButton(
                       onPressed: () => context.go(WoRoutes.login),
                       child: const Text('已经有账号？登录'),
                     ),

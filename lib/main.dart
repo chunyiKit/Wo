@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,11 +8,15 @@ import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/api_config.dart';
+import 'data/app_update.dart';
 import 'data/push_service.dart';
 import 'data/wo_http_overrides.dart';
 import 'data/wo_session.dart';
+import 'navigation/notification_nav.dart';
 import 'navigation/wo_router.dart';
 import 'theme/wo_theme.dart';
+import 'widgets/app_update_dialog.dart';
+import 'widgets/wo_material_controls.dart';
 
 /// 申请 Android 高刷新率：Flutter 默认把渲染锁在 60fps，即便屏幕是 90/120Hz，
 /// 动画就会偏卡。这里请求当前分辨率下的最高刷新率；不支持高刷 / 取模式失败都忽略，
@@ -42,8 +47,11 @@ Future<void> main() async {
     channel: ApiConfig.jpushChannel,
   );
   final session = WoSession(push: push);
-  // 前台收到 / 点开推送时，刷新消息中心与未读角标。
-  push.onInboxShouldRefresh = session.requestMessagesRefresh;
+  // 前台收到 / 点开推送时，刷新消息中心与聊天同步信号。
+  push.onInboxShouldRefresh = () {
+    session.requestMessagesRefresh();
+    session.requestChatRefresh();
+  };
   unawaited(push.init());
 
   // 先读出外观偏好，确保首帧就用对主题（不闪）。
@@ -62,13 +70,65 @@ class WoApp extends StatefulWidget {
 }
 
 class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
-  // 路由表只构建一次，避免热重载时丢失导航栈。
-  final _router = buildRouter();
+  final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'wo-root');
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  late final _router = buildRouter(
+    rootNavigatorKey: _rootNavigatorKey,
+    onStartupReady: _onStartupReady,
+  );
+
+  Future<void>? _launchUpdateCheck;
+  bool _startupReadyHandled = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.session.push?.onOpenNotification = _openPushTarget;
+    // APK 应用内更新仅适用于 Android。检查与启动数据并行，不阻塞 Splash；
+    // 弹窗会等 Splash 完成导航后再显示，避免被路由替换带走。
+    if (Platform.isAndroid) {
+      _launchUpdateCheck = widget.session.appUpdate.check();
+    }
+  }
+
+  void _onStartupReady() {
+    if (_startupReadyHandled) return;
+    _startupReadyHandled = true;
+    unawaited(_showLaunchUpdateIfAvailable());
+  }
+
+  Future<void> _showLaunchUpdateIfAvailable() async {
+    final check = _launchUpdateCheck;
+    if (check == null) return;
+    await check;
+    if (!mounted) return;
+
+    final controller = widget.session.appUpdate;
+    final release = controller.release;
+    if (controller.phase != AppUpdatePhase.available || release == null) return;
+
+    final dialogContext = _rootNavigatorKey.currentContext;
+    if (dialogContext == null || !dialogContext.mounted) return;
+    final updateNow = await showWoDialog<bool>(
+      context: dialogContext,
+      useRootNavigator: true,
+      builder: (_) => AppUpdateDialog(release: release),
+    );
+    if (updateNow == true && mounted) {
+      unawaited(_downloadAndInstallUpdate(controller));
+    }
+  }
+
+  Future<void> _downloadAndInstallUpdate(AppUpdateController controller) async {
+    _messengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(WoSnackBar(content: Text('已开始后台下载，完成后将自动打开安装页面')));
+    await controller.downloadAndInstall();
+    if (!mounted || controller.message == null) return;
+    _messengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(WoSnackBar(content: Text(controller.message!)));
   }
 
   @override
@@ -77,13 +137,44 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
       // 部分 OEM 退后台会把刷新率重置回 60Hz，回前台重申请一次。
       unawaited(_applyHighRefreshRate());
       // 从后台回到前台时刷新消息中心：推送多在后台到达，回来要能立刻看到。
-      if (widget.session.isLoggedIn) widget.session.requestMessagesRefresh();
+      if (widget.session.isLoggedIn) {
+        widget.session.requestMessagesRefresh();
+        widget.session.requestChatRefresh();
+      }
     }
+  }
+
+  void _openPushTarget(Map<String, dynamic> event) {
+    final deeplink = _deeplinkFromPush(event);
+    if (deeplink == null || deeplink.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(openDeeplinkTarget(context, deeplink));
+    });
+  }
+
+  String? _deeplinkFromPush(Map<String, dynamic> event) {
+    final direct = event['deeplink'];
+    if (direct is String) return direct;
+    final extras = event['extras'];
+    if (extras is Map && extras['deeplink'] is String) {
+      return extras['deeplink'] as String;
+    }
+    if (extras is String) {
+      try {
+        final decoded = jsonDecode(extras);
+        if (decoded is Map && decoded['deeplink'] is String) {
+          return decoded['deeplink'] as String;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.session.push?.onOpenNotification = null;
     widget.session.dispose();
     super.dispose();
   }
@@ -95,6 +186,7 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
       child: ValueListenableBuilder<ThemeMode>(
         valueListenable: widget.session.themeMode,
         builder: (context, mode, _) => MaterialApp.router(
+          scaffoldMessengerKey: _messengerKey,
           title: '窝',
           debugShowCheckedModeBanner: false,
           theme: WoTheme.light(),
@@ -108,10 +200,7 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          supportedLocales: const [
-            Locale('zh', 'CN'),
-            Locale('en'),
-          ],
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
           routerConfig: _router,
         ),
       ),

@@ -40,26 +40,26 @@ Future<bool> joinFamilyWithCode(BuildContext context, String code) async {
     if (confirmed != true) return false;
     final family = await session.api.acceptInvitation(code);
     await session.switchFamily(family.id);
-    messenger.showSnackBar(SnackBar(content: Text('已加入「${family.name}」')));
+    messenger.showSnackBar(WoSnackBar(content: Text('已加入「${family.name}」')));
     router.go(WoRoutes.home);
     return true;
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text(_errorText(e))));
+    messenger.showSnackBar(WoSnackBar(content: Text(_errorText(e))));
     return false;
   }
 }
 
 String _errorText(Object e) => switch (e) {
-      ApiException a => a.message,
-      NetworkException a => a.message,
-      _ => '加入失败',
-    };
+  ApiException a => a.message,
+  NetworkException a => a.message,
+  _ => '加入失败',
+};
 
 Future<bool?> _confirm(BuildContext context, InvitationPreview p) {
   final t = Theme.of(context).textTheme;
-  return showDialog<bool>(
+  return showWoDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => WoAlertDialog(
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -82,11 +82,11 @@ Future<bool?> _confirm(BuildContext context, InvitationPreview p) {
         ],
       ),
       actions: [
-        TextButton(
+        WoTextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
           child: const Text('取消'),
         ),
-        FilledButton(
+        WoFilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
           child: const Text('加入'),
         ),

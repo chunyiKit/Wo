@@ -16,8 +16,11 @@ import 'memory_link_sheet.dart';
 /// 某座城市的旅行图集:封面网格 → 点开全屏查看(可缩放)、下载、删除。
 /// 任意删除后 pop 返回 true,通知地图刷新。
 class TravelCityPage extends StatefulWidget {
-  const TravelCityPage(
-      {super.key, required this.cityName, required this.trips,});
+  const TravelCityPage({
+    super.key,
+    required this.cityName,
+    required this.trips,
+  });
 
   final String cityName;
   final List<TravelTrip> trips;
@@ -45,12 +48,12 @@ class _TravelCityPageState extends State<TravelCityPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          WoSnackBar(
             content: Text(switch (e) {
               ApiException ex => ex.message,
               NetworkException ex => ex.message,
               _ => '删除失败',
-            },),
+            }),
           ),
         );
       }
@@ -61,8 +64,11 @@ class _TravelCityPageState extends State<TravelCityPage> {
   /// 返回更新后的 trip(失败返回 null 并提示)。
   Future<TravelTrip?> _setMemory(TravelTrip trip, String? memoryId) async {
     try {
-      final updated = await _session.api
-          .setTravelTripMemory(_session.currentFamilyId!, trip.id, memoryId);
+      final updated = await _session.api.setTravelTripMemory(
+        _session.currentFamilyId!,
+        trip.id,
+        memoryId,
+      );
       if (!mounted) return updated;
       setState(() {
         final i = _trips.indexWhere((t) => t.id == updated.id);
@@ -73,12 +79,12 @@ class _TravelCityPageState extends State<TravelCityPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          WoSnackBar(
             content: Text(switch (e) {
               ApiException ex => ex.message,
               NetworkException ex => ex.message,
               _ => '操作失败,请稍后再试',
-            },),
+            }),
           ),
         );
       }
@@ -109,9 +115,9 @@ class _TravelCityPageState extends State<TravelCityPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) Navigator.of(context).pop(_changed);
       },
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: Text(widget.cityName),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(20),
@@ -119,8 +125,10 @@ class _TravelCityPageState extends State<TravelCityPage> {
               alignment: Alignment.centerLeft,
               child: Padding(
                 padding: const EdgeInsets.only(left: 16, bottom: 8),
-                child: Text('${_trips.length} 段旅行',
-                    style: TextStyle(color: wo.fgMid, fontSize: 13),),
+                child: Text(
+                  '${_trips.length} 段旅行',
+                  style: TextStyle(color: wo.fgMid, fontSize: 13),
+                ),
               ),
             ),
           ),
@@ -242,15 +250,16 @@ class _Viewer extends StatefulWidget {
 
   /// 置 / 清关联回忆,返回更新后的 trip(失败 null)。由城市页落地调用 API。
   final Future<TravelTrip?> Function(TravelTrip trip, String? memoryId)
-      onSetMemory;
+  onSetMemory;
 
   @override
   State<_Viewer> createState() => _ViewerState();
 }
 
 class _ViewerState extends State<_Viewer> {
-  late final PageController _controller =
-      PageController(initialPage: widget.initialIndex);
+  late final PageController _controller = PageController(
+    initialPage: widget.initialIndex,
+  );
   late int _index = widget.initialIndex;
   // 本地可变副本:关联回忆后就地替换当前项,无需重建整页。
   late final List<TravelTrip> _trips = List.of(widget.trips);
@@ -266,25 +275,27 @@ class _ViewerState extends State<_Viewer> {
   Future<void> _download() async {
     final trip = _trips[_index];
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('正在保存…')));
-    final err =
-        await _saveToGallery(widget.fullUrl(trip.imageUrl), widget.headers);
+    messenger.showSnackBar(WoSnackBar(content: Text('正在保存…')));
+    final err = await _saveToGallery(
+      widget.fullUrl(trip.imageUrl),
+      widget.headers,
+    );
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(content: Text(err ?? '已保存到相册')));
+    messenger.showSnackBar(WoSnackBar(content: Text(err ?? '已保存到相册')));
   }
 
   Future<void> _delete() async {
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除这段旅行'),
         content: const Text('删除后无法恢复。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          WoFilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -325,8 +336,7 @@ class _ViewerState extends State<_Viewer> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      final full =
-          await _session.api.memory(_session.currentFamilyId!, lm.id);
+      final full = await _session.api.memory(_session.currentFamilyId!, lm.id);
       if (!mounted) return;
       await navigator.push<void>(
         MaterialPageRoute(builder: (_) => MemoryDetailPage(memory: full)),
@@ -334,12 +344,12 @@ class _ViewerState extends State<_Viewer> {
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(
+        WoSnackBar(
           content: Text(switch (e) {
             ApiException _ => '这段回忆可能已被删除或不可见,可重新关联',
             NetworkException ex => ex.message,
             _ => '打开回忆失败',
-          },),
+          }),
         ),
       );
     }
@@ -348,20 +358,22 @@ class _ViewerState extends State<_Viewer> {
   @override
   Widget build(BuildContext context) {
     final total = _trips.length;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: WoAppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: Text('${_index + 1} / $total',
-            style: const TextStyle(fontSize: 15),),
+        title: Text(
+          '${_index + 1} / $total',
+          style: const TextStyle(fontSize: 15),
+        ),
         actions: [
-          IconButton(
+          WoIconButton(
             icon: const Icon(Icons.download_outlined),
             onPressed: _download,
           ),
-          IconButton(
+          WoIconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _delete,
           ),
@@ -423,8 +435,10 @@ class _ViewerState extends State<_Viewer> {
               children: [
                 Icon(Icons.link, color: Colors.white, size: 18),
                 SizedBox(width: 6),
-                Text('关联回忆',
-                    style: TextStyle(color: Colors.white, fontSize: 14),),
+                Text(
+                  '关联回忆',
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                ),
               ],
             ),
           ),
@@ -467,12 +481,16 @@ class _ViewerState extends State<_Viewer> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.auto_stories_outlined,
-                          color: Colors.white70, size: 13,),
+                      Icon(
+                        Icons.auto_stories_outlined,
+                        color: Colors.white70,
+                        size: 13,
+                      ),
                       SizedBox(width: 4),
-                      Text('关联回忆',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 11),),
+                      Text(
+                        '关联回忆',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -481,17 +499,18 @@ class _ViewerState extends State<_Viewer> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,),
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => _openMemory(mem),
-            style: TextButton.styleFrom(
+            style: WoTextButton.styleFrom(
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               minimumSize: const Size(0, 36),
@@ -518,7 +537,8 @@ class _ViewerState extends State<_Viewer> {
 /// 下载一张图到系统相册。返回错误提示;null 表示成功。
 Future<String?> _saveToGallery(String url, Map<String, String> headers) async {
   try {
-    final ok = await Gal.hasAccess(toAlbum: true) ||
+    final ok =
+        await Gal.hasAccess(toAlbum: true) ||
         await Gal.requestAccess(toAlbum: true);
     if (!ok) return '需要相册权限才能保存';
   } on GalException catch (e) {

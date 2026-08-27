@@ -54,31 +54,30 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         oldPassword: _old.text,
         newPassword: _new.text,
       );
-      messenger.showSnackBar(const SnackBar(content: Text('密码已修改')));
+      messenger.showSnackBar(WoSnackBar(content: Text('密码已修改')));
       nav.pop();
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        _toast(
-          switch (e) {
-            ApiException a => a.message,
-            NetworkException a => a.message,
-            _ => '修改失败',
-          },
-        );
+        _toast(switch (e) {
+          ApiException a => a.message,
+          NetworkException a => a.message,
+          _ => '修改失败',
+        });
       }
     }
   }
 
-  void _toast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(WoSnackBar(content: Text(msg)));
 
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('修改密码')),
+      appBar: WoAppBar(title: const Text('修改密码')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -91,13 +90,13 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               const SizedBox(height: WoTokens.space3),
               _field(_confirm, '确认新密码'),
               const SizedBox(height: WoTokens.space5),
-              FilledButton(
+              WoFilledButton(
                 onPressed: (_valid && !_busy) ? _submit : null,
                 child: _busy
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('保存'),
               ),
@@ -108,18 +107,18 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     );
   }
 
-  Widget _field(TextEditingController c, String label) => TextField(
-        controller: c,
-        obscureText: _obscure,
-        maxLength: 64,
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(
-          labelText: label,
-          counterText: '',
-          suffixIcon: IconButton(
-            icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => setState(() => _obscure = !_obscure),
-          ),
-        ),
-      );
+  Widget _field(TextEditingController c, String label) => WoTextField(
+    controller: c,
+    obscureText: _obscure,
+    maxLength: 64,
+    onChanged: (_) => setState(() {}),
+    decoration: InputDecoration(
+      labelText: label,
+      counterText: '',
+      suffixIcon: WoIconButton(
+        icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+        onPressed: () => setState(() => _obscure = !_obscure),
+      ),
+    ),
+  );
 }

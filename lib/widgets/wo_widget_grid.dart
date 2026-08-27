@@ -191,8 +191,8 @@ List<WoGridPos> computeWoGridPlacements(List<WoGridSize> sizes, int cols) {
 
 /// 内部：把 tile 列表映射为带尺寸的 [_Placement]。
 List<_Placement> _placeTiles(List<WoWidgetGridTile> tiles, int cols) {
-  final positions =
-      computeWoGridPlacements([for (final t in tiles) (cw: t.cw, ch: t.ch)], cols);
+  final positions = computeWoGridPlacements(
+      [for (final t in tiles) (cw: t.cw, ch: t.ch)], cols);
   return [
     for (var i = 0; i < tiles.length; i++)
       _Placement(

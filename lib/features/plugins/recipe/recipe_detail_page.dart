@@ -52,17 +52,17 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除菜谱'),
         content: Text('确定删除「${_recipe.name}」吗？此操作不可撤销。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -88,7 +88,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   /// 把当前菜谱的食材打包加入「囤货铺」的采买清单——选要加哪些 + 全选,然后一次
@@ -97,7 +97,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   Future<void> _openBuySheet() async {
     final r = _recipe;
     if (r.ingredients.isEmpty) return;
-    final picked = await showModalBottomSheet<List<int>>(
+    final picked = await showWoModalBottomSheet<List<int>>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _BuySelectSheet(ingredients: r.ingredients),
@@ -109,10 +109,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     if (familyId == null) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('正在加入采买清单…'),
-        duration: Duration(seconds: 30),
-      ),
+      WoSnackBar(content: Text('正在加入采买清单…'), duration: Duration(seconds: 30)),
     );
 
     // 食材一般 ≤ 15 条,并发发出去比串行快;任一失败也不阻塞其它。
@@ -139,7 +136,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     messenger.hideCurrentSnackBar();
     if (!mounted) return;
     final text = fail == 0 ? '已加入采买清单($ok 项)' : '已加入 $ok 项,$fail 项失败';
-    messenger.showSnackBar(SnackBar(content: Text(text)));
+    messenger.showSnackBar(WoSnackBar(content: Text(text)));
   }
 
   @override
@@ -152,17 +149,17 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) Navigator.of(context).pop(_changed);
       },
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: Text(r.name),
           actions: [
-            IconButton(
+            WoIconButton(
               tooltip: '编辑',
               icon: const Icon(Icons.edit_outlined),
               onPressed: _edit,
             ),
-            IconButton(
+            WoIconButton(
               tooltip: '删除',
               icon: const Icon(Icons.delete_outline),
               onPressed: _delete,
@@ -208,12 +205,14 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                 // 有食材时才显示「加入采买」入口——空列表点了也没东西可挑。
                 action: r.ingredients.isEmpty
                     ? null
-                    : TextButton.icon(
+                    : WoTextButton.icon(
                         onPressed: _openBuySheet,
-                        icon:
-                            const Icon(Icons.shopping_cart_outlined, size: 16),
+                        icon: const Icon(
+                          Icons.shopping_cart_outlined,
+                          size: 16,
+                        ),
                         label: const Text('加入采买'),
-                        style: TextButton.styleFrom(
+                        style: WoTextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
                             horizontal: WoTokens.space2,
                           ),
@@ -335,8 +334,10 @@ class _Pill extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: WoTokens.space3, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: WoTokens.space3,
+        vertical: 4,
+      ),
       decoration: BoxDecoration(
         color: wo.accentSoft,
         borderRadius: BorderRadius.circular(WoTokens.chipRadius),
@@ -375,8 +376,10 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: wo.accentDeep),
         const SizedBox(width: WoTokens.space2),
-        Text(title,
-            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
         const Spacer(),
         if (trailing != null)
           Text(trailing!, style: t.bodySmall?.copyWith(color: wo.fgMid)),
@@ -400,10 +403,7 @@ class _IngredientRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: Text(item.name, style: t.bodyLarge)),
-        Text(
-          item.amount,
-          style: t.bodyMedium?.copyWith(color: wo.fgMid),
-        ),
+        Text(item.amount, style: t.bodyMedium?.copyWith(color: wo.fgMid)),
       ],
     );
   }
@@ -425,10 +425,7 @@ class _StepRow extends StatelessWidget {
           width: 26,
           height: 26,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: wo.accent,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: wo.accent, shape: BoxShape.circle),
           child: Text(
             '$index',
             style: t.labelMedium?.copyWith(
@@ -525,7 +522,7 @@ class _BuySelectSheetState extends State<_BuySelectSheet> {
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const Spacer(),
-                  TextButton(
+                  WoTextButton(
                     onPressed: _toggleAll,
                     child: Text(all ? '全不选' : '全选'),
                   ),
@@ -540,7 +537,7 @@ class _BuySelectSheetState extends State<_BuySelectSheet> {
                 itemBuilder: (_, i) {
                   final ing = widget.ingredients[i];
                   final sel = _selected.contains(i);
-                  return CheckboxListTile(
+                  return WoCheckboxListTile(
                     value: sel,
                     onChanged: (v) => setState(() {
                       if (v == true) {
@@ -563,22 +560,20 @@ class _BuySelectSheetState extends State<_BuySelectSheet> {
               child: Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
+                    child: WoOutlinedButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: const Text('取消'),
                     ),
                   ),
                   const SizedBox(width: WoTokens.space3),
                   Expanded(
-                    child: FilledButton(
+                    child: WoFilledButton(
                       onPressed: none
                           ? null
-                          : () => Navigator.of(context).pop(
-                                _selected.toList()..sort(),
-                              ),
-                      child: Text(
-                        none ? '加入采买' : '加入采买 (${_selected.length})',
-                      ),
+                          : () => Navigator.of(
+                              context,
+                            ).pop(_selected.toList()..sort()),
+                      child: Text(none ? '加入采买' : '加入采买 (${_selected.length})'),
                     ),
                   ),
                 ],

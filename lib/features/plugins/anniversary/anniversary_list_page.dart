@@ -77,10 +77,10 @@ class _AnniversaryListPageState extends State<AnniversaryListPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final cached = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('纪念日')),
-      floatingActionButton: FloatingActionButton(
+      appBar: WoAppBar(title: const Text('纪念日')),
+      floatingActionButton: WoFloatingActionButton(
         onPressed: () => _openEditor(),
         child: const Icon(Icons.add),
       ),
@@ -196,7 +196,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('添加第一个纪念日')),
+            WoFilledButton(onPressed: onAdd, child: const Text('添加第一个纪念日')),
           ],
         ),
       ),

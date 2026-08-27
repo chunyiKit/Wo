@@ -6,9 +6,7 @@ import 'package:geolocator/geolocator.dart';
 /// 定位结果:成功带经纬度,失败带原因文案。
 class LocationResult {
   const LocationResult.ok(this.latitude, this.longitude) : error = null;
-  const LocationResult.failed(this.error)
-      : latitude = null,
-        longitude = null;
+  const LocationResult.failed(this.error) : latitude = null, longitude = null;
 
   final double? latitude;
   final double? longitude;

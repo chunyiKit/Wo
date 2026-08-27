@@ -8,13 +8,19 @@ import '../../data/api_client.dart';
 import '../../data/memory_cache.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
+import '../../theme/wo_tokens.dart';
 
 /// 启动页：品牌底色 + Wo 圆环标记。浅/深两套配色随 app（系统）主题切换，
 /// 与原生启动屏、应用图标视觉一致。拉取 bootstrap 后决定下一跳：
 ///   - 已有当前家庭 → 首页
 ///   - 还没有家庭   → 引导页（再去创建/加入）
 class SplashPage extends StatefulWidget {
-  const SplashPage({super.key});
+  const SplashPage({super.key, this.onStartupReady});
+
+  /// 启动流程完成且首个业务页面已经绘制后回调。
+  ///
+  /// 全局更新提示等启动后任务应从这里触发，避免弹窗被 Splash 路由替换带走。
+  final VoidCallback? onStartupReady;
 
   @override
   State<SplashPage> createState() => _SplashPageState();
@@ -80,8 +86,9 @@ class _SplashPageState extends State<SplashPage> {
         setState(() => _error = session.error);
         return;
       }
-      target =
-          session.currentFamily != null ? WoRoutes.home : WoRoutes.joinLanding;
+      target = session.currentFamily != null
+          ? WoRoutes.home
+          : WoRoutes.joinLanding;
       // 转圈期间后台预热「回忆」媒体：杀进程重进后内存缓存没了，这里用磁盘已有内容
       // 把媒体重新拉热（离线可用），并顺带网络刷新，让随后进回忆秒开。不阻塞跳转。
       unawaited(
@@ -103,6 +110,9 @@ class _SplashPageState extends State<SplashPage> {
     await Future.delayed(_fadeDuration);
     if (!mounted) return;
     context.go(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onStartupReady?.call();
+    });
   }
 
   @override
@@ -111,7 +121,7 @@ class _SplashPageState extends State<SplashPage> {
     final palette = isDark ? _SplashPalette.dark : _SplashPalette.light;
     final hasError = _error != null;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: palette.bg,
       body: AnimatedOpacity(
         opacity: _opacity,
@@ -152,7 +162,7 @@ class _SplashPageState extends State<SplashPage> {
                 SizedBox(
                   width: 22,
                   height: 22,
-                  child: CircularProgressIndicator(
+                  child: WoProgressIndicator(
                     strokeWidth: 2.4,
                     color: palette.mark,
                   ),
@@ -164,14 +174,14 @@ class _SplashPageState extends State<SplashPage> {
                     _error is ApiException
                         ? (_error as ApiException).message
                         : _error is NetworkException
-                            ? (_error as NetworkException).message
-                            : '启动失败',
+                        ? (_error as NetworkException).message
+                        : '启动失败',
                     style: TextStyle(fontSize: 13, color: palette.subtitle),
                     textAlign: TextAlign.center,
                   ),
                 ),
                 const SizedBox(height: 16),
-                FilledButton.tonal(onPressed: _boot, child: const Text('重试')),
+                WoFilledButton.tonal(onPressed: _boot, child: const Text('重试')),
               ],
             ],
           ),

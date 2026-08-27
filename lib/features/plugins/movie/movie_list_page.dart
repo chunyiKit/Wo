@@ -28,7 +28,7 @@ class _MovieListPageState extends State<MovieListPage> {
   void _bumpReload() => setState(() => _reloadToken++);
 
   Future<void> _openCreateSheet() async {
-    final created = await showModalBottomSheet<bool>(
+    final created = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _MovieEditSheet(),
@@ -37,9 +37,9 @@ class _MovieListPageState extends State<MovieListPage> {
   }
 
   Future<void> _openDiscover() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const MovieDiscoverPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const MovieDiscoverPage()));
     // 片库里可能加入了新片(pending),回来静默刷新两个 tab 并重新轮询补充。
     if (mounted) _bumpReload();
   }
@@ -49,12 +49,12 @@ class _MovieListPageState extends State<MovieListPage> {
     final wo = context.wo;
     return DefaultTabController(
       length: 2,
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: const Text('看电影'),
           actions: [
-            IconButton(
+            WoIconButton(
               icon: const Icon(Icons.local_movies_outlined),
               tooltip: '片库',
               onPressed: _openDiscover,
@@ -84,7 +84,7 @@ class _MovieListPageState extends State<MovieListPage> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: WoFloatingActionButton(
           onPressed: _openCreateSheet,
           backgroundColor: wo.movie,
           foregroundColor: wo.fg,
@@ -228,7 +228,7 @@ class _MoviesViewState extends State<_MoviesView> {
   }
 
   Future<void> _openEditSheet(Movie m) async {
-    final changed = await showModalBottomSheet<bool>(
+    final changed = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _MovieEditSheet(existing: m),
@@ -237,17 +237,17 @@ class _MoviesViewState extends State<_MoviesView> {
   }
 
   Future<void> _confirmDelete(Movie m) async {
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除电影'),
         content: Text('确定删除「${m.title}」吗?'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -272,7 +272,7 @@ class _MoviesViewState extends State<_MoviesView> {
       NetworkException ex => ex.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -358,8 +358,9 @@ class _MovieRow extends StatelessWidget {
                       style: t.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: movie.watched ? wo.fgMid : wo.fg,
-                        decoration:
-                            movie.watched ? TextDecoration.lineThrough : null,
+                        decoration: movie.watched
+                            ? TextDecoration.lineThrough
+                            : null,
                         decorationColor: wo.fgDim,
                       ),
                       maxLines: 1,
@@ -371,8 +372,10 @@ class _MovieRow extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         movie.intro!,
-                        style: t.bodySmall
-                            ?.copyWith(color: wo.fgMid, height: 1.35),
+                        style: t.bodySmall?.copyWith(
+                          color: wo.fgMid,
+                          height: 1.35,
+                        ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -431,12 +434,12 @@ class _Poster extends StatelessWidget {
     final wo = context.wo;
     final radius = BorderRadius.circular(8);
     Widget placeholder({Widget? child}) => Container(
-          width: _w,
-          height: _h,
-          decoration: BoxDecoration(color: wo.bgTint, borderRadius: radius),
-          alignment: Alignment.center,
-          child: child ?? const Text('🎬', style: TextStyle(fontSize: 24)),
-        );
+      width: _w,
+      height: _h,
+      decoration: BoxDecoration(color: wo.bgTint, borderRadius: radius),
+      alignment: Alignment.center,
+      child: child ?? const Text('🎬', style: TextStyle(fontSize: 24)),
+    );
 
     if (movie.posterUrl != null && movie.posterUrl!.isNotEmpty) {
       final api = WoScope.api(context);
@@ -458,7 +461,7 @@ class _Poster extends StatelessWidget {
         child: const SizedBox(
           width: 18,
           height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: WoProgressIndicator(strokeWidth: 2),
         ),
       );
     }
@@ -514,10 +517,7 @@ class _AiInfoBlock extends StatelessWidget {
                 if (movie.aiPending)
                   Text('补充中…', style: t.bodySmall?.copyWith(color: wo.fgMid))
                 else if (movie.aiFailed)
-                  Text(
-                    '补充失败',
-                    style: t.bodySmall?.copyWith(color: wo.fgMid),
-                  )
+                  Text('补充失败', style: t.bodySmall?.copyWith(color: wo.fgMid))
                 else if (movie.intro != null && movie.intro!.isNotEmpty)
                   Text(
                     movie.intro!,
@@ -552,7 +552,7 @@ class _AiLine extends StatelessWidget {
           SizedBox(
             width: 12,
             height: 12,
-            child: CircularProgressIndicator(strokeWidth: 2, color: wo.movie),
+            child: WoProgressIndicator(strokeWidth: 2, color: wo.movie),
           ),
           const SizedBox(width: 6),
           Text('补充中…', style: t.labelSmall?.copyWith(color: wo.fgMid)),
@@ -661,9 +661,9 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
   Future<void> _save() async {
     final title = _title.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写片名')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(WoSnackBar(content: Text('请填写片名')));
       return;
     }
     setState(() => _saving = true);
@@ -703,7 +703,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
       NetworkException ex => ex.message,
       _ => '保存失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -744,7 +744,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
                 _AiInfoBlock(movie: widget.existing!),
               ],
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _title,
                 autofocus: !isEdit,
                 maxLength: 80,
@@ -754,7 +754,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 500,
                 maxLines: 3,
@@ -766,7 +766,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
               ),
               if (isEdit) ...[
                 const SizedBox(height: WoTokens.space2),
-                SwitchListTile(
+                WoSwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('已经看过了'),
                   value: _watched,
@@ -778,7 +778,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
+                    child: WoOutlinedButton(
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(false),
@@ -787,9 +787,9 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
                   ),
                   const SizedBox(width: WoTokens.space3),
                   Expanded(
-                    child: FilledButton(
+                    child: WoFilledButton(
                       onPressed: _saving ? null : _save,
-                      style: FilledButton.styleFrom(
+                      style: WoFilledButton.styleFrom(
                         backgroundColor: wo.movie,
                         foregroundColor: wo.fg,
                       ),
@@ -797,7 +797,7 @@ class _MovieEditSheetState extends State<_MovieEditSheet> {
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: WoProgressIndicator(strokeWidth: 2),
                             )
                           : const Text('保存'),
                     ),

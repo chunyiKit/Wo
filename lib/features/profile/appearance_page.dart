@@ -13,8 +13,8 @@ class AppearancePage extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('外观')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('外观')),
       body: SafeArea(
         top: false,
         child: ValueListenableBuilder<ThemeMode>(
@@ -64,7 +64,6 @@ class AppearancePage extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _Option extends StatelessWidget {

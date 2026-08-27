@@ -49,10 +49,17 @@ class WoSession extends ChangeNotifier {
   /// 消息页监听它并重新拉取列表（消息页常驻 Tab 不会自己重建，故需外部触发）。
   final ValueNotifier<int> messagesRefreshSignal = ValueNotifier<int>(0);
 
+  /// 聊天刷新信号。前台收到聊天 push / App 恢复前台时自增；聊天页监听后静默同步。
+  final ValueNotifier<int> chatRefreshSignal = ValueNotifier<int>(0);
+
   /// 请求消息页刷新（并顺带刷新 bootstrap，更新未读角标）。
   void requestMessagesRefresh() {
     messagesRefreshSignal.value++;
     unawaited(refresh());
+  }
+
+  void requestChatRefresh() {
+    chatRefreshSignal.value++;
   }
 
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
@@ -203,7 +210,8 @@ class WoSession extends ChangeNotifier {
       _bootstrap = await api.bootstrap();
     } catch (e) {
       // 令牌失效/过期（含旧版本遗留的非会话令牌）→ 清登录态，让路由回登录页。
-      if (e is ApiException && (e.statusCode == 401 || e.code == 'UNAUTHORIZED')) {
+      if (e is ApiException &&
+          (e.statusCode == 401 || e.code == 'UNAUTHORIZED')) {
         await _clearLocalAuth();
         _bootstrap = null;
       }
@@ -226,6 +234,7 @@ class WoSession extends ChangeNotifier {
   @override
   void dispose() {
     messagesRefreshSignal.dispose();
+    chatRefreshSignal.dispose();
     themeMode.dispose();
     appUpdate.dispose();
     super.dispose();

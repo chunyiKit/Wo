@@ -59,6 +59,11 @@ def test_parse_unknown_category_falls_back_to_shopping() -> None:
     assert out.category == "shopping"
 
 
+def test_parse_pet_category() -> None:
+    out = parse_receipt_json('{"amount": 199, "category": "pet", "merchant": "宠物医院"}')
+    assert out.category == "pet"
+
+
 def test_parse_note_falls_back_to_merchant() -> None:
     out = parse_receipt_json('{"amount": 9, "category": "shopping", "merchant": "全家"}')
     assert out.note == "全家"

@@ -56,14 +56,12 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         setState(() => _busy = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              switch (e) {
-                ApiException a => a.message,
-                NetworkException a => a.message,
-                _ => '登录失败',
-              },
-            ),
+          WoSnackBar(
+            content: Text(switch (e) {
+              ApiException a => a.message,
+              NetworkException a => a.message,
+              _ => '登录失败',
+            }),
           ),
         );
       }
@@ -74,9 +72,9 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(backgroundColor: Colors.transparent),
+      appBar: WoAppBar(backgroundColor: Colors.transparent),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(WoTokens.space6),
@@ -90,7 +88,7 @@ class _LoginPageState extends State<LoginPage> {
                 style: t.bodyMedium?.copyWith(color: wo.fgMid),
               ),
               const SizedBox(height: WoTokens.space8),
-              TextField(
+              WoTextField(
                 controller: _phone,
                 keyboardType: TextInputType.phone,
                 autofocus: true,
@@ -109,7 +107,7 @@ class _LoginPageState extends State<LoginPage> {
                 style: t.titleLarge,
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _password,
                 obscureText: _obscure,
                 maxLength: 64,
@@ -119,7 +117,7 @@ class _LoginPageState extends State<LoginPage> {
                   labelText: '密码',
                   hintText: '至少 $_minPasswordLen 位',
                   counterText: '',
-                  suffixIcon: IconButton(
+                  suffixIcon: WoIconButton(
                     icon: Icon(
                       _obscure ? Icons.visibility_off : Icons.visibility,
                     ),
@@ -130,13 +128,13 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: WoTokens.space6),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
+                child: WoFilledButton(
                   onPressed: (_valid && !_busy) ? _continue : null,
                   child: _busy
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: WoProgressIndicator(strokeWidth: 2),
                         )
                       : const Text('继续'),
                 ),

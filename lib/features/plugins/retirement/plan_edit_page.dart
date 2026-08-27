@@ -108,7 +108,7 @@ class _PlanEditPageState extends State<PlanEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -116,11 +116,11 @@ class _PlanEditPageState extends State<PlanEditPage> {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('退休计划')),
+      appBar: WoAppBar(title: const Text('退休计划')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: WoProgressIndicator())
           : SafeArea(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(WoTokens.space5),
@@ -132,7 +132,7 @@ class _PlanEditPageState extends State<PlanEditPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: WoOutlinedButton.icon(
                             onPressed: _pickDate,
                             icon: const Icon(Icons.event),
                             label: Text(
@@ -143,7 +143,7 @@ class _PlanEditPageState extends State<PlanEditPage> {
                           ),
                         ),
                         if (_retireDate != null)
-                          IconButton(
+                          WoIconButton(
                             tooltip: '清除',
                             icon: const Icon(Icons.clear),
                             onPressed: () => setState(() => _retireDate = null),
@@ -151,10 +151,11 @@ class _PlanEditPageState extends State<PlanEditPage> {
                       ],
                     ),
                     const SizedBox(height: WoTokens.space4),
-                    TextField(
+                    WoTextField(
                       controller: _goal,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: '存款目标',
                         hintText: '退休时希望攒到多少',
@@ -208,13 +209,13 @@ class _PlanEditPageState extends State<PlanEditPage> {
                       ),
                     ),
                     const SizedBox(height: WoTokens.space5),
-                    FilledButton(
+                    WoFilledButton(
                       onPressed: _submitting ? null : _save,
                       child: _submitting
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: WoProgressIndicator(strokeWidth: 2),
                             )
                           : const Text('保存'),
                     ),

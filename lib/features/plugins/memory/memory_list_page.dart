@@ -163,8 +163,11 @@ class _MemoryListPageState extends State<MemoryListPage> {
     if (familyId == null || cursor == null || _loadingMore) return;
     setState(() => _loadingMore = true);
     try {
-      final page = await _session.api
-          .memories(familyId, cursor: cursor, limit: _pageSize);
+      final page = await _session.api.memories(
+        familyId,
+        cursor: cursor,
+        limit: _pageSize,
+      );
       if (!mounted) return;
       setState(() {
         _items = [...?_items, ...page.items];
@@ -206,9 +209,9 @@ class _MemoryListPageState extends State<MemoryListPage> {
   }
 
   Future<void> _openEditor() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const MemoryEditPage()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const MemoryEditPage()));
     if (changed == true) await _refreshSilently();
   }
 
@@ -216,10 +219,10 @@ class _MemoryListPageState extends State<MemoryListPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final memories = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('回忆')),
-      floatingActionButton: FloatingActionButton.extended(
+      appBar: WoAppBar(title: const Text('回忆')),
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: _openEditor,
         icon: const Icon(Icons.add),
         label: const Text('记一段'),
@@ -227,11 +230,11 @@ class _MemoryListPageState extends State<MemoryListPage> {
       body: SafeArea(
         child: memories != null
             ? (memories.isEmpty
-                ? _Empty(onAdd: _openEditor)
-                : RefreshIndicator(
-                    onRefresh: _refreshSilently,
-                    child: _buildList(memories),
-                  ))
+                  ? _Empty(onAdd: _openEditor)
+                  : RefreshIndicator(
+                      onRefresh: _refreshSilently,
+                      child: _buildList(memories),
+                    ))
             : AsyncView<MemoryPage>(
                 future: _future,
                 onRetry: _retry,
@@ -297,10 +300,16 @@ class _MemoryListPageState extends State<MemoryListPage> {
   Widget _rowWidget(BuildContext context, _Row row) {
     return switch (row) {
       _NowRow(:final total) => _NowHeader(count: total),
-      _MonthRow(:final label, :final count) =>
-        _MonthHeader(label: label, count: count),
-      _CardRow(:final memory, :final first, :final animIndex) =>
-        _cardRow(context, memory, first, animIndex),
+      _MonthRow(:final label, :final count) => _MonthHeader(
+        label: label,
+        count: count,
+      ),
+      _CardRow(:final memory, :final first, :final animIndex) => _cardRow(
+        context,
+        memory,
+        first,
+        animIndex,
+      ),
       _TailRow(:final loading) =>
         loading ? const _LoadingMoreRow() : _StartFooter(),
     };
@@ -313,8 +322,10 @@ class _MemoryListPageState extends State<MemoryListPage> {
       nodeTop: 20,
       child: Padding(
         padding: const EdgeInsets.only(bottom: WoTokens.space3),
-        child:
-            _MemoryCardContainer(memory: m, onMemoryChanged: _refreshSilently),
+        child: _MemoryCardContainer(
+          memory: m,
+          onMemoryChanged: _refreshSilently,
+        ),
       ),
     );
     // 每条回忆只在「首次进入视口」时淡入上滑一次；滚回去复用时不再重播。
@@ -325,7 +336,11 @@ class _MemoryListPageState extends State<MemoryListPage> {
         .animate(key: ValueKey('m-${m.id}'), delay: delay)
         .fadeIn(duration: 280.ms)
         .slideY(
-            begin: 0.08, end: 0, duration: 320.ms, curve: Curves.easeOutCubic);
+          begin: 0.08,
+          end: 0,
+          duration: 320.ms,
+          curve: Curves.easeOutCubic,
+        );
   }
 }
 
@@ -410,8 +425,12 @@ class _MonthHeader extends StatelessWidget {
       node: _node(wo, _NodeKind.month),
       nodeTop: 22,
       child: Padding(
-        padding:
-            const EdgeInsets.fromLTRB(0, WoTokens.space4, 0, WoTokens.space2),
+        padding: const EdgeInsets.fromLTRB(
+          0,
+          WoTokens.space4,
+          0,
+          WoTokens.space2,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -448,7 +467,7 @@ class _LoadingMoreRow extends StatelessWidget {
           child: SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.2),
+            child: WoProgressIndicator(strokeWidth: 2.2),
           ),
         ),
       ),
@@ -517,8 +536,10 @@ class _RailRow extends StatelessWidget {
           ),
         ),
         Padding(
-          padding:
-              const EdgeInsets.only(left: _railPadLeft, right: WoTokens.space4),
+          padding: const EdgeInsets.only(
+            left: _railPadLeft,
+            right: WoTokens.space4,
+          ),
           child: child,
         ),
         Positioned(left: _railX, top: nodeTop, child: node),
@@ -591,10 +612,7 @@ Widget _node(WoColors wo, _NodeKind kind) {
       );
   }
   // 让节点中心落在线上（线在 _railX，节点宽度居中）。
-  return FractionalTranslation(
-    translation: const Offset(-0.5, 0),
-    child: dot,
-  );
+  return FractionalTranslation(translation: const Offset(-0.5, 0), child: dot);
 }
 
 /// 把回忆卡片包进 [WoOpenContainer]：点击时卡片本身放大形变成详情页，返回时再缩回卡片
@@ -659,8 +677,10 @@ class _MemoryCard extends StatelessWidget {
                   size: 18,
                 ),
                 const SizedBox(width: 4),
-                Text(m.authorName!,
-                    style: t.labelSmall?.copyWith(color: wo.fgMid)),
+                Text(
+                  m.authorName!,
+                  style: t.labelSmall?.copyWith(color: wo.fgMid),
+                ),
               ],
               if (m.visibility == 'private') ...[
                 const SizedBox(width: 6),
@@ -698,8 +718,10 @@ class _MemoryCard extends StatelessWidget {
               children: [
                 Icon(Icons.place_outlined, size: 13, color: wo.fgDim),
                 const SizedBox(width: 3),
-                Text(m.location!,
-                    style: t.labelSmall?.copyWith(color: wo.fgDim)),
+                Text(
+                  m.location!,
+                  style: t.labelSmall?.copyWith(color: wo.fgDim),
+                ),
               ],
             ),
           ],
@@ -742,7 +764,10 @@ class _TimelineSkeleton extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: WoShimmer(
               child: WoSkeletonBox(
-                  width: 160, height: 26, radius: WoTokens.chipRadius),
+                width: 160,
+                height: 26,
+                radius: WoTokens.chipRadius,
+              ),
             ),
           ),
         ),
@@ -768,7 +793,9 @@ class _TimelineSkeleton extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: WoTokens.space2, bottom: 100),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: rows,
+      ),
     );
   }
 
@@ -791,13 +818,19 @@ class _TimelineSkeleton extends StatelessWidget {
                     WoSkeletonBox(width: 48, height: 10),
                     Spacer(),
                     WoSkeletonBox(
-                        width: 18, height: 18, shape: BoxShape.circle),
+                      width: 18,
+                      height: 18,
+                      shape: BoxShape.circle,
+                    ),
                   ],
                 ),
                 if (withMedia) ...const [
                   SizedBox(height: WoTokens.space2),
                   WoSkeletonBox(
-                      width: double.infinity, height: 150, radius: 14),
+                    width: double.infinity,
+                    height: 150,
+                    radius: 14,
+                  ),
                 ],
                 const SizedBox(height: WoTokens.space2),
                 const WoSkeletonBox(width: 200, height: 13),
@@ -840,7 +873,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('记下第一段')),
+            WoFilledButton(onPressed: onAdd, child: const Text('记下第一段')),
           ],
         ),
       ),

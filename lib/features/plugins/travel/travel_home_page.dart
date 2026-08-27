@@ -58,9 +58,9 @@ class _TravelListPageState extends State<TravelListPage> {
   }
 
   Future<void> _openAdd() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const TravelAddPage()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const TravelAddPage()));
     if (changed == true) await _fetch();
   }
 
@@ -70,11 +70,13 @@ class _TravelListPageState extends State<TravelListPage> {
     final trips = _trips ?? const <TravelTrip>[];
     final cityCount = {for (final t in trips) t.cityName}.length;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
       body: Stack(
         children: [
-          Positioned.fill(child: TravelMap(trips: trips, onChanged: _fetch)),
+          Positioned.fill(
+            child: TravelMap(trips: trips, onChanged: _fetch),
+          ),
 
           // 玻璃浮顶栏
           Positioned(
@@ -85,9 +87,12 @@ class _TravelListPageState extends State<TravelListPage> {
               children: [
                 _glass(
                   wo,
-                  child: IconButton(
-                    icon:
-                        Icon(Icons.arrow_back_ios_new, size: 18, color: wo.fg),
+                  child: WoIconButton(
+                    icon: Icon(
+                      Icons.arrow_back_ios_new,
+                      size: 18,
+                      color: wo.fg,
+                    ),
                     onPressed: () => Navigator.of(context).maybePop(),
                   ),
                 ),
@@ -145,7 +150,7 @@ class _TravelListPageState extends State<TravelListPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: _openAdd,
         icon: const Icon(Icons.add),
         label: const Text('记录'),

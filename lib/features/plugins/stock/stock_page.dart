@@ -18,9 +18,9 @@ class StockPage extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       initialIndex: initialTabIndex,
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: const Text('囤货铺'),
           bottom: TabBar(
             indicatorColor: wo.stock,
@@ -31,12 +31,7 @@ class StockPage extends StatelessWidget {
           ),
         ),
         body: const SafeArea(
-          child: TabBarView(
-            children: [
-              StockItemsView(),
-              BuyItemsView(),
-            ],
-          ),
+          child: TabBarView(children: [StockItemsView(), BuyItemsView()]),
         ),
       ),
     );

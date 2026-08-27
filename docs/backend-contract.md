@@ -38,8 +38,7 @@
 User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ──┬─ PluginLayout
       │               │           │                    └─ PluginConfig
       │               │           ├─ Invitation
-      │               └─ role     └─ FamilyPet
-      │                              (角色 = pet 的"成员"特殊情况)
+      │               └─ role     └─ Pet ── Pet Daily Content
       └─ Notification
 ```
 
@@ -49,17 +48,17 @@ User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ─�
 |------|------|
 | **User** | 注册账号，对应一个自然人。一个 User 可以属于多个 Family。 |
 | **Family** | 一个家庭，是数据隔离和协作的基本单位。有名称、emoji、标语。 |
-| **Membership** | User × Family 的关联，记录角色（owner/admin/member/child/pet）和加入时间。 |
+| **Membership** | User × Family 的关联，记录人类角色（owner/admin/member/child）和加入时间。 |
+| **Pet** | 家庭内独立宠物身份；不是 User/Membership，不可登录、受邀、被授予角色或接收推送。 |
 | **Plugin** | 插件市场上架的插件**定义**（一起看片、家庭相册等）。所有家庭共享。 |
 | **InstalledPlugin** | 家庭已启用的插件**实例**，含布局、配置、安装人。 |
 | **PluginLayout** | 插件在家庭首页栅格里的占位：`(col, row, cw, ch)`。 |
 | **Invitation** | 邀请凭证（邀请码 / 链接 / 二维码扫码 token），有过期时间和指定角色。 |
 | **Notification** | 推给用户的消息（家庭动态、插件提醒、邀请回执等）。 |
 
-> **关于"宠物"**：当前设计把宠物当成一种 Membership 角色（`role=pet`），
-> 而不是独立实体。这样宠物可以出现在成员列表、被 @、有自己的档案（由
-> 宠物档案插件提供更多字段）。如果后续宠物需要复杂业务（疫苗记录、体重等），
-> 由「宠物档案」插件本身的资源承担，不污染核心模型。
+> **关于“宠物”**：Pet 是家庭核心域的独立实体。家庭管理把人类 Membership 与
+> Pet 分为“家人/宠物”两组展示；`member_count` 只统计 active 人类，`pet_count`
+> 只统计未归档 Pet。健康记录、照护计划和类型配置属于“宠物日常”插件。
 
 ---
 
@@ -197,6 +196,7 @@ User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ─�
   "emoji": "🏡",
   "created_at": "2024-03-15T08:21:00Z",
   "member_count": 3,
+  "pet_count": 2,
   "my_role": "owner",
   "my_unread_count": 0
 }
@@ -216,7 +216,7 @@ User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ─�
 {
   "user_id": "01JBQ...",
   "family_id": "01JBR...",
-  "role": "owner",            // owner | admin | member | child | pet
+  "role": "owner",            // owner | admin | member | child
   "display_name": "老陈",      // 在该家庭里的昵称（可能覆盖 user.display_name）
   "avatar_emoji": "👨",
   "joined_at": "2024-03-15T08:21:00Z",
@@ -236,7 +236,7 @@ User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ─�
 ```jsonc
 // POST /families/{id}/invitations 请求
 {
-  "role": "member",            // 默认 member，可指定 child/pet
+  "role": "member",            // 默认 member，可指定 admin/child；不接受 pet
   "ttl_seconds": 600,          // 10 分钟（面对面）/ 7 天（链接）
   "channel": "qr"              // qr | link | code
 }
@@ -357,6 +357,34 @@ GET /plugins?category=life&q=相册&cursor=...&limit=20
 ```
 
 > 每个插件的 schema 由各自的 Spec 单独写。这里只规范"挂载点"。
+
+### 5.8 Pet 与“宠物日常”
+
+Pet 档案是核心资源，即使卸载“宠物日常”也保留；插件内容同样保留，重装后继续可见。
+
+| Method | Path | 说明 | 权限 |
+|--------|------|------|------|
+| `GET` | `/families/{id}/pets` | 未归档宠物列表 | 成员 |
+| `POST` | `/families/{id}/pets` | 新建独立 Pet | Admin+ |
+| `GET/PATCH/DELETE` | `/families/{id}/pets/{pet_id}` | 查看、编辑、归档档案 | 查看为成员；写为 Admin+ |
+| `POST/GET/DELETE` | `/families/{id}/pets/{pet_id}/photo` | 私有照片上传、读取、删除 | 读取为成员；写为 Admin+ |
+| `GET/POST/PATCH` | `/families/{id}/plugins/pet/record-types...` | 默认/自定义记录类型、排序和停用 | 读取为成员；写为 Admin+ |
+| `GET/POST/PATCH/DELETE` | `/families/{id}/plugins/pet/pets/{pet_id}/records...` | 健康时间线记录 | 成员；非 Admin 只可改删自己创建的记录 |
+| `POST/GET/DELETE` | `/families/{id}/plugins/pet/records/{record_id}/attachments...` | 私有图片/PDF 附件 | 成员；删除遵循记录权限 |
+| `GET/POST/PATCH/DELETE` | `/families/{id}/plugins/pet/pets/{pet_id}/plans...` | 单次或每 N 天/周/月/年照护计划 | 成员；非 Admin 只可改删自己创建的计划 |
+| `POST` | `/families/{id}/plugins/pet/pets/{pet_id}/plans/{plan_id}/completions` | 幂等完成并写入时间线、滚动计划 | 成员 |
+| `GET` | `/families/{id}/plugins/pet/pets/{pet_id}` | 今日照护、体重、到期项和首屏时间线聚合 | 成员 |
+| `GET` | `/families/{id}/plugins/pet/pets/{pet_id}/weights` | 体重趋势 | 成员 |
+
+记录保留类型名称、emoji 和 `data_kind` 快照，后续改名/停用不会改写历史。周期计划
+从实际完成日期向后滚动；`(plan_id, scheduled_due_date)` 唯一约束保证重复完成返回同一记录。
+宠物照片 URL 带 `?v=` 版本，缺图或读取失败时客户端回退 Pet emoji；记录操作者仍使用
+家庭成员真实头像 URL 与共享 `MemberAvatar`。
+
+旧版 `role=pet` Membership 在 `d0e1f2a3b4c5` migration 中转换为独立 Pet，保留
+family、名称、emoji、User avatar 指针及 `legacy_user_id` 审计映射，移除家庭登录关系，
+但不删除原 User。上线前/后使用 `uv run python -m scripts.audit_pet_migration` 输出审计；
+加 `--copy-photos` 可 best-effort 将旧头像复制到独立 Pet key，失败不阻断数据迁移。
 
 ### 5.8 Notification
 
@@ -499,7 +527,7 @@ DELETE /families/{id}/plugins/{install_id}
 
 下面这些**尚未在 v1 实现**，但 schema 应预留兼容空间：
 
-- **Family Pets 独立资源**：当前 pet 是角色；若未来宠物档案插件做大，考虑独立 `pets` 资源。
+- **Family Pets 独立资源**：Pet 已是核心资源，插件只扩展健康记录与照护计划。
 - **跨家庭分享**：A 家庭把某张相片分享到 B 家庭——预留 `share_token`。
 - **插件订阅 / 付费**：Plugin 加 `pricing` 字段（free / one-time / subscription）。
 - **多端同步**：客户端写操作带 `client_op_id`，幂等去重。
@@ -533,7 +561,7 @@ from typing import Literal
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-Role = Literal["owner", "admin", "member", "child", "pet"]
+Role = Literal["owner", "admin", "member", "child"]
 PluginCategory = Literal["life", "finance", "health", "education", "entertainment"]
 
 
@@ -572,6 +600,7 @@ class Family(BaseModel):
     emoji: str
     created_at: datetime
     member_count: int
+    pet_count: int
     my_role: Role
     my_unread_count: int = 0
 

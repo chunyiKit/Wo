@@ -53,7 +53,7 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(m)));
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +62,8 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
     final session = WoScope.of(context);
     final family = session.currentFamily;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('插件详情')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('插件详情')),
       body: SafeArea(
         top: false,
         bottom: false,
@@ -110,8 +110,9 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
                                   Text(
                                     '${p.rating.toStringAsFixed(1)} ★ · '
                                     '${_compact(p.installCount)} 家在用 · $size',
-                                    style:
-                                        t.bodySmall?.copyWith(color: wo.fgMid),
+                                    style: t.bodySmall?.copyWith(
+                                      color: wo.fgMid,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -187,14 +188,15 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
                   ],
                 ),
               ),
-              FilledButton(
-                onPressed:
-                    (installed || _installing) ? null : () => _install(p),
+              WoFilledButton(
+                onPressed: (installed || _installing)
+                    ? null
+                    : () => _install(p),
                 child: _installing
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(installed ? '已安装' : '安装'),
               ),
@@ -213,7 +215,7 @@ String _compact(int n) {
 }
 
 String _msg(Object e) => switch (e) {
-      ApiException a => a.message,
-      NetworkException a => a.message,
-      _ => '操作失败',
-    };
+  ApiException a => a.message,
+  NetworkException a => a.message,
+  _ => '操作失败',
+};

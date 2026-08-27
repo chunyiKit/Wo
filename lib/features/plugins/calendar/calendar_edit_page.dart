@@ -80,8 +80,10 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
     _date = c?.eventDate;
     _allDay = c?.allDay ?? true;
     if (c?.startMinute != null) {
-      _time =
-          TimeOfDay(hour: c!.startMinute! ~/ 60, minute: c.startMinute! % 60);
+      _time = TimeOfDay(
+        hour: c!.startMinute! ~/ 60,
+        minute: c.startMinute! % 60,
+      );
     }
     _repeat = c?.repeat ?? 'none';
     _assignedTo = c?.assignedTo;
@@ -261,7 +263,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -271,9 +273,9 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
     final canSave = _title.text.trim().isNotEmpty && !_submitting;
     final hasDate = _date != null;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑日程' : '加一项')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑日程' : '加一项')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -313,7 +315,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _title,
                 maxLength: 64,
                 onChanged: (_) => setState(() {}),
@@ -339,7 +341,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
 
               // 以下区块仅在排了日期时才有意义。
               if (hasDate) ...[
-                SwitchListTile(
+                WoSwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: !_allDay,
                   activeColor: wo.calendar,
@@ -348,8 +350,8 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                     _allDay
                         ? '当前为全天'
                         : (_time == null
-                            ? '点右侧选个时间'
-                            : '时间：${_time!.format(context)}'),
+                              ? '点右侧选个时间'
+                              : '时间：${_time!.format(context)}'),
                     style: t.labelSmall?.copyWith(color: wo.fgMid),
                   ),
                   onChanged: (v) {
@@ -364,11 +366,12 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                 if (!_allDay)
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
+                    child: WoOutlinedButton.icon(
                       onPressed: _pickTime,
                       icon: const Icon(Icons.schedule, size: 18),
-                      label:
-                          Text(_time == null ? '选择时间' : _time!.format(context)),
+                      label: Text(
+                        _time == null ? '选择时间' : _time!.format(context),
+                      ),
                     ),
                   ),
                 const SizedBox(height: WoTokens.space3),
@@ -378,7 +381,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                   spacing: WoTokens.space2,
                   children: [
                     for (final (value, label) in _repeats)
-                      ChoiceChip(
+                      WoChoiceChip(
                         label: Text(label),
                         selected: _repeat == value,
                         onSelected: (_) => setState(() => _repeat = value),
@@ -405,7 +408,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                   child: SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   ),
                 )
               else
@@ -413,13 +416,13 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                   spacing: WoTokens.space2,
                   runSpacing: WoTokens.space2,
                   children: [
-                    ChoiceChip(
+                    WoChoiceChip(
                       label: const Text('暂不指派'),
                       selected: _assignedTo == null,
                       onSelected: (_) => setState(() => _assignedTo = null),
                     ),
                     for (final m in _members)
-                      ChoiceChip(
+                      WoChoiceChip(
                         avatar: MemberAvatar(
                           url: m.avatarUrl,
                           emoji: m.avatarEmoji,
@@ -436,7 +439,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
               // 提醒：仅排了日期时可开。
               if (hasDate) ...[
                 const SizedBox(height: WoTokens.space2),
-                SwitchListTile(
+                WoSwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _notify,
                   activeColor: wo.calendar,
@@ -444,8 +447,8 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                   subtitle: Text(
                     _notify
                         ? (_notifyDaysBefore == 0
-                            ? '当天推送提醒全家'
-                            : '提前 $_notifyDaysBefore 天推送提醒全家')
+                              ? '当天推送提醒全家'
+                              : '提前 $_notifyDaysBefore 天推送提醒全家')
                         : '开启后会在到期前推送通知',
                     style: t.labelSmall?.copyWith(color: wo.fgMid),
                   ),
@@ -454,10 +457,12 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                 if (_notify)
                   Row(
                     children: [
-                      Text('提前',
-                          style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+                      Text(
+                        '提前',
+                        style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                      ),
                       Expanded(
-                        child: Slider(
+                        child: WoSlider(
                           value: _notifyDaysBefore.toDouble(),
                           min: 0,
                           max: 14,
@@ -476,7 +481,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                       ),
                     ],
                   ),
-                SwitchListTile(
+                WoSwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _addToPhone,
                   activeColor: wo.calendar,
@@ -489,7 +494,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                 ),
               ],
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 500,
                 maxLines: 3,
@@ -500,9 +505,9 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
-                style: FilledButton.styleFrom(
+                style: WoFilledButton.styleFrom(
                   backgroundColor: wo.calendar,
                   foregroundColor: wo.fg,
                 ),
@@ -510,7 +515,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),
@@ -524,8 +529,11 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
 
 /// 日期选择行：显示已选日期，可清除（清除即变成无日期待办）。
 class _DateRow extends StatelessWidget {
-  const _DateRow(
-      {required this.date, required this.onPick, required this.onClear});
+  const _DateRow({
+    required this.date,
+    required this.onPick,
+    required this.onClear,
+  });
 
   final DateTime? date;
   final VoidCallback onPick;
@@ -536,8 +544,9 @@ class _DateRow extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     final has = date != null;
-    final label =
-        has ? '${date!.year}年${date!.month}月${date!.day}日' : '无日期（仅作为待办）';
+    final label = has
+        ? '${date!.year}年${date!.month}月${date!.day}日'
+        : '无日期（仅作为待办）';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: WoTokens.space1),
       child: Row(
@@ -557,9 +566,9 @@ class _DateRow extends StatelessWidget {
             ),
           ),
           if (has)
-            TextButton(onPressed: onClear, child: const Text('清除'))
+            WoTextButton(onPressed: onClear, child: const Text('清除'))
           else
-            TextButton(onPressed: onPick, child: const Text('选日期')),
+            WoTextButton(onPressed: onPick, child: const Text('选日期')),
         ],
       ),
     );

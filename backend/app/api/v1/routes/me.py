@@ -69,9 +69,9 @@ async def me(
 
     current: FamilyRead | None = None
     if current_user.current_family_id is not None:
-        for f, m, cnt in families:
+        for f, m, cnt, pet_count in families:
             if f.id == current_user.current_family_id:
-                current = FamilyRead.from_components(f, m, cnt)
+                current = FamilyRead.from_components(f, m, cnt, pet_count)
                 break
 
     stats = StatsRead(
@@ -108,7 +108,9 @@ async def my_families(
     current_user: CurrentUserDep,
 ) -> ApiResponse[list[FamilyRead]]:
     families = await family_service.list_user_families(session, current_user)
-    return ok([FamilyRead.from_components(f, m, cnt) for f, m, cnt in families])
+    return ok(
+        [FamilyRead.from_components(f, m, cnt, pet_count) for f, m, cnt, pet_count in families]
+    )
 
 
 @router.get("/me/bootstrap", response_model=ApiResponse[BootstrapResponse])
@@ -122,9 +124,9 @@ async def bootstrap(
     current_family: FamilyRead | None = None
     installed_plugins: list[InstalledPluginRead] = []
     if current_user.current_family_id is not None:
-        for f, m, cnt in families:
+        for f, m, cnt, pet_count in families:
             if f.id == current_user.current_family_id:
-                current_family = FamilyRead.from_components(f, m, cnt)
+                current_family = FamilyRead.from_components(f, m, cnt, pet_count)
                 stmt = (
                     select(InstalledPlugin)
                     .where(InstalledPlugin.family_id == f.id)
@@ -142,7 +144,10 @@ async def bootstrap(
         BootstrapResponse(
             user=UserRead.from_user(current_user),
             current_family=current_family,
-            families=[FamilyRead.from_components(f, m, cnt) for f, m, cnt in families],
+            families=[
+                FamilyRead.from_components(f, m, cnt, pet_count)
+                for f, m, cnt, pet_count in families
+            ],
             installed_plugins=installed_plugins,
             unread_count=unread,
         )
@@ -306,9 +311,7 @@ async def get_avatar_raw(
     if current_user.avatar_storage_key is None:
         raise AppError(ErrorCode.NOT_FOUND, "尚未设置头像", status_code=404)
     if isinstance(storage, PresignableStorage):
-        url = await storage.presigned_get_url(
-            current_user.avatar_storage_key, ttl_seconds=3600
-        )
+        url = await storage.presigned_get_url(current_user.avatar_storage_key, ttl_seconds=3600)
         return RedirectResponse(url, status_code=302)
     try:
         data = await storage.get(current_user.avatar_storage_key)

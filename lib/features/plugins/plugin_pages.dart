@@ -4,10 +4,12 @@ import '../../data/models.dart';
 import 'accounting/accounting_page.dart';
 import 'anniversary/anniversary_list_page.dart';
 import 'calendar/calendar_list_page.dart';
+import 'chat/chat_page.dart';
 import 'chore/chore_list_page.dart';
 import 'expiry/expiry_page.dart';
 import 'memory/memory_list_page.dart';
 import 'movie/movie_list_page.dart';
+import 'pet/pet_list_page.dart';
 import 'plant/plant_list_page.dart';
 import 'recipe/recipe_list_page.dart';
 import 'retirement/retirement_page.dart';
@@ -30,7 +32,9 @@ const Map<String, PluginPageBuilder> _pluginPages = {
   'memory': _memoryPage,
   'stock': _stockPage,
   'movie': _moviePage,
+  'pet': _petPage,
   'calendar': _calendarPage,
+  'chat': _chatPage,
   'subscription': _subscriptionPage,
   'plant': _plantPage,
   'retirement': _retirementPage,
@@ -45,7 +49,9 @@ Widget _chorePage(InstalledPlugin ip) => const ChoreListPage();
 Widget _memoryPage(InstalledPlugin ip) => const MemoryListPage();
 Widget _stockPage(InstalledPlugin ip) => const StockPage();
 Widget _moviePage(InstalledPlugin ip) => const MovieListPage();
+Widget _petPage(InstalledPlugin ip) => const PetListPage();
 Widget _calendarPage(InstalledPlugin ip) => const CalendarListPage();
+Widget _chatPage(InstalledPlugin ip) => const ChatPage();
 Widget _subscriptionPage(InstalledPlugin ip) => const SubscriptionPage();
 Widget _plantPage(InstalledPlugin ip) => const PlantListPage();
 Widget _retirementPage(InstalledPlugin ip) => const RetirementPage();

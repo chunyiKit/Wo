@@ -98,7 +98,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
       await session.api.remindChore(familyId, c.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已提醒 ${c.assigneeName ?? '负责人'}')),
+          WoSnackBar(content: Text('已提醒 ${c.assigneeName ?? '负责人'}')),
         );
       }
     } catch (e) {
@@ -107,19 +107,17 @@ class _ChoreListPageState extends State<ChoreListPage> {
   }
 
   Future<void> _resetRecurring() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('一键重新匹配'),
-        content: const Text(
-          '把所有「每周重复」的家务重新打开为待做，负责人保持不变，开启新一周。确定吗？',
-        ),
+        content: const Text('把所有「每周重复」的家务重新打开为待做，负责人保持不变，开启新一周。确定吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('重新匹配'),
           ),
@@ -135,10 +133,8 @@ class _ChoreListPageState extends State<ChoreListPage> {
       await _refreshSilently();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              count > 0 ? '已重新匹配 $count 件重复家务' : '重复家务都已是待做状态',
-            ),
+          WoSnackBar(
+            content: Text(count > 0 ? '已重新匹配 $count 件重复家务' : '重复家务都已是待做状态'),
           ),
         );
       }
@@ -148,17 +144,17 @@ class _ChoreListPageState extends State<ChoreListPage> {
   }
 
   Future<void> _delete(Chore c) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除家务'),
         content: Text('确定删除「${c.title}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -183,7 +179,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   List<Chore> _filter(List<Chore> all) =>
@@ -193,10 +189,10 @@ class _ChoreListPageState extends State<ChoreListPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final cached = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('家务活')),
-      floatingActionButton: FloatingActionButton.extended(
+      appBar: WoAppBar(title: const Text('家务活')),
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
         label: const Text('加家务'),
@@ -240,7 +236,8 @@ class _ChoreListPageState extends State<ChoreListPage> {
                       const SizedBox(height: WoTokens.space3),
                   itemBuilder: (_, i) => _ChoreTile(
                     chore: items[i],
-                    isMine: items[i].assignedTo != null &&
+                    isMine:
+                        items[i].assignedTo != null &&
                         items[i].assignedTo == myId,
                     onToggle: () => _toggleDone(items[i]),
                     onRemind: () => _remind(items[i]),
@@ -284,7 +281,7 @@ class _FilterBar extends StatelessWidget {
       child: Row(
         children: [
           for (final (value, label) in options) ...[
-            ChoiceChip(
+            WoChoiceChip(
               label: Text(label),
               selected: value == selected,
               onSelected: (_) => onSelect(value),
@@ -293,9 +290,9 @@ class _FilterBar extends StatelessWidget {
           ],
           const Spacer(),
           if (onResetRecurring != null)
-            TextButton.icon(
+            WoTextButton.icon(
               onPressed: onResetRecurring,
-              style: TextButton.styleFrom(foregroundColor: wo.chore),
+              style: WoTextButton.styleFrom(foregroundColor: wo.chore),
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('重新匹配'),
             ),
@@ -361,7 +358,8 @@ class _ChoreTile extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                        child: _AssigneeLine(chore: chore, isMine: isMine)),
+                      child: _AssigneeLine(chore: chore, isMine: isMine),
+                    ),
                     if (chore.recurring) ...[
                       const SizedBox(width: WoTokens.space2),
                       const _RecurringBadge(),
@@ -373,7 +371,7 @@ class _ChoreTile extends StatelessWidget {
           ),
           // 已指派且未完成时，可手动催一催。
           if (!done && chore.isAssigned)
-            IconButton(
+            WoIconButton(
               tooltip: '提醒 TA',
               icon: Icon(Icons.notifications_active_outlined, color: wo.chore),
               onPressed: onRemind,
@@ -438,10 +436,7 @@ class _AssigneeLine extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     if (!chore.isAssigned || chore.assigneeName == null) {
-      return Text(
-        '未指派',
-        style: t.labelSmall?.copyWith(color: wo.fgDim),
-      );
+      return Text('未指派', style: t.labelSmall?.copyWith(color: wo.fgDim));
     }
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -488,7 +483,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一件家务')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一件家务')),
           ],
         ),
       ),
@@ -511,10 +506,7 @@ class _EmptyFilter extends StatelessWidget {
           children: [
             const Text('✨', style: TextStyle(fontSize: 40)),
             const SizedBox(height: WoTokens.space3),
-            Text(
-              '这里空空如也',
-              style: t.bodyMedium?.copyWith(color: wo.fgMid),
-            ),
+            Text('这里空空如也', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           ],
         ),
       ),

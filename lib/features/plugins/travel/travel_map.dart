@@ -65,8 +65,9 @@ Future<List<TravelCity>> loadTravelDistricts() async {
 }
 
 Future<TravelMapData> _load() async {
-  final provStr =
-      await rootBundle.loadString('assets/maps/china_provinces.json');
+  final provStr = await rootBundle.loadString(
+    'assets/maps/china_provinces.json',
+  );
   final prov = jsonDecode(provStr) as Map<String, dynamic>;
   final path = Path()..fillType = PathFillType.evenOdd;
   for (final p in prov['provinces'] as List) {
@@ -76,8 +77,10 @@ Future<TravelMapData> _load() async {
       final pts = ring as List;
       var first = true;
       for (final pt in pts) {
-        final o =
-            _project((pt[0] as num).toDouble(), (pt[1] as num).toDouble());
+        final o = _project(
+          (pt[0] as num).toDouble(),
+          (pt[1] as num).toDouble(),
+        );
         if (first) {
           path.moveTo(o.dx, o.dy);
           first = false;
@@ -93,22 +96,17 @@ Future<TravelMapData> _load() async {
     for (final e in jsonDecode(cityStr) as List)
       (
         name: (e['name'] as String?) ?? '',
-        p: _project(
-          (e['lng'] as num).toDouble(),
-          (e['lat'] as num).toDouble(),
-        ),
+        p: _project((e['lng'] as num).toDouble(), (e['lat'] as num).toDouble()),
       ),
   ];
-  final distStr =
-      await rootBundle.loadString('assets/maps/china_districts.json');
+  final distStr = await rootBundle.loadString(
+    'assets/maps/china_districts.json',
+  );
   final districts = [
     for (final e in jsonDecode(distStr) as List)
       (
         name: (e['name'] as String?) ?? '',
-        p: _project(
-          (e['lng'] as num).toDouble(),
-          (e['lat'] as num).toDouble(),
-        ),
+        p: _project((e['lng'] as num).toDouble(), (e['lat'] as num).toDouble()),
       ),
   ];
   return TravelMapData(path, cities, districts);
@@ -287,7 +285,7 @@ class _TravelMapState extends State<TravelMap> {
         if (data == null) {
           return ColoredBox(
             color: isDark ? const Color(0xFF11201B) : const Color(0xFFEAF1EE),
-            child: const Center(child: CircularProgressIndicator()),
+            child: const Center(child: WoProgressIndicator()),
           );
         }
         if (!_inited && vp.width > 0) {
@@ -470,7 +468,7 @@ class _TravelMapState extends State<TravelMap> {
                         child: const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(
+                          child: WoProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
@@ -482,7 +480,9 @@ class _TravelMapState extends State<TravelMap> {
                         top: 4,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1,),
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(8),
@@ -490,9 +490,10 @@ class _TravelMapState extends State<TravelMap> {
                           child: Text(
                             '${v.trips.length}',
                             style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,),
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
@@ -521,26 +522,26 @@ class _TravelMapState extends State<TravelMap> {
 
   Widget _controls(WoColors wo, {required bool showThumbToggle}) {
     Widget btn(String s, VoidCallback onTap, {bool border = false}) => InkWell(
-          onTap: onTap,
-          child: Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: border
-                  ? Border(bottom: BorderSide(color: wo.hairline))
-                  : null,
-            ),
-            child: Text(
-              s,
-              style: TextStyle(
-                fontSize: 20,
-                color: wo.fg,
-                fontWeight: FontWeight.w300,
-              ),
-            ),
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: border
+              ? Border(bottom: BorderSide(color: wo.hairline))
+              : null,
+        ),
+        child: Text(
+          s,
+          style: TextStyle(
+            fontSize: 20,
+            color: wo.fg,
+            fontWeight: FontWeight.w300,
           ),
-        );
+        ),
+      ),
+    );
     Widget iconBtn(IconData icon, VoidCallback onTap, {Color? color}) =>
         Material(
           color: wo.bgElev,
@@ -686,8 +687,12 @@ class _MapPainter extends CustomPainter {
         ..color = wo.accent
         ..strokeWidth = 1.5;
       for (final pl in thumbs) {
-        final card =
-            Rect.fromLTWH(pl.topLeft.dx, pl.topLeft.dy, _thumbW, _thumbH);
+        final card = Rect.fromLTWH(
+          pl.topLeft.dx,
+          pl.topLeft.dy,
+          _thumbW,
+          _thumbH,
+        );
         final near = Offset(
           pl.dot.dx.clamp(card.left, card.right),
           pl.dot.dy.clamp(card.top, card.bottom),

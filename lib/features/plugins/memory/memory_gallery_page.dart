@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../theme/wo_tokens.dart';
 import 'memory_save.dart';
 import 'memory_video_page.dart';
 
@@ -42,22 +43,22 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
 
   /// 长按图片 → 微信式的底部「保存到相册」操作面板。
   ///
-  /// 走 [showModalBottomSheet] 是因为照片这一页是黑底全屏,Material dialog 在
+  /// 走 [showWoModalBottomSheet] 是因为照片这一页是黑底全屏,Material dialog 在
   /// 黑色背景上显得突兀;底部面板从下方升起,跟系统分享面板一致。
   Future<void> _onLongPressPhoto(MemoryMedia media, String url) async {
     final api = WoScope.api(context);
-    final action = await showModalBottomSheet<String>(
+    final action = await showWoModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.download_outlined),
               title: const Text('保存到相册'),
               onTap: () => Navigator.of(ctx).pop('save'),
             ),
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.close),
               title: const Text('取消'),
               onTap: () => Navigator.of(ctx).pop(),
@@ -72,10 +73,7 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
     // 卸载导致取不到 ScaffoldMessenger。
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('正在保存…'),
-        duration: Duration(seconds: 30),
-      ),
+      WoSnackBar(content: Text('正在保存…'), duration: Duration(seconds: 30)),
     );
     final err = await saveMemoryImageToGallery(
       media: media,
@@ -84,7 +82,7 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
     );
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
-      SnackBar(
+      WoSnackBar(
         content: Text(err ?? '已保存到相册'),
         duration: const Duration(seconds: 2),
       ),
@@ -95,9 +93,9 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
   Widget build(BuildContext context) {
     final api = WoScope.api(context);
     final total = widget.media.length;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: WoAppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -130,11 +128,12 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
                   fit: BoxFit.contain,
                   // 全屏图按屏幕物理分辨率解码即可,无需把 2400px 原图整张解进内存
                   // (那是撑爆 ImageCache、返回后缩略图全部重载的元凶之一)。
-                  memCacheWidth: (MediaQuery.of(context).size.width *
-                          MediaQuery.of(context).devicePixelRatio)
-                      .round(),
+                  memCacheWidth:
+                      (MediaQuery.of(context).size.width *
+                              MediaQuery.of(context).devicePixelRatio)
+                          .round(),
                   placeholder: (_, __) => const Center(
-                    child: CircularProgressIndicator(color: Colors.white24),
+                    child: WoProgressIndicator(color: Colors.white24),
                   ),
                   errorWidget: (_, __, ___) => const Center(
                     child: Icon(

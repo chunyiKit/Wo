@@ -151,7 +151,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -160,9 +160,9 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
     final t = Theme.of(context).textTheme;
     final canSave = _title.text.trim().isNotEmpty && !_submitting;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑家务' : '加家务')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑家务' : '加家务')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -202,7 +202,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _title,
                 maxLength: 64,
                 onChanged: (_) => setState(() {}),
@@ -220,7 +220,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                   child: SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   ),
                 )
               else
@@ -228,13 +228,13 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                   spacing: WoTokens.space2,
                   runSpacing: WoTokens.space2,
                   children: [
-                    ChoiceChip(
+                    WoChoiceChip(
                       label: const Text('暂不指派'),
                       selected: _assignedTo == null,
                       onSelected: (_) => setState(() => _assignedTo = null),
                     ),
                     for (final m in _members)
-                      ChoiceChip(
+                      WoChoiceChip(
                         avatar: MemberAvatar(
                           url: m.avatarUrl,
                           emoji: m.avatarEmoji,
@@ -248,7 +248,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                   ],
                 ),
               const SizedBox(height: WoTokens.space3),
-              SwitchListTile(
+              WoSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _recurring,
                 onChanged: (v) => setState(() => _recurring = v),
@@ -260,7 +260,7 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 500,
                 maxLines: 3,
@@ -271,13 +271,13 @@ class _ChoreEditPageState extends State<ChoreEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

@@ -35,9 +35,9 @@ class _RetireLedgerPageState extends State<RetireLedgerPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('自动流水')),
+      appBar: WoAppBar(title: const Text('自动流水')),
       body: SafeArea(
         child: AsyncView<List<RetireLedgerEntry>>(
           future: _future,
@@ -50,10 +50,9 @@ class _RetireLedgerPageState extends State<RetireLedgerPage> {
                   child: Text(
                     '还没有自动流水。\n到入账日 / 扣款日，或每月结算后会出现在这里。',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: wo.fgMid),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: wo.fgMid),
                   ),
                 ),
               );

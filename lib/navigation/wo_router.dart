@@ -31,48 +31,37 @@ import 'wo_routes.dart';
 ///         → 主壳子（home / messages / me）。
 /// 真实业务里 splash 决定下一跳由 SessionRepository / 本地存储决定，
 /// 当前先静态跳到 onboarding。
-final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'wo-root');
-
 /// 首页 Tab 自己的 navigator key。插件详情页是用 [Navigator.push] 命令式压栈的，
 /// goBranch 只会重置 go_router 的声明式页面，清不掉这种命令式路由，
 /// 所以切 Tab 时需要拿这个 key 把首页栈 popUntil 回根页。
 final _homeBranchKey = GlobalKey<NavigatorState>(debugLabel: 'wo-home-branch');
 
-GoRouter buildRouter() {
+GoRouter buildRouter({
+  GlobalKey<NavigatorState>? rootNavigatorKey,
+  VoidCallback? onStartupReady,
+}) {
   return GoRouter(
-    navigatorKey: _rootKey,
+    navigatorKey: rootNavigatorKey,
     initialLocation: WoRoutes.splash,
     routes: [
       GoRoute(
         path: WoRoutes.splash,
-        builder: (_, __) => const SplashPage(),
+        builder: (_, __) => SplashPage(onStartupReady: onStartupReady),
       ),
       GoRoute(
         path: WoRoutes.onboarding,
         builder: (_, __) => const OnboardingPage(),
       ),
-      GoRoute(
-        path: WoRoutes.login,
-        builder: (_, __) => const LoginPage(),
-      ),
+      GoRoute(path: WoRoutes.login, builder: (_, __) => const LoginPage()),
 
       // 加入 / 创建家庭流（独立栈，未登陆时进入）
       GoRoute(
         path: WoRoutes.joinLanding,
         builder: (_, __) => const JoinLandingPage(),
         routes: [
-          GoRoute(
-            path: 'code',
-            builder: (_, __) => const JoinByCodePage(),
-          ),
-          GoRoute(
-            path: 'scan',
-            builder: (_, __) => const ScanPage(),
-          ),
-          GoRoute(
-            path: 'create',
-            builder: (_, __) => const CreateFamilyPage(),
-          ),
+          GoRoute(path: 'code', builder: (_, __) => const JoinByCodePage()),
+          GoRoute(path: 'scan', builder: (_, __) => const ScanPage()),
+          GoRoute(path: 'create', builder: (_, __) => const CreateFamilyPage()),
         ],
       ),
 
@@ -157,10 +146,7 @@ GoRouter buildRouter() {
                       ),
                     ],
                   ),
-                  GoRoute(
-                    path: 'about',
-                    builder: (_, __) => const AboutPage(),
-                  ),
+                  GoRoute(path: 'about', builder: (_, __) => const AboutPage()),
                 ],
               ),
             ],

@@ -10,11 +10,7 @@ import '../theme/wo_tokens.dart';
 /// 用 [StatefulNavigationShell] 承载三个 Tab。点底 Tab 一律回到该 Tab 的根页，
 /// 不会停留在之前压入的二级页（如插件详情页）。
 class WoShell extends StatelessWidget {
-  const WoShell({
-    super.key,
-    required this.shell,
-    required this.homeBranchKey,
-  });
+  const WoShell({super.key, required this.shell, required this.homeBranchKey});
 
   final StatefulNavigationShell shell;
 

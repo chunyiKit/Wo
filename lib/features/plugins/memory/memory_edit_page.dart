@@ -86,18 +86,18 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
       _toastMsg('最多 $_maxMedia 个');
       return;
     }
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showWoModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('照片'),
               onTap: () => Navigator.of(ctx).pop('photo'),
             ),
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.videocam_outlined),
               title: const Text('视频'),
               onTap: () => Navigator.of(ctx).pop('video'),
@@ -229,7 +229,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
   }
 
   void _toastMsg(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -238,20 +238,20 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
     final t = Theme.of(context).textTheme;
     final canSave = _title.text.trim().isNotEmpty && !_submitting;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(
+      appBar: WoAppBar(
         title: Text(_isEditing ? '编辑回忆' : '新的回忆'),
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: WoTokens.space2),
-            child: TextButton(
+            child: WoTextButton(
               onPressed: canSave ? _save : null,
               child: _submitting
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: WoProgressIndicator(strokeWidth: 2),
                     )
                   : const Text('保存'),
             ),
@@ -278,7 +278,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
               onRemoveVideo: (i) => setState(() => _pendingVideos.removeAt(i)),
             ),
             const SizedBox(height: WoTokens.space4),
-            TextField(
+            WoTextField(
               controller: _title,
               maxLength: 80,
               onChanged: (_) => setState(() {}),
@@ -291,7 +291,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
             ),
             Divider(color: wo.hairline, height: 1),
             const SizedBox(height: WoTokens.space3),
-            TextField(
+            WoTextField(
               controller: _body,
               maxLength: 2000,
               minLines: 3,
@@ -306,7 +306,8 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
             _MetaRow(
               icon: Icons.calendar_today_outlined,
               label: '日期',
-              value: '${memoryDateLabel(_eventDate)} · '
+              value:
+                  '${memoryDateLabel(_eventDate)} · '
                   '${_eventDate.year}-${_eventDate.month}-${_eventDate.day}',
               onTap: _pickDate,
             ),
@@ -320,9 +321,8 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
               children: [
                 for (final mood in _moods)
                   GestureDetector(
-                    onTap: () => setState(
-                      () => _mood = _mood == mood ? '' : mood,
-                    ),
+                    onTap: () =>
+                        setState(() => _mood = _mood == mood ? '' : mood),
                     child: Container(
                       width: 44,
                       height: 44,
@@ -347,7 +347,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
               spacing: WoTokens.space2,
               children: [
                 for (final (value, label) in _visibilities)
-                  ChoiceChip(
+                  WoChoiceChip(
                     label: Text(label),
                     selected: _visibility == value,
                     onSelected: (_) => setState(() => _visibility = value),
@@ -529,7 +529,7 @@ class _AddTile extends StatelessWidget {
                   child: SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   ),
                 )
               : Column(
@@ -634,7 +634,7 @@ class _LocationRow extends StatelessWidget {
           Icon(Icons.place_outlined, size: 18, color: wo.fgMid),
           const SizedBox(width: WoTokens.space3),
           Expanded(
-            child: TextField(
+            child: WoTextField(
               controller: controller,
               maxLength: 80,
               decoration: const InputDecoration(

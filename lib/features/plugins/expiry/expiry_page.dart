@@ -84,17 +84,17 @@ class _ExpiryPageState extends State<ExpiryPage> {
   }
 
   Future<void> _delete(ExpiryItem e) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除记录'),
         content: Text('确定删除「${e.name}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -119,16 +119,16 @@ class _ExpiryPageState extends State<ExpiryPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('到期管家')),
-      floatingActionButton: FloatingActionButton.extended(
+      appBar: WoAppBar(title: const Text('到期管家')),
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: () => _openEditor(),
         backgroundColor: wo.expiry,
         foregroundColor: wo.fg,
@@ -243,8 +243,9 @@ class _ItemTile extends StatelessWidget {
                     due.text,
                     style: t.labelMedium?.copyWith(
                       color: due.tone ?? wo.fgMid,
-                      fontWeight:
-                          due.tone != null ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: due.tone != null
+                          ? FontWeight.w700
+                          : FontWeight.w500,
                     ),
                   ),
                 ],
@@ -298,7 +299,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一项')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一项')),
           ],
         ),
       ),
@@ -368,7 +369,9 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
       lastDate: DateTime(now.year + 30),
     );
     if (picked != null) {
-      setState(() => _expireOn = DateTime(picked.year, picked.month, picked.day));
+      setState(
+        () => _expireOn = DateTime(picked.year, picked.month, picked.day),
+      );
     }
   }
 
@@ -419,8 +422,9 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
     }
   }
 
-  void _toastMsg(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _toastMsg(String msg) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(WoSnackBar(content: Text(msg)));
 
   void _toast(Object error) {
     final msg = switch (error) {
@@ -437,9 +441,9 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑' : '加一项')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑' : '加一项')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -453,8 +457,11 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                 runSpacing: WoTokens.space2,
                 children: [
                   for (final k in expiryKinds)
-                    ChoiceChip(
-                      avatar: Text(k.emoji, style: const TextStyle(fontSize: 16)),
+                    WoChoiceChip(
+                      avatar: Text(
+                        k.emoji,
+                        style: const TextStyle(fontSize: 16),
+                      ),
                       label: Text(k.label),
                       selected: k.code == _kind,
                       onSelected: (_) => _pickKind(k),
@@ -462,7 +469,7 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                 ],
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 40,
                 decoration: const InputDecoration(
@@ -471,7 +478,7 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              ListTile(
+              WoListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.event, color: wo.expiry),
                 title: const Text('到期日'),
@@ -479,11 +486,13 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                   _dateLabel(_expireOn),
                   style: t.bodyMedium?.copyWith(color: wo.fgMid),
                 ),
-                trailing:
-                    TextButton(onPressed: _pickDate, child: const Text('选择')),
+                trailing: WoTextButton(
+                  onPressed: _pickDate,
+                  child: const Text('选择'),
+                ),
                 onTap: _pickDate,
               ),
-              SwitchListTile(
+              WoSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _notify,
                 activeColor: wo.expiry,
@@ -500,7 +509,7 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                   spacing: WoTokens.space2,
                   children: [
                     for (final d in _leadOptions)
-                      ChoiceChip(
+                      WoChoiceChip(
                         label: Text(_leadLabel(d)),
                         selected: d == _notifyDaysBefore,
                         onSelected: (_) =>
@@ -510,7 +519,7 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                 ),
               ],
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 200,
                 maxLines: 2,
@@ -521,9 +530,9 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: _submitting ? null : _save,
-                style: FilledButton.styleFrom(
+                style: WoFilledButton.styleFrom(
                   backgroundColor: wo.expiry,
                   foregroundColor: wo.fg,
                 ),
@@ -531,7 +540,7 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

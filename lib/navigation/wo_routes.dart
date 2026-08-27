@@ -33,5 +33,4 @@ class WoRoutes {
   static const notifications = '/notifications';
 
   static String pluginDetailFor(String id) => '/marketplace/plugin/$id';
-
 }

@@ -103,9 +103,9 @@ class _StockItemsViewState extends State<StockItemsView> {
     try {
       await session.api.stockItemToBuy(familyId, it.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已把「${it.name}」加进采买清单')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('已把「${it.name}」加进采买清单')));
       }
       await _refreshSilently();
     } catch (e) {
@@ -114,17 +114,17 @@ class _StockItemsViewState extends State<StockItemsView> {
   }
 
   Future<void> _delete(StockItem it) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除囤货'),
         content: Text('确定删除「${it.name}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -149,15 +149,15 @@ class _StockItemsViewState extends State<StockItemsView> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final cached = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: WoFloatingActionButton.extended(
         heroTag: 'stock-add-item',
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
@@ -188,13 +188,13 @@ class _StockItemsViewState extends State<StockItemsView> {
             ),
             child: Row(
               children: [
-                ChoiceChip(
+                WoChoiceChip(
                   label: const Text('全部'),
                   selected: !_lowOnly,
                   onSelected: (_) => setState(() => _lowOnly = false),
                 ),
                 const SizedBox(width: WoTokens.space2),
-                ChoiceChip(
+                WoChoiceChip(
                   label: Text('告急 $lowCount'),
                   selected: _lowOnly,
                   onSelected: (_) => setState(() => _lowOnly = true),
@@ -293,12 +293,12 @@ class _StockTile extends StatelessWidget {
             ),
           ),
           // 快速加减库存。
-          IconButton(
+          WoIconButton(
             visualDensity: VisualDensity.compact,
             icon: Icon(Icons.remove_circle_outline, color: wo.fgDim),
             onPressed: item.qty > 0 ? onDec : null,
           ),
-          IconButton(
+          WoIconButton(
             visualDensity: VisualDensity.compact,
             icon: Icon(Icons.add_circle_outline, color: wo.stock),
             onPressed: onInc,
@@ -346,7 +346,7 @@ class _EmptyStock extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一样囤货')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一样囤货')),
           ],
         ),
       ),

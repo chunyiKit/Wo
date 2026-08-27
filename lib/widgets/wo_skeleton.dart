@@ -19,7 +19,8 @@ class WoShimmer extends StatelessWidget {
     // base 是占位块的底色，highlight 是扫过的高光；都用 fgDim 叠在 elev 底上，
     // 自动适配深 / 浅色，保持暖调。
     final base = Color.alphaBlend(wo.fgDim.withValues(alpha: 0.18), wo.bgElev);
-    final highlight = Color.alphaBlend(wo.fgDim.withValues(alpha: 0.05), wo.bgElev);
+    final highlight =
+        Color.alphaBlend(wo.fgDim.withValues(alpha: 0.05), wo.bgElev);
     return Shimmer.fromColors(
       baseColor: base,
       highlightColor: highlight,

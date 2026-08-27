@@ -66,7 +66,8 @@ Future<PickedPhotos> pickAndCompressMemoryPhotos({
 Future<DateTime?> _readExifCaptureDate(Uint8List bytes) async {
   try {
     final tags = await readExifFromBytes(bytes);
-    final tag = tags['EXIF DateTimeOriginal'] ??
+    final tag =
+        tags['EXIF DateTimeOriginal'] ??
         tags['EXIF DateTimeDigitized'] ??
         tags['Image DateTime'];
     if (tag == null) return null;
@@ -85,7 +86,9 @@ DateTime? _parseExifDate(String raw) {
   final month = int.tryParse(m.group(2)!);
   final day = int.tryParse(m.group(3)!);
   if (year == null || month == null || day == null) return null;
-  if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
   return DateTime(year, month, day);
 }
 
@@ -108,5 +111,9 @@ Future<PickedVideo?> pickMemoryVideo() async {
   } finally {
     await controller.dispose();
   }
-  return PickedVideo(bytes: bytes, filename: picked.name, durationMs: durationMs);
+  return PickedVideo(
+    bytes: bytes,
+    filename: picked.name,
+    durationMs: durationMs,
+  );
 }

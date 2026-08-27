@@ -21,7 +21,7 @@ async def create_family(
 ) -> ApiResponse[FamilyRead]:
     family, membership = await family_service.create_family(session, payload, current_user)
     # Freshly-created family has exactly one member (the creator/owner).
-    return ok(FamilyRead.from_components(family, membership, member_count=1))
+    return ok(FamilyRead.from_components(family, membership, member_count=1, pet_count=0))
 
 
 @router.get("/{family_id}", response_model=ApiResponse[FamilyRead])
@@ -30,10 +30,10 @@ async def get_family(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[FamilyRead]:
-    family, membership, count = await family_service.get_family_view(
+    family, membership, count, pet_count = await family_service.get_family_view(
         session, family_id, current_user
     )
-    return ok(FamilyRead.from_components(family, membership, count))
+    return ok(FamilyRead.from_components(family, membership, count, pet_count))
 
 
 @router.patch("/{family_id}", response_model=ApiResponse[FamilyRead])
@@ -43,10 +43,10 @@ async def update_family(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[FamilyRead]:
-    family, membership, count = await family_service.update_family(
+    family, membership, count, pet_count = await family_service.update_family(
         session, family_id, payload, current_user
     )
-    return ok(FamilyRead.from_components(family, membership, count))
+    return ok(FamilyRead.from_components(family, membership, count, pet_count))
 
 
 @router.post("/{family_id}/switch", response_model=ApiResponse[FamilyRead])
@@ -55,7 +55,7 @@ async def switch_family(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[FamilyRead]:
-    family, membership, count = await family_service.switch_current_family(
+    family, membership, count, pet_count = await family_service.switch_current_family(
         session, current_user, family_id
     )
-    return ok(FamilyRead.from_components(family, membership, count))
+    return ok(FamilyRead.from_components(family, membership, count, pet_count))

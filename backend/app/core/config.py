@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     push_batch_size: int = 100
     push_max_attempts: int = 5
 
+    # ---- Chat (家聊) -------------------------------------------------------
+    # Chat is local-first: the server is only a recent sync buffer. Retention
+    # applies to message rows and uploaded chat images.
+    chat_retention_days: int = 7
+    chat_cleanup_poll_seconds: float = 3600.0
+
     # ---- Anniversary reminders --------------------------------------------
     # Background loop that emits "anniversary due" notifications. Off by default
     # (like push) so dev/tests don't run it; enable per env. The check is
@@ -125,6 +131,12 @@ class Settings(BaseSettings):
     # default; idempotent per due date.
     plant_reminder_enabled: bool = False
     plant_reminder_poll_seconds: float = 3600.0
+
+    # ---- Pet daily care reminders -----------------------------------------
+    # Reminds the family once for each care-plan due date. The due date only
+    # advances when a member completes the plan.
+    pet_reminder_enabled: bool = False
+    pet_reminder_poll_seconds: float = 3600.0
 
     # ---- Retirement (退休倒计时) automated monthly events ------------------
     # Background loop that credits each account's fixed monthly income on its

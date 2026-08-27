@@ -38,7 +38,7 @@ class _TravelAddPageState extends State<TravelAddPage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(m)));
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -55,7 +55,7 @@ class _TravelAddPageState extends State<TravelAddPage> {
   }
 
   Future<void> _pickCity() async {
-    final city = await showModalBottomSheet<TravelCity>(
+    final city = await showWoModalBottomSheet<TravelCity>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _CityPickerSheet(),
@@ -65,7 +65,9 @@ class _TravelAddPageState extends State<TravelAddPage> {
 
   Future<void> _pickMemory() async {
     // 进场用具体地点 / 城市预填搜索,方便就近找到对应回忆。
-    final seed = _place.text.trim().isNotEmpty ? _place.text.trim() : _city?.name;
+    final seed = _place.text.trim().isNotEmpty
+        ? _place.text.trim()
+        : _city?.name;
     final mem = await showMemoryLinkSheet(context, seedQuery: seed);
     if (mem != null && mounted) setState(() => _memory = mem);
   }
@@ -111,20 +113,20 @@ class _TravelAddPageState extends State<TravelAddPage> {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(
+      appBar: WoAppBar(
         title: const Text('新的旅行'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: FilledButton(
+            child: WoFilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: WoProgressIndicator(strokeWidth: 2),
                     )
                   : const Text('保存'),
             ),
@@ -154,89 +156,88 @@ class _TravelAddPageState extends State<TravelAddPage> {
   }
 
   Widget _hint(WoColors wo, TextTheme t) => Container(
-        padding: const EdgeInsets.all(WoTokens.space3),
-        decoration: BoxDecoration(
-          color: wo.bgTint,
-          borderRadius: BorderRadius.circular(WoTokens.space3),
+    padding: const EdgeInsets.all(WoTokens.space3),
+    decoration: BoxDecoration(
+      color: wo.bgTint,
+      borderRadius: BorderRadius.circular(WoTokens.space3),
+    ),
+    child: Row(
+      children: [
+        const Text('✨', style: TextStyle(fontSize: 16)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '保存后会自动把照片生成一张「色彩漫游」旅行记录图,稍等片刻在地图上就能看到。',
+            style: t.bodySmall?.copyWith(color: wo.fgMid, height: 1.5),
+          ),
         ),
-        child: Row(
-          children: [
-            const Text('✨', style: TextStyle(fontSize: 16)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '保存后会自动把照片生成一张「色彩漫游」旅行记录图,稍等片刻在地图上就能看到。',
-                style: t.bodySmall?.copyWith(color: wo.fgMid, height: 1.5),
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 
   Widget _cityRow(WoColors wo, TextTheme t) => InkWell(
-        onTap: _pickCity,
+    onTap: _pickCity,
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: wo.bgTint,
         borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: wo.bgTint,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              const Text('📍', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('城市 / 区县',
-                        style: t.labelSmall?.copyWith(color: wo.fgMid),),
-                    const SizedBox(height: 1),
-                    Text(
-                      _city == null
-                          ? '搜索城市 / 区县…'
-                          : (_city!.region == null
-                              ? _city!.name
-                              : '${_city!.name} · ${_city!.region}'),
-                      style: t.titleSmall?.copyWith(
-                        color: _city == null ? wo.fgDim : wo.fg,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+      ),
+      child: Row(
+        children: [
+          const Text('📍', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('城市 / 区县', style: t.labelSmall?.copyWith(color: wo.fgMid)),
+                const SizedBox(height: 1),
+                Text(
+                  _city == null
+                      ? '搜索城市 / 区县…'
+                      : (_city!.region == null
+                            ? _city!.name
+                            : '${_city!.name} · ${_city!.region}'),
+                  style: t.titleSmall?.copyWith(
+                    color: _city == null ? wo.fgDim : wo.fg,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right, color: wo.fgDim),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
+          Icon(Icons.chevron_right, color: wo.fgDim),
+        ],
+      ),
+    ),
+  );
 
   Widget _placeField(WoColors wo, TextTheme t) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: wo.bgTint,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            const Text('🏞️', style: TextStyle(fontSize: 18)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: _place,
-                decoration: const InputDecoration(
-                  labelText: '具体地点(可选)',
-                  hintText: '如 东方明珠、长江大桥',
-                  border: InputBorder.none,
-                  isDense: true,
-                ),
-              ),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+    decoration: BoxDecoration(
+      color: wo.bgTint,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      children: [
+        const Text('🏞️', style: TextStyle(fontSize: 18)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: WoTextField(
+            controller: _place,
+            decoration: const InputDecoration(
+              labelText: '具体地点(可选)',
+              hintText: '如 东方明珠、长江大桥',
+              border: InputBorder.none,
+              isDense: true,
             ),
-          ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   Widget _memoryRow(WoColors wo, TextTheme t) {
     final mem = _memory;
@@ -263,8 +264,7 @@ class _TravelAddPageState extends State<TravelAddPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('关联回忆',
-                      style: t.labelSmall?.copyWith(color: wo.fgMid),),
+                  Text('关联回忆', style: t.labelSmall?.copyWith(color: wo.fgMid)),
                   const SizedBox(height: 1),
                   Text(
                     subtitle,
@@ -316,14 +316,18 @@ class _TravelAddPageState extends State<TravelAddPage> {
               child: GestureDetector(
                 onTap: _pickImage,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(100),
                   ),
-                  child: const Text('换一张',
-                      style: TextStyle(color: Colors.white, fontSize: 11),),
+                  child: const Text(
+                    '换一张',
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
                 ),
               ),
             ),
@@ -334,21 +338,21 @@ class _TravelAddPageState extends State<TravelAddPage> {
   }
 
   Widget _captionField(WoColors wo, TextTheme t) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _caption,
-            maxLines: 2,
-            minLines: 1,
-            decoration: const InputDecoration(
-              hintText: '写一句想记住的话…',
-              border: InputBorder.none,
-            ),
-            style: t.bodyLarge?.copyWith(color: wo.fg, height: 1.6),
-          ),
-          Container(height: 1, color: wo.hairline),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      WoTextField(
+        controller: _caption,
+        maxLines: 2,
+        minLines: 1,
+        decoration: const InputDecoration(
+          hintText: '写一句想记住的话…',
+          border: InputBorder.none,
+        ),
+        style: t.bodyLarge?.copyWith(color: wo.fg, height: 1.6),
+      ),
+      Container(height: 1, color: wo.hairline),
+    ],
+  );
 }
 
 class DottedPlaceholder extends StatelessWidget {
@@ -368,9 +372,14 @@ class DottedPlaceholder extends StatelessWidget {
         children: [
           const Text('🏞️', style: TextStyle(fontSize: 34)),
           const SizedBox(height: 8),
-          Text('选一张照片',
-              style: TextStyle(
-                  color: wo.fgMid, fontSize: 14, fontWeight: FontWeight.w500,),),
+          Text(
+            '选一张照片',
+            style: TextStyle(
+              color: wo.fgMid,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 2),
           Text('每段旅行只留一张', style: TextStyle(color: wo.fgDim, fontSize: 12)),
         ],
@@ -409,8 +418,9 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
         : _all.where((c) => c.name.contains(q)).take(80).toList();
 
     return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         height: MediaQuery.of(context).size.height * 0.7,
         decoration: BoxDecoration(
@@ -430,7 +440,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
             ),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: TextField(
+              child: WoTextField(
                 autofocus: true,
                 onChanged: (v) => setState(() => _q = v),
                 decoration: InputDecoration(
@@ -450,7 +460,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                 itemCount: list.length,
                 itemBuilder: (_, i) {
                   final c = list[i];
-                  return ListTile(
+                  return WoListTile(
                     leading: const Text('📍', style: TextStyle(fontSize: 18)),
                     title: Text(c.name),
                     subtitle: c.region == null ? null : Text(c.region!),

@@ -102,7 +102,7 @@ class _AccountEditPageState extends State<AccountEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -112,9 +112,9 @@ class _AccountEditPageState extends State<AccountEditPage> {
     final canSave = _name.text.trim().isNotEmpty && !_submitting;
     final hasIncome = (double.tryParse(_income.text.trim()) ?? 0) > 0;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑账户' : '加账户')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑账户' : '加账户')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -125,16 +125,17 @@ class _AccountEditPageState extends State<AccountEditPage> {
                 spacing: WoTokens.space2,
                 children: [
                   for (final k in accountKinds)
-                    ChoiceChip(
-                      label:
-                          Text('${accountKindEmoji(k)} ${accountKindLabel(k)}'),
+                    WoChoiceChip(
+                      label: Text(
+                        '${accountKindEmoji(k)} ${accountKindLabel(k)}',
+                      ),
                       selected: _kind == k,
                       onSelected: (_) => setState(() => _kind = k),
                     ),
                 ],
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 40,
                 onChanged: (_) => setState(() {}),
@@ -144,20 +145,22 @@ class _AccountEditPageState extends State<AccountEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _balance,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: '当前余额',
                   prefixText: '¥ ',
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _income,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: '每月固定收入（可选）',
@@ -171,7 +174,7 @@ class _AccountEditPageState extends State<AccountEditPage> {
                   children: [
                     Text('每月入账日', style: t.bodyMedium),
                     const Spacer(),
-                    DropdownButton<int>(
+                    WoDropdownButton<int>(
                       value: _incomeDay,
                       items: [
                         for (var d = 1; d <= 28; d++)
@@ -188,13 +191,13 @@ class _AccountEditPageState extends State<AccountEditPage> {
                 ),
               ],
               const SizedBox(height: WoTokens.space5),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

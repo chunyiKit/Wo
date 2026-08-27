@@ -13,13 +13,13 @@ from pydantic import BaseModel
 from sqlalchemy import Column, DateTime
 from sqlmodel import Field, SQLModel
 
-Role = Literal["owner", "admin", "member", "child", "pet"]
+Role = Literal["owner", "admin", "member", "child"]
 MembershipStatus = Literal["active", "pending"]
 
 # Allowed values for role-gating helpers (keep in sync with the Literal above).
-ALL_ROLES: tuple[str, ...] = ("owner", "admin", "member", "child", "pet")
+ALL_ROLES: tuple[str, ...] = ("owner", "admin", "member", "child")
 ADMIN_OR_OWNER: tuple[str, ...] = ("owner", "admin")
-INVITABLE_ROLES: tuple[str, ...] = ("admin", "member", "child", "pet")
+INVITABLE_ROLES: tuple[str, ...] = ("admin", "member", "child")
 # Note: "owner" cannot be invited — ownership transfers go through a separate
 # transfer endpoint (P2.5+).
 

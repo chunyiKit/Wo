@@ -73,17 +73,17 @@ class _DebtsViewState extends State<DebtsView> {
   }
 
   Future<void> _delete(RetireDebt debt) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除负债'),
         content: Text('确定删除「${debt.name}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -108,15 +108,15 @@ class _DebtsViewState extends State<DebtsView> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final cached = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: WoFloatingActionButton.extended(
         heroTag: 'retire-add-debt',
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
@@ -182,8 +182,9 @@ class _DebtTile extends StatelessWidget {
                     Flexible(
                       child: Text(
                         debt.name,
-                        style:
-                            t.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                        style: t.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -279,7 +280,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一笔负债')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一笔负债')),
           ],
         ),
       ),

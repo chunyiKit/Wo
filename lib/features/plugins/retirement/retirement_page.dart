@@ -32,12 +32,12 @@ class _RetirementPageState extends State<RetirementPage> {
     final wo = context.wo;
     return DefaultTabController(
       length: 3,
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: const Text('退休倒计时'),
           actions: [
-            IconButton(
+            WoIconButton(
               tooltip: '自动流水',
               icon: const Icon(Icons.receipt_long_outlined),
               onPressed: () => Navigator.of(context).push(

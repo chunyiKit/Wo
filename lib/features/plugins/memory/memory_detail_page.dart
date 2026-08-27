@@ -81,17 +81,17 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除回忆'),
         content: Text('确定删除「${_memory.title}」吗？照片和留言会一起删除，不可撤销。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -119,8 +119,11 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
     if (familyId == null) return;
     setState(() => _sending = true);
     try {
-      final comment =
-          await session.api.addMemoryComment(familyId, _memory.id, text);
+      final comment = await session.api.addMemoryComment(
+        familyId,
+        _memory.id,
+        text,
+      );
       if (!mounted) return;
       setState(() {
         _memory = _withComment(_memory, comment);
@@ -154,22 +157,22 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
   }
 
   Memory _withComment(Memory m, MemoryComment c) => Memory(
-        id: m.id,
-        familyId: m.familyId,
-        title: m.title,
-        body: m.body,
-        mood: m.mood,
-        location: m.location,
-        visibility: m.visibility,
-        eventDate: m.eventDate,
-        createdBy: m.createdBy,
-        authorName: m.authorName,
-        authorEmoji: m.authorEmoji,
-        createdAt: m.createdAt,
-        media: m.media,
-        commentCount: m.commentCount + 1,
-        comments: [...m.comments, c],
-      );
+    id: m.id,
+    familyId: m.familyId,
+    title: m.title,
+    body: m.body,
+    mood: m.mood,
+    location: m.location,
+    visibility: m.visibility,
+    eventDate: m.eventDate,
+    createdBy: m.createdBy,
+    authorName: m.authorName,
+    authorEmoji: m.authorEmoji,
+    createdAt: m.createdAt,
+    media: m.media,
+    commentCount: m.commentCount + 1,
+    comments: [...m.comments, c],
+  );
 
   Memory _withoutComment(Memory m, String commentId) {
     final remaining = m.comments.where((c) => c.id != commentId).toList();
@@ -198,7 +201,7 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -213,17 +216,17 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) Navigator.of(context).pop(_changed);
       },
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: const Text('回忆'),
           actions: [
-            IconButton(
+            WoIconButton(
               tooltip: '编辑',
               icon: const Icon(Icons.edit_outlined),
               onPressed: _edit,
             ),
-            IconButton(
+            WoIconButton(
               tooltip: '删除',
               icon: const Icon(Icons.delete_outline),
               onPressed: _delete,
@@ -260,7 +263,9 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
                         ),
                         decoration: BoxDecoration(
                           color: wo.memory,
-                          borderRadius: BorderRadius.circular(WoTokens.chipRadius),
+                          borderRadius: BorderRadius.circular(
+                            WoTokens.chipRadius,
+                          ),
                         ),
                         child: Text(
                           '${m.eventDate.month} 月 ${m.eventDate.day} 日 · '
@@ -284,10 +289,7 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
                     _MetaLine(memory: m),
                     if (m.body != null && m.body!.isNotEmpty) ...[
                       const SizedBox(height: WoTokens.space4),
-                      Text(
-                        m.body!,
-                        style: t.bodyLarge?.copyWith(height: 1.7),
-                      ),
+                      Text(m.body!, style: t.bodyLarge?.copyWith(height: 1.7)),
                     ],
                     const SizedBox(height: WoTokens.space5),
                     Divider(color: wo.hairline, height: 1),
@@ -475,7 +477,7 @@ class _CommentInput extends StatelessWidget {
                 color: wo.bgTint,
                 borderRadius: BorderRadius.circular(22),
               ),
-              child: TextField(
+              child: WoTextField(
                 controller: controller,
                 maxLength: 500,
                 minLines: 1,
@@ -501,7 +503,7 @@ class _CommentInput extends StatelessWidget {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(
+                      child: WoProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
                       ),

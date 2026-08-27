@@ -40,11 +40,15 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
     if (prev == null) return;
     // 乐观更新：只改这一个开关，其它开关与总开关保持原样、不禁用。
     setState(() {
-      _prefs = NotificationPreferences(pushEnabled: value, sources: prev.sources);
+      _prefs = NotificationPreferences(
+        pushEnabled: value,
+        sources: prev.sources,
+      );
     });
     await _commit(
-      () => WoScope.api(context)
-          .updateNotificationPreferences(pushEnabled: value),
+      () => WoScope.api(
+        context,
+      ).updateNotificationPreferences(pushEnabled: value),
       rollback: () => _prefs = prev,
     );
   }
@@ -62,8 +66,9 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
       );
     });
     await _commit(
-      () => WoScope.api(context)
-          .updateNotificationPreferences(sources: {source.key: value}),
+      () => WoScope.api(
+        context,
+      ).updateNotificationPreferences(sources: {source.key: value}),
       // 只回滚这一个来源，避免影响期间用户切换的其它开关。
       rollback: () {
         final cur = _prefs;
@@ -95,7 +100,7 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
         NetworkException ex => ex.message,
         _ => '保存失败，请稍后再试',
       };
-      messenger.showSnackBar(SnackBar(content: Text(msg)));
+      messenger.showSnackBar(WoSnackBar(content: Text(msg)));
     }
   }
 
@@ -104,8 +109,8 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('通知偏好')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('通知偏好')),
       body: SafeArea(
         top: false,
         child: Builder(
@@ -115,12 +120,12 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
             }
             final prefs = _prefs;
             if (prefs == null) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: WoProgressIndicator());
             }
             return ListView(
               children: [
                 const SizedBox(height: WoTokens.space2),
-                SwitchListTile(
+                WoSwitchListTile(
                   secondary: const Icon(Icons.notifications_active_outlined),
                   title: const Text('推送到手机通知'),
                   subtitle: const Text('关闭后将不再收到系统通知栏推送'),
@@ -141,13 +146,17 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
                   ),
                 ),
                 for (final s in prefs.sources)
-                  SwitchListTile(
-                    secondary: Text(s.emoji, style: const TextStyle(fontSize: 22)),
+                  WoSwitchListTile(
+                    secondary: Text(
+                      s.emoji,
+                      style: const TextStyle(fontSize: 22),
+                    ),
                     title: Text(s.label),
                     // 总开关关掉时，各来源开关一并失效（变灰）。
                     value: prefs.pushEnabled && s.enabled,
-                    onChanged:
-                        prefs.pushEnabled ? (v) => _setSource(s, v) : null,
+                    onChanged: prefs.pushEnabled
+                        ? (v) => _setSource(s, v)
+                        : null,
                   ),
                 Padding(
                   padding: const EdgeInsets.all(WoTokens.space5),
@@ -181,12 +190,9 @@ class _ErrorRetry extends StatelessWidget {
           children: [
             Text('加载失败', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
-            Text(
-              '请检查网络后重试。',
-              style: t.bodyMedium?.copyWith(color: wo.fgMid),
-            ),
+            Text('请检查网络后重试。', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
             const SizedBox(height: WoTokens.space4),
-            FilledButton(onPressed: onRetry, child: const Text('重试')),
+            WoFilledButton(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       ),

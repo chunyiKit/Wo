@@ -141,7 +141,7 @@ class _MovieDiscoverPageState extends State<MovieDiscoverPage> {
 
   /// 打开详情弹层;若用户在弹层里加入了片单,把该结果标记为已添加。
   Future<void> _openDetail(DiscoverMovie movie) async {
-    final added = await showModalBottomSheet<bool>(
+    final added = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _DiscoverDetailSheet(movie: movie),
@@ -159,9 +159,9 @@ class _MovieDiscoverPageState extends State<MovieDiscoverPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('片库')),
+      appBar: WoAppBar(title: const Text('片库')),
       body: SafeArea(
         child: Column(
           children: [
@@ -185,15 +185,17 @@ class _MovieDiscoverPageState extends State<MovieDiscoverPage> {
     final t = Theme.of(context).textTheme;
 
     if (_loadingFirst) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: WoProgressIndicator());
     }
     if (_firstError != null) {
       return _ErrorRetry(error: _firstError!, onRetry: _loadFirst);
     }
     if (_results.isEmpty) {
       return Center(
-        child:
-            Text('没有符合条件的电影', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+        child: Text(
+          '没有符合条件的电影',
+          style: t.bodyMedium?.copyWith(color: wo.fgMid),
+        ),
       );
     }
 
@@ -226,14 +228,14 @@ class _MovieDiscoverPageState extends State<MovieDiscoverPage> {
                   ? const SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: WoProgressIndicator(strokeWidth: 2),
                     )
                   : (!_hasMore
-                      ? Text(
-                          '没有更多了',
-                          style: t.labelSmall?.copyWith(color: wo.fgDim),
-                        )
-                      : const SizedBox.shrink()),
+                        ? Text(
+                            '没有更多了',
+                            style: t.labelSmall?.copyWith(color: wo.fgDim),
+                          )
+                        : const SizedBox.shrink()),
             ),
           ),
         ),
@@ -274,7 +276,7 @@ class _FilterBar extends StatelessWidget {
           Row(
             children: [
               for (final (label, key) in _sortOptions) ...[
-                ChoiceChip(
+                WoChoiceChip(
                   label: Text(label),
                   selected: sort == key,
                   selectedColor: wo.movie.withValues(alpha: 0.18),
@@ -294,7 +296,7 @@ class _FilterBar extends StatelessWidget {
                   runSpacing: WoTokens.space2,
                   children: [
                     for (final g in genres)
-                      FilterChip(
+                      WoFilterChip(
                         label: Text(g.name),
                         selected: selected.contains(g.id),
                         selectedColor: wo.movie.withValues(alpha: 0.18),
@@ -403,10 +405,10 @@ class _PosterImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final wo = context.wo;
     Widget placeholder() => Container(
-          color: wo.bgTint,
-          alignment: Alignment.center,
-          child: const Text('🎬', style: TextStyle(fontSize: 28)),
-        );
+      color: wo.bgTint,
+      alignment: Alignment.center,
+      child: const Text('🎬', style: TextStyle(fontSize: 28)),
+    );
     if (url == null || url!.isEmpty) return placeholder();
     final api = WoScope.api(context);
     return CachedNetworkImage(
@@ -449,7 +451,9 @@ class _DiscoverDetailSheetState extends State<_DiscoverDetailSheet> {
         NetworkException ex => ex.message,
         _ => '加入失败',
       };
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(WoSnackBar(content: Text(msg)));
     }
   }
 
@@ -491,8 +495,9 @@ class _DiscoverDetailSheetState extends State<_DiscoverDetailSheet> {
                     children: [
                       Text(
                         m.title,
-                        style: t.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: t.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       if (meta.isNotEmpty) ...[
                         const SizedBox(height: 4),
@@ -520,14 +525,11 @@ class _DiscoverDetailSheetState extends State<_DiscoverDetailSheet> {
             ),
             const SizedBox(height: WoTokens.space4),
             if (m.alreadyAdded)
-              OutlinedButton(
-                onPressed: null,
-                child: const Text('已在片单'),
-              )
+              WoOutlinedButton(onPressed: null, child: const Text('已在片单'))
             else
-              FilledButton.icon(
+              WoFilledButton.icon(
                 onPressed: _adding ? null : _add,
-                style: FilledButton.styleFrom(
+                style: WoFilledButton.styleFrom(
                   backgroundColor: wo.movie,
                   foregroundColor: wo.fg,
                 ),
@@ -535,7 +537,7 @@ class _DiscoverDetailSheetState extends State<_DiscoverDetailSheet> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.add),
                 label: const Text('加入想看'),
@@ -568,7 +570,7 @@ class _ErrorRetry extends StatelessWidget {
         children: [
           Text(msg, style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           const SizedBox(height: WoTokens.space3),
-          OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+          WoOutlinedButton(onPressed: onRetry, child: const Text('重试')),
         ],
       ),
     );

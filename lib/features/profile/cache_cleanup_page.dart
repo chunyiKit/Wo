@@ -92,26 +92,20 @@ class _CacheCleanupPageState extends State<CacheCleanupPage> {
 
   Future<bool> _confirm(_Section section) async {
     final (title, body) = switch (section) {
-      _Section.dataCache => (
-          '清理数据缓存？',
-          '将清空已缓存的图片与临时文件。不影响你的数据，下次浏览会重新加载。',
-        ),
-      _Section.apk => (
-          '清理历史安装包？',
-          '将删除检查更新时下载的安装包。下次更新会重新下载，不影响已安装的应用。',
-        ),
+      _Section.dataCache => ('清理数据缓存？', '将清空已缓存的图片与临时文件。不影响你的数据，下次浏览会重新加载。'),
+      _Section.apk => ('清理历史安装包？', '将删除检查更新时下载的安装包。下次更新会重新下载，不影响已安装的应用。'),
     };
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: Text(title),
         content: Text(body),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          WoFilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('清理'),
           ),
@@ -125,13 +119,13 @@ class _CacheCleanupPageState extends State<CacheCleanupPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(msg)));
+      ..showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('清除缓存')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('清除缓存')),
       body: SafeArea(top: false, child: _body(context)),
     );
   }
@@ -140,7 +134,7 @@ class _CacheCleanupPageState extends State<CacheCleanupPage> {
     final usage = _usage;
     if (usage == null) {
       if (_error != null) return _ErrorRetry(onRetry: _retry);
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: WoProgressIndicator());
     }
     return ListView(
       padding: const EdgeInsets.all(WoTokens.space5),
@@ -326,10 +320,7 @@ class _UsageRow extends StatelessWidget {
               children: [
                 Text(title, style: t.bodyLarge),
                 const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: t.bodySmall?.copyWith(color: wo.fgMid),
-                ),
+                Text(subtitle, style: t.bodySmall?.copyWith(color: wo.fgMid)),
               ],
             ),
           ),
@@ -371,12 +362,12 @@ class _ClearAction extends StatelessWidget {
           child: SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: WoProgressIndicator(strokeWidth: 2),
           ),
         ),
       );
     }
-    return TextButton(onPressed: onPressed, child: const Text('清理'));
+    return WoTextButton(onPressed: onPressed, child: const Text('清理'));
   }
 }
 
@@ -386,7 +377,9 @@ class _RowDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: WoTokens.space4 + 22 + WoTokens.space3),
+      padding: const EdgeInsets.only(
+        left: WoTokens.space4 + 22 + WoTokens.space3,
+      ),
       child: Divider(height: 1, color: context.wo.hairline),
     );
   }
@@ -417,7 +410,7 @@ class _ErrorRetry extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+            WoFilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       ),

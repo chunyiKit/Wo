@@ -48,6 +48,7 @@ _CATEGORY_HINTS: dict[str, str] = {
     "shopping": "购物 / 日用百货 / 超市",
     "utilities": "水电煤、宽带、物业等缴费",
     "car": "养车 / 加油 / 停车 / 维修",
+    "pet": "宠物粮食、用品、医疗、洗护等",
     "subscription": "软件、会员、订阅",
 }
 

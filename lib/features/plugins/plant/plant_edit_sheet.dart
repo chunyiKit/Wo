@@ -19,10 +19,12 @@ class PlantEditSheet extends StatefulWidget {
 }
 
 class _PlantEditSheetState extends State<PlantEditSheet> {
-  late final TextEditingController _name =
-      TextEditingController(text: widget.existing?.name ?? '');
-  late final TextEditingController _species =
-      TextEditingController(text: widget.existing?.species ?? '');
+  late final TextEditingController _name = TextEditingController(
+    text: widget.existing?.name ?? '',
+  );
+  late final TextEditingController _species = TextEditingController(
+    text: widget.existing?.species ?? '',
+  );
 
   // 摆放标签全家共享、存后端。首帧用默认值占位,拉到家庭设置后替换。编辑模式下
   // 预选当前植物的摆放(即使它不在候选里也并入,避免选不中)。
@@ -74,27 +76,30 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
     final fid = session.currentFamilyId;
     if (fid == null) return;
     try {
-      final settings =
-          await session.api.updatePlantSettings(fid, placements: next);
+      final settings = await session.api.updatePlantSettings(
+        fid,
+        placements: next,
+      );
       if (mounted && settings.placements.isNotEmpty) {
         setState(() => _placements = settings.placements);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _placements = prev); // 回滚
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('标签保存失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('标签保存失败:$e')));
       }
     }
   }
 
   Future<void> _addPlacement() async {
     final ctrl = TextEditingController();
-    final label = await showDialog<String>(
+    final label = await showWoDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('添加摆放位置'),
-        content: TextField(
+        content: WoTextField(
           controller: ctrl,
           autofocus: true,
           maxLength: 12,
@@ -104,11 +109,11 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
           ),
         ),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('取消'),
           ),
-          FilledButton(
+          WoFilledButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
             child: const Text('添加'),
           ),
@@ -124,17 +129,17 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
   }
 
   Future<void> _deletePlacement(String p) async {
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: Text('删除「$p」'),
         content: const Text('全家共享的候选标签里移除,不影响已用此标签的植物。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -181,8 +186,9 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('保存失败:$e')));
       }
     }
   }
@@ -204,17 +210,20 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
         children: [
           Text(
             _isEdit ? '编辑植物' : '添加植物',
-            style:
-                Theme.of(context).textTheme.titleLarge?.copyWith(color: wo.fg),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: wo.fg),
           ),
           const SizedBox(height: WoTokens.space4),
-          TextField(
+          WoTextField(
             controller: _name,
-            decoration:
-                const InputDecoration(labelText: '名称', hintText: '如:绿萝'),
+            decoration: const InputDecoration(
+              labelText: '名称',
+              hintText: '如:绿萝',
+            ),
           ),
           const SizedBox(height: WoTokens.space3),
-          TextField(
+          WoTextField(
             controller: _species,
             decoration: const InputDecoration(
               labelText: '品种(可选)',
@@ -224,18 +233,16 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
           const SizedBox(height: WoTokens.space4),
           Text(
             '摆放位置',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: wo.fgMid),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: wo.fgMid),
           ),
           const SizedBox(height: 2),
           Text(
             '长按标签可删除;此标签会作为环境信息发给 AI',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: wo.fgDim),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: wo.fgDim),
           ),
           const SizedBox(height: WoTokens.space2),
           Wrap(
@@ -245,7 +252,7 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
               for (final p in _placements)
                 GestureDetector(
                   onLongPress: () => _deletePlacement(p),
-                  child: ChoiceChip(
+                  child: WoChoiceChip(
                     label: Text(p),
                     selected: _placement == p,
                     onSelected: (_) => setState(() => _placement = p),
@@ -259,13 +266,13 @@ class _PlantEditSheetState extends State<PlantEditSheet> {
             ],
           ),
           const SizedBox(height: WoTokens.space5),
-          FilledButton(
+          WoFilledButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   )
                 : const Text('保存'),
           ),

@@ -24,6 +24,6 @@ const expiryKinds = <ExpiryKind>[
 ];
 
 ExpiryKind kindFor(String code) => expiryKinds.firstWhere(
-      (k) => k.code == code,
-      orElse: () => const ExpiryKind('other', '其他', '📄'),
-    );
+  (k) => k.code == code,
+  orElse: () => const ExpiryKind('other', '其他', '📄'),
+);

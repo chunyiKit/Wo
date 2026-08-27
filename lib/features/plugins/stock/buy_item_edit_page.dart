@@ -106,7 +106,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -114,9 +114,9 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
     final wo = context.wo;
     final canSave = _name.text.trim().isNotEmpty && !_submitting;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑采买' : '加采买')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑采买' : '加采买')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -155,7 +155,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 64,
                 onChanged: (_) => setState(() {}),
@@ -165,7 +165,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _wantQty,
                 maxLength: 32,
                 decoration: const InputDecoration(
@@ -175,7 +175,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 500,
                 maxLines: 3,
@@ -186,13 +186,13 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

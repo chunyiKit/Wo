@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../data/wo_session.dart';
+import '../../../theme/wo_tokens.dart';
 
 /// 全屏播放一段回忆视频。点画面切换播放/暂停，底部一条进度。
 class MemoryVideoPage extends StatefulWidget {
@@ -57,9 +58,9 @@ class _MemoryVideoPageState extends State<MemoryVideoPage> {
   @override
   Widget build(BuildContext context) {
     final c = _controller;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: WoAppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -69,28 +70,28 @@ class _MemoryVideoPageState extends State<MemoryVideoPage> {
         child: _error != null
             ? const Text('视频加载失败', style: TextStyle(color: Colors.white70))
             : (!_ready || c == null)
-                ? const CircularProgressIndicator(color: Colors.white)
-                : GestureDetector(
-                    onTap: _toggle,
-                    child: AspectRatio(
-                      aspectRatio: c.value.aspectRatio == 0
-                          ? 16 / 9
-                          : c.value.aspectRatio,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          VideoPlayer(c),
-                          VideoProgressIndicator(c, allowScrubbing: true),
-                          if (!c.value.isPlaying)
-                            const Icon(
-                              Icons.play_circle_fill,
-                              size: 72,
-                              color: Colors.white70,
-                            ),
-                        ],
-                      ),
-                    ),
+            ? const WoProgressIndicator(color: Colors.white)
+            : GestureDetector(
+                onTap: _toggle,
+                child: AspectRatio(
+                  aspectRatio: c.value.aspectRatio == 0
+                      ? 16 / 9
+                      : c.value.aspectRatio,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(c),
+                      VideoProgressIndicator(c, allowScrubbing: true),
+                      if (!c.value.isPlaying)
+                        const Icon(
+                          Icons.play_circle_fill,
+                          size: 72,
+                          color: Colors.white70,
+                        ),
+                    ],
                   ),
+                ),
+              ),
       ),
     );
   }

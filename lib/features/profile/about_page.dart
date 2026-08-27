@@ -36,8 +36,8 @@ class _AboutPageState extends State<AboutPage> {
     final t = Theme.of(context).textTheme;
     final controller = WoScope.of(context).appUpdate;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('关于「窝」')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('关于「窝」')),
       body: SafeArea(
         top: false,
         child: ListenableBuilder(
@@ -104,7 +104,7 @@ class _AboutPageState extends State<AboutPage> {
             SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: WoProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: WoTokens.space3),
             Text('正在检查更新…'),
@@ -125,7 +125,7 @@ class _AboutPageState extends State<AboutPage> {
             const SizedBox(height: WoTokens.space3),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(value: pct),
+              child: WoLinearProgressIndicator(value: pct),
             ),
             const SizedBox(height: WoTokens.space2),
             Text(
@@ -155,7 +155,10 @@ class _AboutPageState extends State<AboutPage> {
             ),
             if (release.notes.isNotEmpty) ...[
               const SizedBox(height: WoTokens.space3),
-              Text(release.notes, style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+              Text(
+                release.notes,
+                style: t.bodyMedium?.copyWith(color: wo.fgMid),
+              ),
             ],
             if (c.message != null) ...[
               const SizedBox(height: WoTokens.space2),
@@ -167,7 +170,7 @@ class _AboutPageState extends State<AboutPage> {
             const SizedBox(height: WoTokens.space4),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
+              child: WoFilledButton.icon(
                 onPressed: c.downloadAndInstall,
                 icon: const Icon(Icons.download),
                 label: const Text('立即更新'),
@@ -182,7 +185,7 @@ class _AboutPageState extends State<AboutPage> {
             Icon(Icons.check_circle_outline, color: wo.accent),
             const SizedBox(width: WoTokens.space2),
             const Expanded(child: Text('已是最新版本')),
-            TextButton(onPressed: c.check, child: const Text('重新检查')),
+            WoTextButton(onPressed: c.check, child: const Text('重新检查')),
           ],
         );
 
@@ -197,7 +200,7 @@ class _AboutPageState extends State<AboutPage> {
               ),
               const SizedBox(height: WoTokens.space3),
             ],
-            FilledButton.tonalIcon(
+            WoFilledButton.tonalIcon(
               onPressed: c.check,
               icon: const Icon(Icons.refresh),
               label: const Text('检查更新'),

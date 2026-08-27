@@ -123,17 +123,17 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除纪念日'),
         content: Text('确定删除「${widget.existing!.name}」吗？此操作不可撤销。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -163,7 +163,7 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -173,13 +173,13 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
     final dateText = '${_date.year}年${_date.month}月${_date.day}日';
     final canSave = _name.text.trim().isNotEmpty && !_submitting;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(
+      appBar: WoAppBar(
         title: Text(_isEditing ? '编辑纪念日' : '新增纪念日'),
         actions: [
           if (_isEditing)
-            IconButton(
+            WoIconButton(
               tooltip: '删除',
               icon: const Icon(Icons.delete_outline),
               onPressed: _submitting ? null : _delete,
@@ -252,7 +252,7 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 ],
               ),
               const SizedBox(height: WoTokens.space6),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 32,
                 onChanged: (_) => setState(() {}),
@@ -279,8 +279,10 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                     children: [
                       Icon(Icons.event_outlined, color: wo.fgMid, size: 20),
                       const SizedBox(width: WoTokens.space3),
-                      Text('日期',
-                          style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+                      Text(
+                        '日期',
+                        style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                      ),
                       const Spacer(),
                       Text(dateText, style: t.titleMedium),
                       const SizedBox(width: WoTokens.space2),
@@ -290,9 +292,10 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space3),
-              SwitchListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: WoTokens.space2),
+              WoSwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: WoTokens.space2,
+                ),
                 title: const Text('按农历记'),
                 subtitle: Text(
                   '开启后这天按农历周年提醒',
@@ -302,15 +305,16 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 onChanged: (v) => setState(() => _isLunar = v),
               ),
               // 到期提醒开关 + 提前天数。
-              SwitchListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: WoTokens.space2),
+              WoSwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: WoTokens.space2,
+                ),
                 title: const Text('到期提醒'),
                 subtitle: Text(
                   _notifyEnabled
                       ? (_notifyDaysBefore == 0
-                          ? '当天给全家发一条通知'
-                          : '提前 $_notifyDaysBefore 天给全家发一条通知')
+                            ? '当天给全家发一条通知'
+                            : '提前 $_notifyDaysBefore 天给全家发一条通知')
                       : '到日子时给全家发一条通知',
                   style: t.bodySmall?.copyWith(color: wo.fgMid),
                 ),
@@ -320,8 +324,9 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
               if (_notifyEnabled) ...[
                 const SizedBox(height: WoTokens.space2),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: WoTokens.space2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: WoTokens.space2,
+                  ),
                   child: Row(
                     children: [
                       Text(
@@ -334,7 +339,7 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                           spacing: WoTokens.space2,
                           children: [
                             for (final d in _daysBeforeOptions)
-                              ChoiceChip(
+                              WoChoiceChip(
                                 label: Text(d == 0 ? '当天' : '$d 天'),
                                 selected: _notifyDaysBefore == d,
                                 onSelected: (_) =>
@@ -348,7 +353,7 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 ),
               ],
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 200,
                 maxLines: 3,
@@ -359,13 +364,13 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space5),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

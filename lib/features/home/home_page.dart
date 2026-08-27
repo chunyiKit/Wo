@@ -70,10 +70,7 @@ class _HomePageState extends State<HomePage> {
     }
     _lastBackAt = now;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('再按一次返回退出'),
-        duration: Duration(seconds: 2),
-      ),
+      WoSnackBar(content: Text('再按一次返回退出'), duration: Duration(seconds: 2)),
     );
   }
 
@@ -107,11 +104,9 @@ class _HomePageState extends State<HomePage> {
 
   /// 编辑态下点尺寸按钮，弹窗选择卡片大小（cw×ch）。
   Future<void> _openSizeSheet(InstalledPlugin p) async {
-    final picked = await showModalBottomSheet<WoCardSize>(
+    final picked = await showWoModalBottomSheet<WoCardSize>(
       context: context,
-      builder: (_) => _SizeSheet(
-        current: (cw: p.layout.cw, ch: p.layout.ch),
-      ),
+      builder: (_) => _SizeSheet(current: (cw: p.layout.cw, ch: p.layout.ch)),
     );
     if (picked != null && mounted) {
       await _resize(p, picked.cw, picked.ch);
@@ -129,7 +124,9 @@ class _HomePageState extends State<HomePage> {
     ];
     final idx = current.indexWhere((e) => e.id == p.id);
     if (idx < 0) return;
-    current[idx] = p.copyWith(layout: p.layout.copyWith(cw: cw, ch: ch));
+    current[idx] = p.copyWith(
+      layout: p.layout.copyWith(cw: cw, ch: ch),
+    );
     setState(() => _ordered = current);
     await _persistLayout(current);
   }
@@ -139,13 +136,10 @@ class _HomePageState extends State<HomePage> {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
-    final positions = computeWoGridPlacements(
-      [
-        for (final p in ordered)
-          (cw: p.layout.cw.clamp(1, 4), ch: p.layout.ch.clamp(1, 4)),
-      ],
-      4,
-    );
+    final positions = computeWoGridPlacements([
+      for (final p in ordered)
+        (cw: p.layout.cw.clamp(1, 4), ch: p.layout.ch.clamp(1, 4)),
+    ], 4);
     final items = [
       for (var i = 0; i < ordered.length; i++)
         <String, dynamic>{
@@ -168,7 +162,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _openFamilySwitcher() {
-    showModalBottomSheet<void>(
+    showWoModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _FamilySwitcherSheet(),
@@ -176,7 +170,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _openAddPluginSheet() {
-    showModalBottomSheet<void>(
+    showWoModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _AddPluginSheet(),
@@ -187,12 +181,12 @@ class _HomePageState extends State<HomePage> {
   /// 详情页、返回缩回卡片。没有注册详情页的插件回退成普通卡片（点击无形变）。
   Widget _buildPluginTile(InstalledPlugin ip) {
     Widget card(VoidCallback? onTap) => _WidgetCard(
-          installed: ip,
-          editing: false,
-          onTap: onTap,
-          onLongPress: () => setState(() => _editing = true),
-          onRemove: () => _remove(ip),
-        );
+      installed: ip,
+      editing: false,
+      onTap: onTap,
+      onLongPress: () => setState(() => _editing = true),
+      onRemove: () => _remove(ip),
+    );
 
     final page = pluginPageFor(ip);
     if (page == null) return card(null);
@@ -268,17 +262,9 @@ class _HomePageState extends State<HomePage> {
       }
       final next = <_ShoppingSource>[
         if (fromRecipe.isNotEmpty)
-          _ShoppingSource(
-            label: '食材采买',
-            emoji: '🍳',
-            count: fromRecipe.length,
-          ),
+          _ShoppingSource(label: '食材采买', emoji: '🍳', count: fromRecipe.length),
         if (fromStock.isNotEmpty)
-          _ShoppingSource(
-            label: '囤货采买',
-            emoji: '📦',
-            count: fromStock.length,
-          ),
+          _ShoppingSource(label: '囤货采买', emoji: '📦', count: fromStock.length),
       ];
       if (mounted) setState(() => _shoppingSources = next);
     } finally {
@@ -335,10 +321,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: WoTokens.space2),
                 Text(
                   '${s.count} 项',
-                  style: TextStyle(
-                    color: context.wo.fgMid,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: context.wo.fgMid, fontSize: 13),
                 ),
               ],
             ),
@@ -374,7 +357,7 @@ class _HomePageState extends State<HomePage> {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
-    final picked = await showModalBottomSheet<_BindChoice>(
+    final picked = await showWoModalBottomSheet<_BindChoice>(
       context: context,
       builder: (_) => _BindSheet(
         familyId: familyId,
@@ -417,9 +400,9 @@ class _HomePageState extends State<HomePage> {
 
     // 没有当前家庭：引导去创建 / 加入。
     if (family == null) {
-      return Scaffold(
+      return WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(title: const Text('窝')),
+        appBar: WoAppBar(title: const Text('窝')),
         body: _NoFamily(onStart: () => context.push(WoRoutes.joinLanding)),
       );
     }
@@ -431,9 +414,9 @@ class _HomePageState extends State<HomePage> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: _handleBack,
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: AppBar(
+        appBar: WoAppBar(
           title: GestureDetector(
             onTap: _openFamilySwitcher,
             child: Row(
@@ -452,7 +435,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           actions: [
-            IconButton(
+            WoIconButton(
               tooltip: '通知',
               icon: Badge(
                 isLabelVisible: session.unreadCount > 0,
@@ -462,7 +445,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => context.go(WoRoutes.messages),
             ),
             if (plugins.isNotEmpty)
-              IconButton(
+              WoIconButton(
                 tooltip: _editing ? '完成编辑' : '编辑布局',
                 icon: Icon(_editing ? Icons.check : Icons.edit_outlined),
                 onPressed: () => setState(() => _editing = !_editing),
@@ -474,10 +457,7 @@ class _HomePageState extends State<HomePage> {
           child: RefreshIndicator(
             // 下拉刷新同时拉 bootstrap 和采买计数,两者独立失败都不互相影响。
             onRefresh: () async {
-              await Future.wait([
-                session.refresh(),
-                _refreshShoppingSources(),
-              ]);
+              await Future.wait([session.refresh(), _refreshShoppingSources()]);
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -503,32 +483,34 @@ class _HomePageState extends State<HomePage> {
                           crossAxisCount: 4,
                           gap: WoTokens.space3,
                           children: [
-                        for (var i = 0; i < plugins.length; i++)
-                          WoWidgetGridTile(
-                            tileKey: ValueKey(plugins[i].id),
-                            cw: plugins[i].layout.cw.clamp(1, 4),
-                            ch: plugins[i].layout.ch.clamp(1, 4),
-                            child: _editing
-                                ? _DraggableTile(
-                                    index: i,
-                                    installed: plugins[i],
-                                    onRemove: () => _remove(plugins[i]),
-                                    onReorder: _reorder,
-                                    onResize: () => _openSizeSheet(plugins[i]),
-                                    onBind: plugins[i].pluginId == 'anniversary'
-                                        ? () => _openBindSheet(plugins[i])
-                                        : null,
-                                  )
-                                : _buildPluginTile(plugins[i]),
-                          ),
-                      ],
-                    ),
+                            for (var i = 0; i < plugins.length; i++)
+                              WoWidgetGridTile(
+                                tileKey: ValueKey(plugins[i].id),
+                                cw: plugins[i].layout.cw.clamp(1, 4),
+                                ch: plugins[i].layout.ch.clamp(1, 4),
+                                child: _editing
+                                    ? _DraggableTile(
+                                        index: i,
+                                        installed: plugins[i],
+                                        onRemove: () => _remove(plugins[i]),
+                                        onReorder: _reorder,
+                                        onResize: () =>
+                                            _openSizeSheet(plugins[i]),
+                                        onBind:
+                                            plugins[i].pluginId == 'anniversary'
+                                            ? () => _openBindSheet(plugins[i])
+                                            : null,
+                                      )
+                                    : _buildPluginTile(plugins[i]),
+                              ),
+                          ],
+                        ),
                 ],
               ),
             ),
           ),
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: WoFloatingActionButton(
           onPressed: _openAddPluginSheet,
           child: const Icon(Icons.add),
         ),
@@ -543,7 +525,7 @@ void _toast(BuildContext context, Object error) {
     NetworkException e => e.message,
     _ => '操作失败',
   };
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
 }
 
 /// 通用 Widget 卡片，由已安装插件 + preview 驱动。
@@ -590,50 +572,47 @@ class _WidgetCard extends StatelessWidget {
     final isCompact = installed.layout.ch <= 1;
     // 4×2 大卡且 preview 带了缩略图（目前只有回忆插件返回）时，右半边塞一个
     // 淡入淡出的轮播；其它 4×2 卡（如纪念日）仍走纯文字 Column 布局。
-    final showImageCarousel = !isCompact &&
-        installed.layout.cw >= 4 &&
-        preview.imageUrls.isNotEmpty;
+    final showImageCarousel =
+        !isCompact && installed.layout.cw >= 4 && preview.imageUrls.isNotEmpty;
 
     // 大卡的文字栏（emoji + 插件名 + primary + secondary）抽出来,大卡 + 带轮播
     // 时它放在 Row 左半 Expanded 里，否则就是整张卡的 Column。
     Widget buildBigTextColumn() => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              emoji,
-              style: const TextStyle(fontSize: 26),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 26)),
+        const Spacer(),
+        Text(
+          installed.plugin.name,
+          style: t.labelMedium?.copyWith(color: fgMid),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          preview.primary,
+          style: (emphasized ? t.headlineMedium : t.titleMedium)?.copyWith(
+            color: fg,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (preview.secondary != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            preview.secondary!,
+            style: t.bodySmall?.copyWith(
+              color: secondaryColor,
+              fontWeight: preview.secondaryTone != null
+                  ? FontWeight.w700
+                  : null,
             ),
-            const Spacer(),
-            Text(
-              installed.plugin.name,
-              style: t.labelMedium?.copyWith(color: fgMid),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              preview.primary,
-              style: (emphasized ? t.headlineMedium : t.titleMedium)?.copyWith(
-                color: fg,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (preview.secondary != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                preview.secondary!,
-                style: t.bodySmall?.copyWith(
-                  color: secondaryColor,
-                  fontWeight:
-                      preview.secondaryTone != null ? FontWeight.w700 : null,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ],
-        );
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
+    );
 
     return Stack(
       children: [
@@ -642,15 +621,13 @@ class _WidgetCard extends StatelessWidget {
             color: color,
             onTap: editing ? null : onTap,
             onLongPress: onLongPress,
-            padding:
-                EdgeInsets.all(isCompact ? WoTokens.space3 : WoTokens.space4),
+            padding: EdgeInsets.all(
+              isCompact ? WoTokens.space3 : WoTokens.space4,
+            ),
             child: isCompact
                 ? Row(
                     children: [
-                      Text(
-                        emoji,
-                        style: const TextStyle(fontSize: 22),
-                      ),
+                      Text(emoji, style: const TextStyle(fontSize: 22)),
                       const SizedBox(width: WoTokens.space3),
                       Expanded(
                         child: Column(
@@ -683,23 +660,23 @@ class _WidgetCard extends StatelessWidget {
                     ],
                   )
                 : showImageCarousel
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: buildBigTextColumn()),
-                          const SizedBox(width: WoTokens.space3),
-                          Expanded(
-                            child: _MemoryCarousel(
-                              urls: [
-                                for (final p in preview.imageUrls)
-                                  '${WoScope.api(context).baseUrl}$p',
-                              ],
-                              headers: WoScope.api(context).imageHeaders,
-                            ),
-                          ),
-                        ],
-                      )
-                    : buildBigTextColumn(),
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: buildBigTextColumn()),
+                      const SizedBox(width: WoTokens.space3),
+                      Expanded(
+                        child: _MemoryCarousel(
+                          urls: [
+                            for (final p in preview.imageUrls)
+                              '${WoScope.api(context).baseUrl}$p',
+                          ],
+                          headers: WoScope.api(context).imageHeaders,
+                        ),
+                      ),
+                    ],
+                  )
+                : buildBigTextColumn(),
           ),
         ),
         if (editing && showRemove)
@@ -963,8 +940,9 @@ class _SizeOption extends StatelessWidget {
                       label,
                       style: t.titleMedium?.copyWith(
                         color: selected ? wo.accentDeep : wo.fg,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                       ),
                     ),
                     Text(hint, style: t.bodySmall?.copyWith(color: wo.fgMid)),
@@ -1049,7 +1027,7 @@ class _BindSheetState extends State<_BindSheet> {
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const Padding(
                       padding: EdgeInsets.all(WoTokens.space5),
-                      child: CircularProgressIndicator(),
+                      child: WoProgressIndicator(),
                     );
                   }
                   final items = snap.data ?? const <Anniversary>[];
@@ -1109,7 +1087,7 @@ class _BindRow extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return Material(
       color: selected ? wo.accentSoft : Colors.transparent,
-      child: ListTile(
+      child: WoListTile(
         leading: Text(emoji, style: const TextStyle(fontSize: 22)),
         title: Text(
           title,
@@ -1153,7 +1131,7 @@ class _EmptyGrid extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: WoTokens.space5),
-          FilledButton(onPressed: onAdd, child: const Text('去添加插件')),
+          WoFilledButton(onPressed: onAdd, child: const Text('去添加插件')),
         ],
       ),
     );
@@ -1185,7 +1163,7 @@ class _NoFamily extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onStart, child: const Text('创建或加入')),
+            WoFilledButton(onPressed: onStart, child: const Text('创建或加入')),
           ],
         ),
       ),
@@ -1246,34 +1224,35 @@ class _FamilySwitcherSheetState extends State<_FamilySwitcherSheet> {
             for (final f in families)
               Material(
                 color: f.id == currentId ? wo.accentSoft : Colors.transparent,
-                child: ListTile(
+                child: WoListTile(
                   leading: Text(f.emoji, style: const TextStyle(fontSize: 22)),
                   title: Text(
                     f.name,
                     style: t.titleMedium?.copyWith(
                       color: f.id == currentId ? wo.accentDeep : wo.fg,
-                      fontWeight:
-                          f.id == currentId ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: f.id == currentId
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                     ),
                   ),
                   trailing: f.id == currentId
                       ? Icon(Icons.check_circle, color: wo.accent)
                       : (f.myUnreadCount > 0
-                          ? Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Colors.redAccent,
-                                shape: BoxShape.circle,
-                              ),
-                            )
-                          : null),
+                            ? Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                              )
+                            : null),
                   onTap: f.id == currentId ? null : () => _switch(f.id),
                 ),
               ),
             const Divider(height: WoTokens.space5),
             if (currentId != null)
-              ListTile(
+              WoListTile(
                 leading: Icon(Icons.settings_outlined, color: wo.fgMid),
                 title: Text('家庭设置', style: t.titleMedium),
                 onTap: () {
@@ -1281,7 +1260,7 @@ class _FamilySwitcherSheetState extends State<_FamilySwitcherSheet> {
                   context.push(WoRoutes.familyManage);
                 },
               ),
-            ListTile(
+            WoListTile(
               leading: Icon(Icons.add, color: wo.accentDeep),
               title: Text(
                 '加入或创建新家',
@@ -1367,7 +1346,7 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
                 children: [
                   Text('添加插件', style: t.titleLarge),
                   const Spacer(),
-                  TextButton(
+                  WoTextButton(
                     onPressed: () {
                       Navigator.of(context).pop();
                       context.push('${WoRoutes.home}/marketplace');
@@ -1383,7 +1362,7 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
                 future: _future,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const Center(child: WoProgressIndicator());
                   }
                   if (snap.hasError) {
                     return Center(
@@ -1448,9 +1427,9 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          OutlinedButton(
+          WoOutlinedButton(
             onPressed: (installed || installing) ? null : () => _install(p),
-            style: OutlinedButton.styleFrom(
+            style: WoOutlinedButton.styleFrom(
               minimumSize: const Size(0, 32),
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
@@ -1458,7 +1437,7 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   )
                 : Text(installed ? '已安装' : '安装'),
           ),
@@ -1480,10 +1459,7 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
 /// URL，所以走的是同一份 [DefaultCacheManager] 缓存——首次冷启动会拉网络，进
 /// 详情页时已经在内存里了。
 class _MemoryCarousel extends StatefulWidget {
-  const _MemoryCarousel({
-    required this.urls,
-    required this.headers,
-  });
+  const _MemoryCarousel({required this.urls, required this.headers});
 
   final List<String> urls;
   final Map<String, String> headers;
@@ -1557,12 +1533,10 @@ class _MemoryCarouselState extends State<_MemoryCarousel> {
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
-          placeholder: (_, __) => Container(
-            color: Colors.black.withValues(alpha: 0.08),
-          ),
-          errorWidget: (_, __, ___) => Container(
-            color: Colors.black.withValues(alpha: 0.08),
-          ),
+          placeholder: (_, __) =>
+              Container(color: Colors.black.withValues(alpha: 0.08)),
+          errorWidget: (_, __, ___) =>
+              Container(color: Colors.black.withValues(alpha: 0.08)),
         ),
       ),
     );
@@ -1607,7 +1581,9 @@ class _ShoppingBanner extends StatelessWidget {
     final total = sources.fold<int>(0, (sum, s) => sum + s.count);
     final detail = sources.length > 1
         // 多来源直接列出来:「食材 3 · 囤货 2」,顺便提示点开能展开。
-        ? sources.map((s) => '${s.label.replaceAll('采买', '')} ${s.count}').join(' · ')
+        ? sources
+              .map((s) => '${s.label.replaceAll('采买', '')} ${s.count}')
+              .join(' · ')
         : '${sources.first.label} $total 项';
     return InkWell(
       key: _anchor,
@@ -1652,18 +1628,11 @@ class _ShoppingBanner extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    detail,
-                    style: t.bodySmall?.copyWith(color: wo.fgMid),
-                  ),
+                  Text(detail, style: t.bodySmall?.copyWith(color: wo.fgMid)),
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right,
-              color: wo.fgMid,
-              size: 22,
-            ),
+            Icon(Icons.chevron_right, color: wo.fgMid, size: 22),
           ],
         ),
       ),

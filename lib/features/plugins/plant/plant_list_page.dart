@@ -63,7 +63,7 @@ class _PlantListPageState extends State<PlantListPage> {
   }
 
   Future<void> _openCreateSheet() async {
-    final created = await showModalBottomSheet<bool>(
+    final created = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const PlantEditSheet(),
@@ -72,7 +72,7 @@ class _PlantListPageState extends State<PlantListPage> {
   }
 
   Future<void> _openSettings() async {
-    await showModalBottomSheet<void>(
+    await showWoModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _PlantSettingsSheet(),
@@ -84,12 +84,12 @@ class _PlantListPageState extends State<PlantListPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(
+      appBar: WoAppBar(
         title: const Text('植物日记'),
         actions: [
-          IconButton(
+          WoIconButton(
             tooltip: '默认环境',
             onPressed: _openSettings,
             icon: const Icon(Icons.place_outlined),
@@ -112,7 +112,7 @@ class _PlantListPageState extends State<PlantListPage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: WoFloatingActionButton(
         onPressed: _openCreateSheet,
         backgroundColor: wo.plant,
         foregroundColor: wo.fg,
@@ -159,10 +159,7 @@ class _PlantCard extends StatelessWidget {
     final now = DateTime.now();
     DateTime? soonest;
     String kind = '';
-    for (final e in [
-      (plant.nextWaterDue, '浇水'),
-      (plant.nextFertDue, '施肥'),
-    ]) {
+    for (final e in [(plant.nextWaterDue, '浇水'), (plant.nextFertDue, '施肥')]) {
       final d = e.$1;
       if (d == null) continue;
       if (soonest == null || d.isBefore(soonest)) {
@@ -171,8 +168,9 @@ class _PlantCard extends StatelessWidget {
       }
     }
     if (soonest == null) return null;
-    final days =
-        soonest.difference(DateTime(now.year, now.month, now.day)).inDays;
+    final days = soonest
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
     if (days < 0) return '$kind已逾期';
     if (days == 0) return '今天$kind';
     return '$days 天后$kind';
@@ -276,7 +274,7 @@ class _EmptyState extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: wo.fgMid),
           ),
           const SizedBox(height: WoTokens.space4),
-          FilledButton(onPressed: onAdd, child: const Text('添加一株')),
+          WoFilledButton(onPressed: onAdd, child: const Text('添加一株')),
         ],
       ),
     );
@@ -342,13 +340,15 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
       );
       if (mounted) {
         setState(() => _settings = s);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已保存位置名称')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('已保存位置名称')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('保存失败:$e')));
       }
     }
   }
@@ -359,8 +359,9 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
     if (!loc.ok) {
       if (mounted) {
         setState(() => _busy = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(loc.error!)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text(loc.error!)));
       }
       return;
     }
@@ -378,14 +379,16 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
           _settings = s;
           _busy = false;
         });
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已更新默认位置')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('已更新默认位置')));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('保存失败:$e')));
       }
     }
   }
@@ -418,7 +421,7 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(WoTokens.space4),
-                child: CircularProgressIndicator(),
+                child: WoProgressIndicator(),
               ),
             )
           else if (s != null && s.hasLocation) ...[
@@ -443,24 +446,21 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
               style: t.bodySmall?.copyWith(color: wo.fgMid),
             ),
           ] else
-            Text(
-              '尚未设置位置',
-              style: t.bodyMedium?.copyWith(color: wo.fgMid),
-            ),
+            Text('尚未设置位置', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           const SizedBox(height: WoTokens.space4),
-          FilledButton.icon(
+          WoFilledButton.icon(
             onPressed: _busy ? null : _useDeviceLocation,
             icon: const Icon(Icons.my_location),
             label: Text(_busy ? '定位中…' : '使用当前定位'),
           ),
           if (s != null && s.hasLocation) ...[
             const SizedBox(height: WoTokens.space4),
-            TextField(
+            WoTextField(
               controller: _label,
               decoration: InputDecoration(
                 labelText: '位置名称(可选)',
                 hintText: '如:家 / 杭州西湖',
-                suffixIcon: TextButton(
+                suffixIcon: WoTextButton(
                   onPressed: _saveLabel,
                   child: const Text('保存'),
                 ),
@@ -531,7 +531,7 @@ class _WeatherCardState extends State<_WeatherCard> {
                 const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: WoProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: WoTokens.space3),
                 Text('天气加载中…', style: t.bodyMedium?.copyWith(color: wo.fg)),
@@ -550,7 +550,7 @@ class _WeatherCardState extends State<_WeatherCard> {
                     style: t.bodyMedium?.copyWith(color: wo.fgMid),
                   ),
                 ),
-                IconButton(
+                WoIconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(Icons.refresh, color: wo.fgMid),
                   onPressed: _reload,
@@ -629,7 +629,7 @@ class _WeatherCardState extends State<_WeatherCard> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            IconButton(
+            WoIconButton(
               visualDensity: VisualDensity.compact,
               icon: Icon(Icons.refresh, color: wo.fgMid),
               onPressed: _reload,

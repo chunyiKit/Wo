@@ -94,17 +94,14 @@ class MemoryMediaGrid extends StatelessWidget {
     final n = shown.length;
 
     MemoryMediaTile tile(int i) => MemoryMediaTile(
-          media: shown[i],
-          onTap: onTapMedia == null ? null : () => onTapMedia!(i),
-        );
+      media: shown[i],
+      onTap: onTapMedia == null ? null : () => onTapMedia!(i),
+    );
 
     if (n == 1) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: AspectRatio(
-          aspectRatio: 4 / 3,
-          child: tile(0),
-        ),
+        child: AspectRatio(aspectRatio: 4 / 3, child: tile(0)),
       );
     }
 
@@ -228,8 +225,18 @@ String memoryDateLabel(DateTime date) {
 /// 月份分组标签：六月 · 2026。
 String memoryMonthLabel(DateTime date) {
   const names = [
-    '一月', '二月', '三月', '四月', '五月', '六月',
-    '七月', '八月', '九月', '十月', '十一月', '十二月',
+    '一月',
+    '二月',
+    '三月',
+    '四月',
+    '五月',
+    '六月',
+    '七月',
+    '八月',
+    '九月',
+    '十月',
+    '十一月',
+    '十二月',
   ];
   return '${names[date.month - 1]} · ${date.year}';
 }

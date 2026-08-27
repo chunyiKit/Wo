@@ -10,10 +10,13 @@ import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/member_avatar.dart';
 import '../../../widgets/wo_card.dart';
+import 'accounting_analysis_view.dart';
 import 'accounting_entry_sheet.dart';
 import 'expense_categories.dart';
 
 typedef _AccountingData = ({AccountingSummary summary, List<Expense> expenses});
+
+enum _AccountingView { details, analysis }
 
 /// 记账主页：本月支出 / 预算概览 + 支出时间线（倒序）。
 class AccountingPage extends StatefulWidget {
@@ -33,6 +36,7 @@ class _AccountingPageState extends State<AccountingPage> {
 
   // 当前查看的月份，默认进入时为本月。
   late ({int year, int month}) _selected;
+  _AccountingView _view = _AccountingView.details;
 
   @override
   void initState() {
@@ -64,7 +68,7 @@ class _AccountingPageState extends State<AccountingPage> {
         ? Future.value((
             summary: const AccountingSummary(monthTotal: 0),
             expenses: const <Expense>[],
-          ),)
+          ))
         : _load(session, familyId);
   }
 
@@ -119,18 +123,18 @@ class _AccountingPageState extends State<AccountingPage> {
   /// 拍小票：选图 → AI 识别一笔草稿 → 预填「记一笔」表单供确认。识别失败也照常
   /// 打开空白表单让用户手填，绝不卡住记账。
   Future<void> _scanReceipt() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = await showWoModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.camera_alt_outlined),
               title: const Text('拍小票'),
               onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
             ),
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('从相册选'),
               subtitle: const Text('小票、账单或支付截图都行'),
@@ -150,7 +154,7 @@ class _AccountingPageState extends State<AccountingPage> {
     if (familyId == null) return;
 
     final nav = Navigator.of(context);
-    showDialog<void>(
+    showWoDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const _ScanningDialog(),
@@ -178,18 +182,18 @@ class _AccountingPageState extends State<AccountingPage> {
   }
 
   Future<void> _onLongPress(Expense e) async {
-    final action = await showModalBottomSheet<String>(
+    final action = await showWoModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('编辑'),
               onTap: () => Navigator.of(ctx).pop('edit'),
             ),
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('删除'),
               onTap: () => Navigator.of(ctx).pop('delete'),
@@ -206,17 +210,17 @@ class _AccountingPageState extends State<AccountingPage> {
   }
 
   Future<void> _deleteExpense(Expense e) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除支出'),
         content: const Text('确定删除这笔支出吗？此操作不可撤销。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -243,14 +247,14 @@ class _AccountingPageState extends State<AccountingPage> {
       text: current == null
           ? ''
           : (current == current.roundToDouble()
-              ? current.toInt().toString()
-              : current.toStringAsFixed(2)),
+                ? current.toInt().toString()
+                : current.toStringAsFixed(2)),
     );
-    final saved = await showDialog<double>(
+    final saved = await showWoDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('设置每月预算'),
-        content: TextField(
+        content: WoTextField(
           controller: controller,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -263,11 +267,11 @@ class _AccountingPageState extends State<AccountingPage> {
           ),
         ),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () {
               final v = double.tryParse(controller.text.trim());
               if (v != null && v > 0) Navigator.of(ctx).pop(v);
@@ -292,25 +296,25 @@ class _AccountingPageState extends State<AccountingPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(
+      appBar: WoAppBar(
         title: const Text('记账'),
         actions: [
-          IconButton(
+          WoIconButton(
             tooltip: '拍小票',
             icon: const Icon(Icons.document_scanner_outlined),
             onPressed: _scanReceipt,
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: WoFloatingActionButton(
         onPressed: _addExpense,
         child: const Icon(Icons.add),
       ),
@@ -336,23 +340,73 @@ class _AccountingPageState extends State<AccountingPage> {
       ),
       children: [
         _MonthSelector(selected: _selected, onSelect: _selectMonth),
-        const SizedBox(height: WoTokens.space4),
-        _SummaryCard(
-          summary: data.summary,
-          monthLabel: _selected.month,
-          isCurrentMonth: _isCurrentMonth,
-          onEditBudget: () => _editBudget(data.summary.budget),
+        const SizedBox(height: WoTokens.space3),
+        _AccountingViewSwitcher(
+          selected: _view,
+          onChanged: (value) => setState(() => _view = value),
         ),
-        const SizedBox(height: WoTokens.space5),
-        if (data.expenses.isEmpty)
-          _EmptyExpenses(onAdd: _addExpense, isCurrentMonth: _isCurrentMonth)
-        else ...[
-          for (final e in data.expenses) ...[
-            _ExpenseTile(expense: e, onLongPress: () => _onLongPress(e)),
-            const SizedBox(height: WoTokens.space3),
-          ],
-        ],
+        const SizedBox(height: WoTokens.space4),
+        if (_view == _AccountingView.details) ...[
+          _SummaryCard(
+            summary: data.summary,
+            monthLabel: _selected.month,
+            isCurrentMonth: _isCurrentMonth,
+            onEditBudget: () => _editBudget(data.summary.budget),
+          ),
+          const SizedBox(height: WoTokens.space5),
+          if (data.expenses.isEmpty)
+            _EmptyExpenses(onAdd: _addExpense, isCurrentMonth: _isCurrentMonth)
+          else
+            for (var index = 0; index < data.expenses.length; index++) ...[
+              _ExpenseTile(
+                expense: data.expenses[index],
+                onLongPress: () => _onLongPress(data.expenses[index]),
+              ),
+              if (index != data.expenses.length - 1)
+                const SizedBox(height: WoTokens.space3),
+            ],
+        ] else
+          AccountingAnalysisView(
+            expenses: data.expenses,
+            expenseBuilder: (expense) => _ExpenseTile(
+              expense: expense,
+              onLongPress: () => _onLongPress(expense),
+            ),
+          ),
       ],
+    );
+  }
+}
+
+class _AccountingViewSwitcher extends StatelessWidget {
+  const _AccountingViewSwitcher({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final _AccountingView selected;
+  final ValueChanged<_AccountingView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<_AccountingView>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(
+          value: _AccountingView.details,
+          icon: Icon(Icons.receipt_long_outlined, size: 18),
+          label: Text('明细'),
+        ),
+        ButtonSegment(
+          value: _AccountingView.analysis,
+          icon: Icon(Icons.pie_chart_outline, size: 18),
+          label: Text('分析'),
+        ),
+      ],
+      selected: {selected},
+      onSelectionChanged: (values) => onChanged(values.first),
+      expandedInsets: EdgeInsets.zero,
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
     );
   }
 }
@@ -436,7 +490,7 @@ class _SummaryCard extends StatelessWidget {
                   valueColor: remainingColor,
                 ),
               ),
-              IconButton(
+              WoIconButton(
                 tooltip: '设置预算',
                 icon: Icon(Icons.tune, color: wo.fgMid),
                 onPressed: onEditBudget,
@@ -581,7 +635,10 @@ class _ExpenseTile extends StatelessWidget {
               if (expense.excludeFromBudget) ...[
                 const SizedBox(height: 3),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
                     color: wo.bgTint,
                     borderRadius: BorderRadius.circular(6),
@@ -617,13 +674,13 @@ class _ScanningDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return AlertDialog(
+    return WoAlertDialog(
       content: Row(
         children: [
           const SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: WoProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: WoTokens.space4),
           Text('正在识别小票…', style: t.bodyMedium),
@@ -657,7 +714,7 @@ class _EmptyExpenses extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('记一笔')),
+            WoFilledButton(onPressed: onAdd, child: const Text('记一笔')),
           ],
         ],
       ),
@@ -702,7 +759,7 @@ class _MonthSelector extends StatelessWidget {
           border: Border.all(color: wo.hairline),
         ),
         child: DropdownButtonHideUnderline(
-          child: DropdownButton<({int year, int month})>(
+          child: WoDropdownButton<({int year, int month})>(
             value: selected,
             isDense: true,
             borderRadius: BorderRadius.circular(12),

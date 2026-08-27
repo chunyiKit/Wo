@@ -74,17 +74,17 @@ class _AccountsViewState extends State<AccountsView> {
   }
 
   Future<void> _delete(RetireAccount a) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除账户'),
         content: Text('确定删除「${a.name}」吗？关联它的负债会解除关联。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -109,15 +109,15 @@ class _AccountsViewState extends State<AccountsView> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final cached = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: WoFloatingActionButton.extended(
         heroTag: 'retire-add-account',
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
@@ -184,8 +184,9 @@ class _AccountTile extends StatelessWidget {
                     Flexible(
                       child: Text(
                         account.name,
-                        style:
-                            t.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                        style: t.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -273,7 +274,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一个账户')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一个账户')),
           ],
         ),
       ),

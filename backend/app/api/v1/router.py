@@ -23,6 +23,7 @@ from app.api.v1.routes import (
     me,
     members,
     notifications,
+    pets,
     plugins,
 )
 from app.plugins.registry import registry
@@ -35,6 +36,7 @@ api_router.include_router(auth.router)
 api_router.include_router(me.router)
 api_router.include_router(families.router)
 api_router.include_router(members.router)
+api_router.include_router(pets.router)
 api_router.include_router(invitations.families_router)
 api_router.include_router(invitations.public_router)
 api_router.include_router(plugins.marketplace_router)

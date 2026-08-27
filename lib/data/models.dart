@@ -97,6 +97,7 @@ class Family {
     required this.emoji,
     this.createdAt,
     required this.memberCount,
+    required this.petCount,
     required this.myRole,
     required this.myUnreadCount,
   });
@@ -107,7 +108,8 @@ class Family {
   final String emoji;
   final DateTime? createdAt;
   final int memberCount;
-  final String myRole; // owner | admin | member | child | pet
+  final int petCount;
+  final String myRole; // owner | admin | member | child
   final int myUnreadCount;
 
   factory Family.fromJson(Map<String, dynamic> j) => Family(
@@ -117,6 +119,7 @@ class Family {
         emoji: j['emoji'] as String? ?? '🏡',
         createdAt: _parseDate(j['created_at']),
         memberCount: (j['member_count'] as num?)?.toInt() ?? 0,
+        petCount: (j['pet_count'] as num?)?.toInt() ?? 0,
         myRole: j['my_role'] as String? ?? 'member',
         myUnreadCount: (j['my_unread_count'] as num?)?.toInt() ?? 0,
       );
@@ -518,7 +521,8 @@ class Expense {
   final String id;
   final String familyId;
   final double amount;
-  final String category; // dining | shopping | utilities | car
+  final String category;
+  // dining | snack | shopping | utilities | car | pet | subscription
   final String? note;
 
   /// true 表示这笔仍计入「本月支出」，但不从月预算中扣除（预算外支出）。
@@ -924,6 +928,81 @@ class NotificationPreferences {
         sources: ((j['sources'] as List?) ?? const [])
             .map((e) => NotificationSource.fromJson(e as Map<String, dynamic>))
             .toList(),
+      );
+}
+
+// ── 家聊插件 ──────────────────────────────────────────────────────────────
+
+class ChatImage {
+  const ChatImage({
+    required this.messageId,
+    required this.url,
+    required this.contentType,
+    required this.sizeBytes,
+    this.width,
+    this.height,
+  });
+
+  final String messageId;
+  final String url;
+  final String contentType;
+  final int sizeBytes;
+  final int? width;
+  final int? height;
+
+  factory ChatImage.fromJson(Map<String, dynamic> j) => ChatImage(
+        messageId: j['message_id'] as String? ?? '',
+        url: j['url'] as String? ?? '',
+        contentType: j['content_type'] as String? ?? 'image/jpeg',
+        sizeBytes: (j['size_bytes'] as num?)?.toInt() ?? 0,
+        width: (j['width'] as num?)?.toInt(),
+        height: (j['height'] as num?)?.toInt(),
+      );
+}
+
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.familyId,
+    this.senderId,
+    required this.clientId,
+    required this.kind,
+    this.body,
+    required this.senderName,
+    required this.senderEmoji,
+    this.senderAvatarUrl,
+    required this.createdAt,
+    this.image,
+  });
+
+  final String id;
+  final String familyId;
+  final String? senderId;
+  final String clientId;
+  final String kind; // text | image
+  final String? body;
+  final String senderName;
+  final String senderEmoji;
+  final String? senderAvatarUrl;
+  final DateTime createdAt;
+  final ChatImage? image;
+
+  bool get isImage => kind == 'image';
+
+  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
+        id: j['id'] as String? ?? '',
+        familyId: j['family_id'] as String? ?? '',
+        senderId: j['sender_id'] as String?,
+        clientId: j['client_id'] as String? ?? '',
+        kind: j['kind'] as String? ?? 'text',
+        body: j['body'] as String?,
+        senderName: j['sender_name'] as String? ?? '',
+        senderEmoji: j['sender_emoji'] as String? ?? '👤',
+        senderAvatarUrl: j['sender_avatar_url'] as String?,
+        createdAt: _parseDate(j['created_at']) ?? DateTime.now(),
+        image: j['image'] == null
+            ? null
+            : ChatImage.fromJson(j['image'] as Map<String, dynamic>),
       );
 }
 
@@ -2131,4 +2210,308 @@ class TravelCity {
         lat: (j['lat'] as num?)?.toDouble() ?? 0,
         region: j['region'] as String?,
       );
+}
+
+// ── 宠物日常 ──────────────────────────────────────────────────────────────
+
+class Pet {
+  const Pet({
+    required this.id,
+    required this.familyId,
+    required this.name,
+    required this.emoji,
+    this.species,
+    this.breed,
+    this.sex,
+    this.birthday,
+    this.birthdayEstimated = false,
+    this.arrivalDate,
+    this.neutered,
+    this.notes,
+    this.photoVersion = 0,
+    this.photoUrl,
+    this.archivedAt,
+  });
+
+  final String id;
+  final String familyId;
+  final String name;
+  final String emoji;
+  final String? species;
+  final String? breed;
+  final String? sex;
+  final DateTime? birthday;
+  final bool birthdayEstimated;
+  final DateTime? arrivalDate;
+  final bool? neutered;
+  final String? notes;
+  final int photoVersion;
+  final String? photoUrl;
+  final DateTime? archivedAt;
+
+  bool get hasPhoto => photoUrl != null && photoUrl!.isNotEmpty;
+
+  factory Pet.fromJson(Map<String, dynamic> j) => Pet(
+        id: j['id'] as String,
+        familyId: j['family_id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '🐾',
+        species: j['species'] as String?,
+        breed: j['breed'] as String?,
+        sex: j['sex'] as String?,
+        birthday: _parseDate(j['birthday']),
+        birthdayEstimated: j['birthday_estimated'] as bool? ?? false,
+        arrivalDate: _parseDate(j['arrival_date']),
+        neutered: j['neutered'] as bool?,
+        notes: j['notes'] as String?,
+        photoVersion: (j['photo_version'] as num?)?.toInt() ?? 0,
+        photoUrl: j['photo_url'] as String?,
+        archivedAt: _parseDate(j['archived_at']),
+      );
+}
+
+class PetRecordType {
+  const PetRecordType({
+    required this.id,
+    required this.name,
+    required this.emoji,
+    required this.dataKind,
+    required this.sortOrder,
+    required this.archived,
+  });
+
+  final String id;
+  final String name;
+  final String emoji;
+  final String dataKind; // general | weight
+  final int sortOrder;
+  final bool archived;
+  bool get isWeight => dataKind == 'weight';
+
+  factory PetRecordType.fromJson(Map<String, dynamic> j) => PetRecordType(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        emoji: j['emoji'] as String? ?? '🐾',
+        dataKind: j['data_kind'] as String? ?? 'general',
+        sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+        archived: j['archived'] as bool? ?? false,
+      );
+}
+
+class PetAttachment {
+  const PetAttachment({
+    required this.id,
+    required this.filename,
+    required this.contentType,
+    required this.sizeBytes,
+    required this.url,
+  });
+
+  final String id;
+  final String filename;
+  final String contentType;
+  final int sizeBytes;
+  final String url;
+
+  factory PetAttachment.fromJson(Map<String, dynamic> j) => PetAttachment(
+        id: j['id'] as String,
+        filename: j['original_filename'] as String? ?? '',
+        contentType: j['content_type'] as String? ?? '',
+        sizeBytes: (j['size_bytes'] as num?)?.toInt() ?? 0,
+        url: j['url'] as String? ?? '',
+      );
+}
+
+class PetRecord {
+  const PetRecord({
+    required this.id,
+    required this.petId,
+    this.recordTypeId,
+    required this.typeName,
+    required this.typeEmoji,
+    required this.dataKind,
+    required this.name,
+    this.note,
+    required this.occurredOn,
+    this.nextDueDate,
+    this.weightKg,
+    this.planId,
+    this.createdBy,
+    this.creatorName,
+    this.creatorEmoji,
+    this.creatorAvatarUrl,
+    this.attachments = const [],
+  });
+
+  final String id;
+  final String petId;
+  final String? recordTypeId;
+  final String typeName;
+  final String typeEmoji;
+  final String dataKind;
+  final String name;
+  final String? note;
+  final DateTime occurredOn;
+  final DateTime? nextDueDate;
+  final double? weightKg;
+  final String? planId;
+  final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final String? creatorAvatarUrl;
+  final List<PetAttachment> attachments;
+
+  factory PetRecord.fromJson(Map<String, dynamic> j) => PetRecord(
+        id: j['id'] as String,
+        petId: j['pet_id'] as String? ?? '',
+        recordTypeId: j['record_type_id'] as String?,
+        typeName: j['type_name'] as String? ?? '',
+        typeEmoji: j['type_emoji'] as String? ?? '🐾',
+        dataKind: j['data_kind'] as String? ?? 'general',
+        name: j['name'] as String? ?? '',
+        note: j['note'] as String?,
+        occurredOn: _parseDate(j['occurred_on']) ?? DateTime.now(),
+        nextDueDate: _parseDate(j['next_due_date']),
+        weightKg: _parseNumOrNull(j['weight_kg']),
+        planId: j['plan_id'] as String?,
+        createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
+        attachments: ((j['attachments'] as List?) ?? const [])
+            .map((e) => PetAttachment.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+class PetCarePlan {
+  const PetCarePlan({
+    required this.id,
+    required this.petId,
+    required this.recordTypeId,
+    required this.typeName,
+    required this.typeEmoji,
+    required this.dataKind,
+    required this.name,
+    this.note,
+    required this.recurrenceUnit,
+    required this.recurrenceInterval,
+    this.nextDueDate,
+    required this.active,
+    this.daysUntil,
+  });
+
+  final String id;
+  final String petId;
+  final String recordTypeId;
+  final String typeName;
+  final String typeEmoji;
+  final String dataKind;
+  final String name;
+  final String? note;
+  final String recurrenceUnit;
+  final int recurrenceInterval;
+  final DateTime? nextDueDate;
+  final bool active;
+  final int? daysUntil;
+
+  factory PetCarePlan.fromJson(Map<String, dynamic> j) => PetCarePlan(
+        id: j['id'] as String,
+        petId: j['pet_id'] as String? ?? '',
+        recordTypeId: j['record_type_id'] as String? ?? '',
+        typeName: j['type_name'] as String? ?? '',
+        typeEmoji: j['type_emoji'] as String? ?? '🐾',
+        dataKind: j['data_kind'] as String? ?? 'general',
+        name: j['name'] as String? ?? '',
+        note: j['note'] as String?,
+        recurrenceUnit: j['recurrence_unit'] as String? ?? 'none',
+        recurrenceInterval: (j['recurrence_interval'] as num?)?.toInt() ?? 1,
+        nextDueDate: _parseDate(j['next_due_date']),
+        active: j['active'] as bool? ?? true,
+        daysUntil: (j['days_until'] as num?)?.toInt(),
+      );
+}
+
+class PetWeightPoint {
+  const PetWeightPoint({
+    required this.recordId,
+    required this.occurredOn,
+    required this.weightKg,
+  });
+  final String recordId;
+  final DateTime occurredOn;
+  final double weightKg;
+
+  factory PetWeightPoint.fromJson(Map<String, dynamic> j) => PetWeightPoint(
+        recordId: j['record_id'] as String,
+        occurredOn: _parseDate(j['occurred_on']) ?? DateTime.now(),
+        weightKg: _parseNum(j['weight_kg']),
+      );
+}
+
+class PetListItem {
+  const PetListItem({required this.pet, this.nextPlan, this.latestWeight});
+  final Pet pet;
+  final PetCarePlan? nextPlan;
+  final PetWeightPoint? latestWeight;
+
+  factory PetListItem.fromJson(Map<String, dynamic> j) => PetListItem(
+        pet: Pet.fromJson(j['pet'] as Map<String, dynamic>),
+        nextPlan: j['next_plan'] == null
+            ? null
+            : PetCarePlan.fromJson(j['next_plan'] as Map<String, dynamic>),
+        latestWeight: j['latest_weight'] == null
+            ? null
+            : PetWeightPoint.fromJson(
+                j['latest_weight'] as Map<String, dynamic>,
+              ),
+      );
+}
+
+class PetDashboard {
+  const PetDashboard({
+    required this.pet,
+    required this.todayPlans,
+    required this.upcomingPlans,
+    this.latestWeight,
+    required this.weightTrend,
+    required this.records,
+    this.recordsCursor,
+  });
+  final Pet pet;
+  final List<PetCarePlan> todayPlans;
+  final List<PetCarePlan> upcomingPlans;
+  final PetWeightPoint? latestWeight;
+  final List<PetWeightPoint> weightTrend;
+  final List<PetRecord> records;
+  final String? recordsCursor;
+
+  factory PetDashboard.fromJson(Map<String, dynamic> j) => PetDashboard(
+        pet: Pet.fromJson(j['pet'] as Map<String, dynamic>),
+        todayPlans: ((j['today_plans'] as List?) ?? const [])
+            .map((e) => PetCarePlan.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        upcomingPlans: ((j['upcoming_plans'] as List?) ?? const [])
+            .map((e) => PetCarePlan.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        latestWeight: j['latest_weight'] == null
+            ? null
+            : PetWeightPoint.fromJson(
+                j['latest_weight'] as Map<String, dynamic>,
+              ),
+        weightTrend: ((j['weight_trend'] as List?) ?? const [])
+            .map((e) => PetWeightPoint.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        records: ((j['records'] as List?) ?? const [])
+            .map((e) => PetRecord.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        recordsCursor: j['records_cursor'] as String?,
+      );
+}
+
+class PetRecordPage {
+  const PetRecordPage({required this.items, this.cursor, required this.total});
+  final List<PetRecord> items;
+  final String? cursor;
+  final int total;
 }

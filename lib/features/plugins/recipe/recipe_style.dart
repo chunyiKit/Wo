@@ -10,10 +10,10 @@ const kRecipeCategories = ['早餐', '午餐', '晚餐', '汤羹', '烘焙', '�
 
 /// 难度文案：1 简单 / 2 中等 / 3 有点难。
 String difficultyLabel(int level) => switch (level) {
-      1 => '简单',
-      2 => '中等',
-      _ => '有点难',
-    };
+  1 => '简单',
+  2 => '中等',
+  _ => '有点难',
+};
 
 /// 封面占位底色。没有真实图片时，按菜名稳定地从暖色系里挑一个，
 /// 让列表里相邻卡片颜色有变化又不会每次刷新都变。
@@ -35,11 +35,7 @@ Color recipeTint(Recipe r) =>
 /// 照片地址里带 `?v=版本号`，cached_network_image 以完整 URL 为缓存键，
 /// 版本变化即视为新图，自动刷新本地缓存。
 class RecipeCover extends StatelessWidget {
-  const RecipeCover({
-    super.key,
-    required this.recipe,
-    this.emojiSize = 52,
-  });
+  const RecipeCover({super.key, required this.recipe, this.emojiSize = 52});
 
   final Recipe recipe;
   final double emojiSize;

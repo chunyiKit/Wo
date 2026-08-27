@@ -26,7 +26,8 @@ Future<String?> saveMemoryImageToGallery({
   // 权限。`requestAccess(toAlbum: true)` 在 iOS 上请求的是「仅添加」权限
   // (NSPhotoLibraryAddUsageDescription),Android 在 API 29+ 不需要任何权限。
   try {
-    final ok = await Gal.hasAccess(toAlbum: true) ||
+    final ok =
+        await Gal.hasAccess(toAlbum: true) ||
         await Gal.requestAccess(toAlbum: true);
     if (!ok) return '需要相册权限才能保存';
   } on GalException catch (e) {

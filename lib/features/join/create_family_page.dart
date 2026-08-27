@@ -63,14 +63,12 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
       if (mounted) {
         setState(() => _submitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              switch (e) {
-                ApiException a => a.message,
-                NetworkException a => a.message,
-                _ => '创建失败',
-              },
-            ),
+          WoSnackBar(
+            content: Text(switch (e) {
+              ApiException a => a.message,
+              NetworkException a => a.message,
+              _ => '创建失败',
+            }),
           ),
         );
       }
@@ -81,8 +79,8 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('创建新家')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('创建新家')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space6),
@@ -154,7 +152,7 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
                 ],
               ),
               const SizedBox(height: WoTokens.space6),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 16,
                 onChanged: (_) => setState(() {}),
@@ -164,7 +162,7 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _slogan,
                 maxLength: 24,
                 onChanged: (_) => setState(() {}),
@@ -174,14 +172,15 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space6),
-              FilledButton(
-                onPressed:
-                    (_name.text.trim().isEmpty || _submitting) ? null : _submit,
+              WoFilledButton(
+                onPressed: (_name.text.trim().isEmpty || _submitting)
+                    ? null
+                    : _submit,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('建好我的窝'),
               ),

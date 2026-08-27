@@ -90,6 +90,14 @@ async def test_unknown_category_rejected(client: AsyncClient) -> None:
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+async def test_pet_category_accepted(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    created = await _add_expense(
+        client, fid, amount="128.00", category="pet", note="猫粮"
+    )
+    assert created["category"] == "pet"
+
+
 async def test_update_expense(client: AsyncClient) -> None:
     fid = await _create_family(client)
     created = await _add_expense(client, fid, amount="10.00", category="dining")

@@ -44,7 +44,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _editName(WoUser user) async {
     final controller = TextEditingController(text: user.displayName);
-    final next = await showDialog<String>(
+    final next = await showWoDialog<String>(
       context: context,
       builder: (ctx) {
         void submit() {
@@ -52,9 +52,9 @@ class _ProfilePageState extends State<ProfilePage> {
           if (v.isNotEmpty) Navigator.of(ctx).pop(v);
         }
 
-        return AlertDialog(
+        return WoAlertDialog(
           title: const Text('修改昵称'),
-          content: TextField(
+          content: WoTextField(
             controller: controller,
             autofocus: true,
             maxLength: 24,
@@ -62,11 +62,11 @@ class _ProfilePageState extends State<ProfilePage> {
             onSubmitted: (_) => submit(),
           ),
           actions: [
-            TextButton(
+            WoTextButton(
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('取消'),
             ),
-            FilledButton(onPressed: submit, child: const Text('保存')),
+            WoFilledButton(onPressed: submit, child: const Text('保存')),
           ],
         );
       },
@@ -80,27 +80,33 @@ class _ProfilePageState extends State<ProfilePage> {
       await session.api.updateMe(displayName: next);
       await session.refresh();
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('保存失败，请稍后再试')));
+      messenger.showSnackBar(WoSnackBar(content: Text('保存失败，请稍后再试')));
     }
   }
 
   Future<void> _editAvatar(WoUser user) async {
     if (_avatarBusy) return;
-    final action = await showModalBottomSheet<String>(
+    final action = await showWoModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('从相册选择'),
               onTap: () => Navigator.of(ctx).pop('pick'),
             ),
             if (user.hasAvatar)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text('移除头像', style: TextStyle(color: Colors.redAccent)),
+              WoListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  '移除头像',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
                 onTap: () => Navigator.of(ctx).pop('remove'),
               ),
           ],
@@ -124,7 +130,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await session.api.uploadMyAvatar(bytes: bytes);
       await session.refresh();
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('头像上传失败，请稍后再试')));
+      messenger.showSnackBar(WoSnackBar(content: Text('头像上传失败，请稍后再试')));
     } finally {
       if (mounted) setState(() => _avatarBusy = false);
     }
@@ -138,7 +144,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await session.api.deleteMyAvatar();
       await session.refresh();
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('移除失败，请稍后再试')));
+      messenger.showSnackBar(WoSnackBar(content: Text('移除失败，请稍后再试')));
     } finally {
       if (mounted) setState(() => _avatarBusy = false);
     }
@@ -159,17 +165,17 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = session.user;
 
     if (user == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('我的')),
-        body: const Center(child: CircularProgressIndicator()),
+      return WoScaffold(
+        appBar: WoAppBar(title: const Text('我的')),
+        body: const Center(child: WoProgressIndicator()),
       );
     }
 
     final families = session.families;
     final currentId = session.currentFamilyId;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('我的')),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -194,7 +200,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ],
                     ),
                   ),
-                  IconButton(
+                  WoIconButton(
                     icon: const Icon(Icons.edit_outlined),
                     tooltip: '修改昵称',
                     onPressed: () => _editName(user),
@@ -217,7 +223,7 @@ class _ProfilePageState extends State<ProfilePage> {
               for (final f in families)
                 _family(context, f, current: f.id == currentId),
             const SizedBox(height: WoTokens.space2),
-            TextButton(
+            WoTextButton(
               onPressed: () => context.push(WoRoutes.joinLanding),
               child: const Text('+ 加入或创建新家'),
             ),
@@ -226,20 +232,20 @@ class _ProfilePageState extends State<ProfilePage> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  ListTile(
+                  WoListTile(
                     leading: const Icon(Icons.settings_outlined),
                     title: const Text('设置'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.push(WoRoutes.settings),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
-                  const ListTile(
+                  const WoListTile(
                     leading: Icon(Icons.help_outline),
                     title: Text('帮助与反馈'),
                     trailing: Icon(Icons.chevron_right),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
-                  ListTile(
+                  WoListTile(
                     leading: const Icon(Icons.info_outline),
                     title: const Text('关于「窝」'),
                     trailing: const Icon(Icons.chevron_right),
@@ -250,9 +256,11 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: WoTokens.space5),
             Center(
-              child: TextButton(
+              child: WoTextButton(
                 onPressed: _logout,
-                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                style: WoTextButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                ),
                 child: const Text('退出登录'),
               ),
             ),
@@ -297,7 +305,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: WoProgressIndicator(strokeWidth: 2),
                     ),
                   ),
                 ),
@@ -313,7 +321,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 shape: BoxShape.circle,
                 border: Border.all(color: wo.bgElev, width: 1.5),
               ),
-              child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
+              child: const Icon(
+                Icons.camera_alt,
+                size: 12,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -358,7 +370,7 @@ class _ProfilePageState extends State<ProfilePage> {
             if (current)
               Icon(Icons.check_circle, color: wo.accent)
             else
-              TextButton(
+              WoTextButton(
                 onPressed: _switching ? null : () => _switch(f.id),
                 child: const Text('切换'),
               ),

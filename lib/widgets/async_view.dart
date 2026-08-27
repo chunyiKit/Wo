@@ -73,11 +73,7 @@ class _ErrorState extends StatelessWidget {
           children: [
             const Text('😣', style: TextStyle(fontSize: 40)),
             const SizedBox(height: WoTokens.space4),
-            Text(
-              '加载失败',
-              style: t.titleMedium,
-              textAlign: TextAlign.center,
-            ),
+            Text('加载失败', style: t.titleMedium, textAlign: TextAlign.center),
             const SizedBox(height: WoTokens.space2),
             Text(
               message,

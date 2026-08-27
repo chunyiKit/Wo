@@ -26,6 +26,7 @@ ALLOWED_CATEGORIES: tuple[str, ...] = (
     "shopping",
     "utilities",
     "car",
+    "pet",
     "subscription",
 )
 

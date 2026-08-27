@@ -7,11 +7,8 @@ import '../../../widgets/wo_network_image.dart';
 
 /// 选择一段「回忆」来与旅行关联(1 对 1)。按回忆的地点(location)/标题模糊搜索;
 /// [seedQuery] 用于进场预填(添加页传当前选中的城市 / 具体地点)。返回所选 [Memory]。
-Future<Memory?> showMemoryLinkSheet(
-  BuildContext context, {
-  String? seedQuery,
-}) {
-  return showModalBottomSheet<Memory>(
+Future<Memory?> showMemoryLinkSheet(BuildContext context, {String? seedQuery}) {
+  return showWoModalBottomSheet<Memory>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -30,8 +27,9 @@ class _MemoryLinkSheet extends StatefulWidget {
 class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
   List<Memory>? _all; // null = 首屏加载中
   bool _failed = false;
-  late final TextEditingController _searchCtrl =
-      TextEditingController(text: widget.seedQuery?.trim() ?? '');
+  late final TextEditingController _searchCtrl = TextEditingController(
+    text: widget.seedQuery?.trim() ?? '',
+  );
   late String _q = _searchCtrl.text;
 
   WoSession get _session => WoScope.of(context);
@@ -66,7 +64,7 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
     bool inTitle(Memory m) => m.title.toLowerCase().contains(q);
     final loc = [
       for (final m in all)
-        if (inLoc(m)) m
+        if (inLoc(m)) m,
     ];
     final titleOnly = [
       for (final m in all)
@@ -81,8 +79,9 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
     final list = _filtered();
 
     return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         height: MediaQuery.of(context).size.height * 0.7,
         decoration: BoxDecoration(
@@ -122,7 +121,7 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-              child: TextField(
+              child: WoTextField(
                 autofocus: _q.isEmpty,
                 controller: _searchCtrl,
                 onChanged: (v) => setState(() => _q = v),
@@ -157,7 +156,7 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
       );
     }
     if (_all == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: WoProgressIndicator());
     }
     if ((_all ?? const []).isEmpty) {
       return _Hint(wo: wo, text: '还没有回忆。先去「回忆」里记一段吧');
@@ -270,7 +269,7 @@ class _Hint extends StatelessWidget {
           Text(text, style: TextStyle(color: wo.fgMid, fontSize: 14)),
           if (onRetry != null) ...[
             const SizedBox(height: 10),
-            TextButton(onPressed: onRetry, child: const Text('重试')),
+            WoTextButton(onPressed: onRetry, child: const Text('重试')),
           ],
         ],
       ),

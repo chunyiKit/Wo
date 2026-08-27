@@ -16,6 +16,7 @@ from app.core.errors import AppError, ErrorCode
 from app.core.permissions import require_admin, require_membership, require_role
 from app.models.family import Family, FamilyCreate, FamilyUpdate
 from app.models.membership import INVITABLE_ROLES, Membership
+from app.models.pet import Pet
 from app.models.user import User
 from app.services import notification as notification_service
 
@@ -24,7 +25,6 @@ _ROLE_LABELS: dict[str, str] = {
     "admin": "管理员",
     "member": "家人",
     "child": "孩子",
-    "pet": "宠物",
 }
 
 
@@ -65,7 +65,7 @@ async def get_family_view(
     session: AsyncSession,
     family_id: UUID,
     user: User,
-) -> tuple[Family, Membership, int]:
+) -> tuple[Family, Membership, int, int]:
     """Fetch a family the user is a member of, plus the viewer's role & count."""
     membership = await require_membership(session, user.id, family_id)
     family = await session.get(Family, family_id)
@@ -77,7 +77,8 @@ async def get_family_view(
             status_code=404,
         )
     member_count = await _count_active_members(session, family_id)
-    return family, membership, member_count
+    pet_count = await _count_active_pets(session, family_id)
+    return family, membership, member_count, pet_count
 
 
 async def update_family(
@@ -85,7 +86,7 @@ async def update_family(
     family_id: UUID,
     payload: FamilyUpdate,
     user: User,
-) -> tuple[Family, Membership, int]:
+) -> tuple[Family, Membership, int, int]:
     """Update a family's profile (name/slogan/emoji). Owner/Admin only."""
     membership = await require_membership(session, user.id, family_id)
     require_admin(membership)
@@ -101,13 +102,14 @@ async def update_family(
     await session.refresh(family)
 
     member_count = await _count_active_members(session, family_id)
-    return family, membership, member_count
+    pet_count = await _count_active_pets(session, family_id)
+    return family, membership, member_count, pet_count
 
 
 async def list_user_families(
     session: AsyncSession,
     user: User,
-) -> list[tuple[Family, Membership, int]]:
+) -> list[tuple[Family, Membership, int, int]]:
     """All active families the user belongs to, with viewer-side fields."""
     stmt = (
         select(Family, Membership)
@@ -132,21 +134,29 @@ async def list_user_families(
         .group_by(Membership.family_id)
     )
     counts: dict[UUID, int] = {fid: cnt for fid, cnt in (await session.execute(count_stmt)).all()}
-    return [(f, m, counts.get(f.id, 0)) for f, m in rows]
+    pet_count_stmt = (
+        select(Pet.family_id, func.count().label("cnt"))
+        .where(Pet.family_id.in_(family_ids), Pet.archived_at.is_(None))
+        .group_by(Pet.family_id)
+    )
+    pet_counts: dict[UUID, int] = {
+        fid: cnt for fid, cnt in (await session.execute(pet_count_stmt)).all()
+    }
+    return [(f, m, counts.get(f.id, 0), pet_counts.get(f.id, 0)) for f, m in rows]
 
 
 async def switch_current_family(
     session: AsyncSession,
     user: User,
     family_id: UUID,
-) -> tuple[Family, Membership, int]:
+) -> tuple[Family, Membership, int, int]:
     """Set `user.current_family_id` to a family the user is a member of."""
-    family, membership, count = await get_family_view(session, family_id, user)
+    family, membership, count, pet_count = await get_family_view(session, family_id, user)
     if user.current_family_id != family_id:
         user.current_family_id = family_id
         session.add(user)
         await session.commit()
-    return family, membership, count
+    return family, membership, count, pet_count
 
 
 async def list_members(
@@ -202,9 +212,7 @@ async def leave_family(
         session.add(user)
 
     if family is not None:
-        await notification_service.notify_member_left(
-            session, family=family, leaving_user=user
-        )
+        await notification_service.notify_member_left(session, family=family, leaving_user=user)
 
     await session.commit()
 
@@ -321,5 +329,14 @@ async def _count_active_members(session: AsyncSession, family_id: UUID) -> int:
             Membership.family_id == family_id,
             Membership.status == "active",
         )
+    )
+    return int((await session.execute(stmt)).scalar_one())
+
+
+async def _count_active_pets(session: AsyncSession, family_id: UUID) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(Pet)
+        .where(Pet.family_id == family_id, Pet.archived_at.is_(None))
     )
     return int((await session.execute(stmt)).scalar_one())

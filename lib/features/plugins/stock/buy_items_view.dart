@@ -108,11 +108,11 @@ class _BuyItemsViewState extends State<BuyItemsView> {
   Future<int?> _askStockQty(BuyItem b) async {
     final controller = TextEditingController(text: '1');
     final linked = b.stockItemId != null;
-    return showDialog<int>(
+    return showWoDialog<int>(
       context: context,
       builder: (ctx) {
         final wo = ctx.wo;
-        return AlertDialog(
+        return WoAlertDialog(
           title: Text('买到「${b.name}」'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -123,7 +123,7 @@ class _BuyItemsViewState extends State<BuyItemsView> {
                 style: TextStyle(color: wo.fgMid),
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: controller,
                 autofocus: true,
                 keyboardType: TextInputType.number,
@@ -132,11 +132,11 @@ class _BuyItemsViewState extends State<BuyItemsView> {
             ],
           ),
           actions: [
-            TextButton(
+            WoTextButton(
               onPressed: () => Navigator.of(ctx).pop(0),
               child: const Text('只标记买到'),
             ),
-            FilledButton(
+            WoFilledButton(
               onPressed: () {
                 final n = int.tryParse(controller.text.trim()) ?? 0;
                 Navigator.of(ctx).pop(n);
@@ -150,17 +150,17 @@ class _BuyItemsViewState extends State<BuyItemsView> {
   }
 
   Future<void> _delete(BuyItem b) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除采买'),
         content: Text('确定删除「${b.name}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -185,7 +185,7 @@ class _BuyItemsViewState extends State<BuyItemsView> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   List<BuyItem> _filter(List<BuyItem> all) =>
@@ -194,9 +194,9 @@ class _BuyItemsViewState extends State<BuyItemsView> {
   @override
   Widget build(BuildContext context) {
     final cached = _items;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: WoFloatingActionButton.extended(
         heroTag: 'stock-add-buy',
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
@@ -269,7 +269,7 @@ class _FilterBar extends StatelessWidget {
       child: Row(
         children: [
           for (final (value, label) in options) ...[
-            ChoiceChip(
+            WoChoiceChip(
               label: Text(label),
               selected: value == selected,
               onSelected: (_) => onSelect(value),
@@ -397,7 +397,7 @@ class _EmptyBuy extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一项采买')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一项采买')),
           ],
         ),
       ),
@@ -415,10 +415,7 @@ class _EmptyFilter extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(WoTokens.space6),
-        child: Text(
-          '这里空空如也',
-          style: t.bodyMedium?.copyWith(color: wo.fgMid),
-        ),
+        child: Text('这里空空如也', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
       ),
     );
   }

@@ -63,21 +63,22 @@ class _AiIntegrationPageState extends State<AiIntegrationPage> {
 
   void _toast(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(WoSnackBar(content: Text(msg)));
     }
   }
 
   String _errText(Object e) => switch (e) {
-        ApiException ex => ex.message,
-        NetworkException ex => ex.message,
-        _ => '操作失败，请稍后再试',
-      };
+    ApiException ex => ex.message,
+    NetworkException ex => ex.message,
+    _ => '操作失败，请稍后再试',
+  };
 
   Future<void> _edit(AiModelConfig m) async {
     final fid = _familyId;
     if (fid == null) return;
-    final changed = await showModalBottomSheet<bool>(
+    final changed = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _ModelEditorSheet(familyId: fid, model: m),
@@ -89,17 +90,17 @@ class _AiIntegrationPageState extends State<AiIntegrationPage> {
     final fid = _familyId;
     if (fid == null) return;
     final api = WoScope.api(context); // capture before async gaps
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: Text('删除「${m.typeLabel}」配置'),
         content: const Text('删除后，需要这类 AI 的功能将无法使用，直到重新配置。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          WoFilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -132,8 +133,8 @@ class _AiIntegrationPageState extends State<AiIntegrationPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('AI 集成设置')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('AI 集成设置')),
       body: SafeArea(
         top: false,
         child: Builder(
@@ -143,7 +144,7 @@ class _AiIntegrationPageState extends State<AiIntegrationPage> {
             }
             final models = _models;
             if (models == null) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: WoProgressIndicator());
             }
             return ListView(
               padding: const EdgeInsets.fromLTRB(
@@ -262,15 +263,15 @@ class _ModelCard extends StatelessWidget {
           Row(
             children: [
               if (m.configured && m.callable)
-                TextButton(onPressed: onTest, child: const Text('测试连接')),
+                WoTextButton(onPressed: onTest, child: const Text('测试连接')),
               const Spacer(),
               if (canEdit) ...[
                 if (m.configured)
-                  TextButton(
+                  WoTextButton(
                     onPressed: onDelete,
                     child: Text('删除', style: TextStyle(color: wo.danger)),
                   ),
-                FilledButton.tonal(
+                WoFilledButton.tonal(
                   onPressed: onEdit,
                   child: Text(m.configured ? '编辑' : '配置'),
                 ),
@@ -351,8 +352,9 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
 
   void _toast(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(WoSnackBar(content: Text(msg)));
     }
   }
 
@@ -420,7 +422,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 ),
               ],
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _label,
                 decoration: const InputDecoration(
                   labelText: '名称',
@@ -428,7 +430,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 ),
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _baseUrl,
                 keyboardType: TextInputType.url,
                 autocorrect: false,
@@ -438,7 +440,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 ),
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _model,
                 autocorrect: false,
                 decoration: const InputDecoration(
@@ -447,7 +449,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 ),
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _apiKey,
                 obscureText: _obscure,
                 autocorrect: false,
@@ -457,7 +459,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                   hintText: _m.hasKey
                       ? '已配置 ••••${_m.keyHint}，留空则不修改'
                       : '粘贴你的 API Key',
-                  suffixIcon: IconButton(
+                  suffixIcon: WoIconButton(
                     icon: Icon(
                       _obscure ? Icons.visibility_off : Icons.visibility,
                     ),
@@ -466,7 +468,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              SwitchListTile(
+              WoSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('启用'),
                 subtitle: const Text('停用后这类 AI 将视为未配置'),
@@ -474,13 +476,13 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 onChanged: (v) => setState(() => _enabled = v),
               ),
               const SizedBox(height: WoTokens.space3),
-              FilledButton(
+              WoFilledButton(
                 onPressed: _busy ? null : _save,
                 child: _busy
                     ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('保存'),
               ),
@@ -508,12 +510,9 @@ class _ErrorRetry extends StatelessWidget {
           children: [
             Text('加载失败', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
-            Text(
-              '请检查网络后重试。',
-              style: t.bodyMedium?.copyWith(color: wo.fgMid),
-            ),
+            Text('请检查网络后重试。', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
             const SizedBox(height: WoTokens.space4),
-            FilledButton(onPressed: onRetry, child: const Text('重试')),
+            WoFilledButton(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       ),

@@ -277,7 +277,7 @@ class WoApi {
     await _client.delete('/families/$familyId/members/me');
   }
 
-  /// 修改成员角色（owner/admin 可操作，不能改主理人；目标角色限家人/管理员/孩子/宠物）。
+  /// 修改成员角色（owner/admin 可操作，不能改主理人；目标角色限家人/管理员/孩子）。
   Future<Member> updateMemberRole(
     String familyId,
     String userId,
@@ -395,6 +395,65 @@ class WoApi {
 
   Future<void> deleteNotification(String id) =>
       _client.delete('/notifications/$id');
+
+  // ── 家聊插件 ─────────────────────────────────────────────────
+  /// 拉取服务端最近 7 天窗口内的聊天消息。传入游标时只返回游标之后的新消息。
+  Future<({List<ChatMessage> items, String? cursor})> chatMessages(
+    String familyId, {
+    DateTime? afterCreatedAt,
+    String? afterId,
+    int limit = 100,
+  }) async {
+    final query = <String, dynamic>{'limit': limit};
+    if (afterCreatedAt != null && afterId != null) {
+      query['after_created_at'] = afterCreatedAt.toUtc().toIso8601String();
+      query['after_id'] = afterId;
+    }
+    final page = await _client.getWithMeta(
+      '/families/$familyId/plugins/chat/messages',
+      query: query,
+    );
+    final data = page.data as List;
+    return (
+      items: data
+          .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      cursor: page.meta?['cursor'] as String?,
+    );
+  }
+
+  Future<ChatMessage> sendChatText(
+    String familyId, {
+    required String clientId,
+    required String body,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/chat/messages',
+      body: {'client_id': clientId, 'body': body},
+    );
+    return ChatMessage.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<ChatMessage> sendChatImage(
+    String familyId, {
+    required String clientId,
+    required List<int> bytes,
+    String? body,
+    String filename = 'chat.jpg',
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/plugins/chat/messages/image',
+      bytes: bytes,
+      filename: filename,
+      fields: {
+        'client_id': clientId,
+        if (body != null && body.trim().isNotEmpty) 'body': body.trim(),
+      },
+    );
+    return ChatMessage.fromJson(data as Map<String, dynamic>);
+  }
+
+  String chatImageUrl(ChatImage image) => '${_client.baseUrl}${image.url}';
 
   // ── 设备推送 token ──────────────────────────────────────────
   /// 注册本机的极光 registration id，用于接收远程推送。后端按 registration id
@@ -1782,6 +1841,361 @@ class WoApi {
         .map((e) => RetireLedgerEntry.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  // ── 核心 Pet 与宠物日常 ─────────────────────────────────────
+
+  Future<List<Pet>> pets(String familyId) async {
+    final data = await _client.get('/families/$familyId/pets') as List;
+    return data.map((e) => Pet.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Pet> pet(String familyId, String petId) async => Pet.fromJson(
+        await _client.get('/families/$familyId/pets/$petId')
+            as Map<String, dynamic>,
+      );
+
+  Future<Pet> createPet(
+    String familyId, {
+    required String name,
+    String emoji = '🐾',
+    String? species,
+    String? breed,
+    String? sex,
+    DateTime? birthday,
+    bool birthdayEstimated = false,
+    DateTime? arrivalDate,
+    bool? neutered,
+    String? notes,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/pets',
+      body: {
+        'name': name,
+        'emoji': emoji,
+        if (species != null && species.isNotEmpty) 'species': species,
+        if (breed != null && breed.isNotEmpty) 'breed': breed,
+        if (sex != null && sex.isNotEmpty) 'sex': sex,
+        if (birthday != null) 'birthday': _formatDate(birthday),
+        'birthday_estimated': birthdayEstimated,
+        if (arrivalDate != null) 'arrival_date': _formatDate(arrivalDate),
+        if (neutered != null) 'neutered': neutered,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      },
+    );
+    return Pet.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Pet> updatePet(
+    String familyId,
+    String petId, {
+    String? name,
+    String? emoji,
+    String? species,
+    String? breed,
+    String? sex,
+    DateTime? birthday,
+    bool? birthdayEstimated,
+    DateTime? arrivalDate,
+    bool? neutered,
+    String? notes,
+  }) async {
+    final data = await _client.patch(
+      '/families/$familyId/pets/$petId',
+      body: {
+        if (name != null) 'name': name,
+        if (emoji != null) 'emoji': emoji,
+        if (species != null) 'species': species,
+        if (breed != null) 'breed': breed,
+        if (sex != null) 'sex': sex,
+        if (birthday != null) 'birthday': _formatDate(birthday),
+        if (birthdayEstimated != null) 'birthday_estimated': birthdayEstimated,
+        if (arrivalDate != null) 'arrival_date': _formatDate(arrivalDate),
+        if (neutered != null) 'neutered': neutered,
+        if (notes != null) 'notes': notes,
+      },
+    );
+    return Pet.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Pet> archivePet(String familyId, String petId) async => Pet.fromJson(
+        await _client.delete('/families/$familyId/pets/$petId')
+            as Map<String, dynamic>,
+      );
+
+  Future<Pet> uploadPetPhoto(
+    String familyId,
+    String petId, {
+    required List<int> bytes,
+  }) async =>
+      Pet.fromJson(
+        await _client.uploadFile(
+          '/families/$familyId/pets/$petId/photo',
+          bytes: bytes,
+          filename: 'pet.jpg',
+        ) as Map<String, dynamic>,
+      );
+
+  Future<Pet> deletePetPhoto(String familyId, String petId) async =>
+      Pet.fromJson(
+        await _client.delete('/families/$familyId/pets/$petId/photo')
+            as Map<String, dynamic>,
+      );
+
+  Future<List<PetListItem>> petDailyPets(String familyId) async {
+    final data =
+        await _client.get('/families/$familyId/plugins/pet/pets') as List;
+    return data
+        .map((e) => PetListItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<PetDashboard> petDashboard(String familyId, String petId) async =>
+      PetDashboard.fromJson(
+        await _client.get('/families/$familyId/plugins/pet/pets/$petId')
+            as Map<String, dynamic>,
+      );
+
+  Future<List<PetRecordType>> petRecordTypes(
+    String familyId, {
+    bool includeArchived = false,
+  }) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/pet/record-types',
+      query: {'include_archived': includeArchived},
+    ) as List;
+    return data
+        .map((e) => PetRecordType.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<PetRecordType> createPetRecordType(
+    String familyId, {
+    required String name,
+    required String emoji,
+    String dataKind = 'general',
+  }) async =>
+      PetRecordType.fromJson(
+        await _client.post(
+          '/families/$familyId/plugins/pet/record-types',
+          body: {'name': name, 'emoji': emoji, 'data_kind': dataKind},
+        ) as Map<String, dynamic>,
+      );
+
+  Future<PetRecordType> updatePetRecordType(
+    String familyId,
+    String typeId, {
+    String? name,
+    String? emoji,
+    String? dataKind,
+    bool? archived,
+  }) async =>
+      PetRecordType.fromJson(
+        await _client.patch(
+          '/families/$familyId/plugins/pet/record-types/$typeId',
+          body: {
+            if (name != null) 'name': name,
+            if (emoji != null) 'emoji': emoji,
+            if (dataKind != null) 'data_kind': dataKind,
+            if (archived != null) 'archived': archived,
+          },
+        ) as Map<String, dynamic>,
+      );
+
+  Future<List<PetRecordType>> reorderPetRecordTypes(
+    String familyId,
+    List<String> ids,
+  ) async {
+    final data = await _client.put(
+      '/families/$familyId/plugins/pet/record-types/order',
+      body: {'ids': ids},
+    ) as List;
+    return data
+        .map((e) => PetRecordType.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<PetCarePlan>> petPlans(
+    String familyId,
+    String petId, {
+    bool? active,
+  }) async {
+    final data = await _client.get(
+      '/families/$familyId/plugins/pet/pets/$petId/plans',
+      query: {if (active != null) 'active': active},
+    ) as List;
+    return data
+        .map((e) => PetCarePlan.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<PetCarePlan> savePetPlan(
+    String familyId,
+    String petId, {
+    String? planId,
+    required String recordTypeId,
+    required String name,
+    String? note,
+    required String recurrenceUnit,
+    required int recurrenceInterval,
+    required DateTime nextDueDate,
+    bool active = true,
+  }) async {
+    final body = {
+      'record_type_id': recordTypeId,
+      'name': name,
+      if (note != null) 'note': note,
+      'recurrence_unit': recurrenceUnit,
+      'recurrence_interval': recurrenceInterval,
+      'next_due_date': _formatDate(nextDueDate),
+      if (planId != null) 'active': active,
+    };
+    final path = '/families/$familyId/plugins/pet/pets/$petId/plans'
+        '${planId == null ? '' : '/$planId'}';
+    final data = planId == null
+        ? await _client.post(path, body: body)
+        : await _client.patch(path, body: body);
+    return PetCarePlan.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deletePetPlan(
+    String familyId,
+    String petId,
+    String planId,
+  ) =>
+      _client.delete(
+        '/families/$familyId/plugins/pet/pets/$petId/plans/$planId',
+      );
+
+  Future<PetRecord> createPetRecord(
+    String familyId,
+    String petId, {
+    required String recordTypeId,
+    required String name,
+    required DateTime occurredOn,
+    String? note,
+    double? weightKg,
+    DateTime? nextDueDate,
+    String recurrenceUnit = 'none',
+    int recurrenceInterval = 1,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/pet/pets/$petId/records',
+      body: {
+        'record_type_id': recordTypeId,
+        'name': name,
+        'occurred_on': _formatDate(occurredOn),
+        if (note != null && note.isNotEmpty) 'note': note,
+        if (weightKg != null) 'weight_kg': weightKg,
+        if (nextDueDate != null)
+          'follow_up': {
+            'recurrence_unit': recurrenceUnit,
+            'recurrence_interval': recurrenceInterval,
+            'next_due_date': _formatDate(nextDueDate),
+          },
+      },
+    );
+    return PetRecord.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<PetRecord> updatePetRecord(
+    String familyId,
+    String petId,
+    String recordId, {
+    required String recordTypeId,
+    required String name,
+    required DateTime occurredOn,
+    String? note,
+    double? weightKg,
+    DateTime? nextDueDate,
+  }) async {
+    final data = await _client.patch(
+      '/families/$familyId/plugins/pet/pets/$petId/records/$recordId',
+      body: {
+        'record_type_id': recordTypeId,
+        'name': name,
+        'occurred_on': _formatDate(occurredOn),
+        'note': note,
+        'weight_kg': weightKg,
+        'next_due_date': nextDueDate == null ? null : _formatDate(nextDueDate),
+      },
+    );
+    return PetRecord.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<PetRecordPage> petRecords(
+    String familyId,
+    String petId, {
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final page = await _client.getWithMeta(
+      '/families/$familyId/plugins/pet/pets/$petId/records',
+      query: {'limit': limit, if (cursor != null) 'cursor': cursor},
+    );
+    return PetRecordPage(
+      items: (page.data as List)
+          .map((e) => PetRecord.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      cursor: page.meta?['cursor'] as String?,
+      total: (page.meta?['total'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Future<void> deletePetRecord(
+    String familyId,
+    String petId,
+    String recordId,
+  ) =>
+      _client.delete(
+        '/families/$familyId/plugins/pet/pets/$petId/records/$recordId',
+      );
+
+  Future<PetRecord> completePetPlan(
+    String familyId,
+    String petId,
+    PetCarePlan plan, {
+    DateTime? occurredOn,
+    String? note,
+    double? weightKg,
+    DateTime? nextDueDateOverride,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/pet/pets/$petId/plans/${plan.id}/completions',
+      body: {
+        if (occurredOn != null) 'occurred_on': _formatDate(occurredOn),
+        if (note != null) 'note': note,
+        if (weightKg != null) 'weight_kg': weightKg,
+        if (nextDueDateOverride != null)
+          'next_due_date_override': _formatDate(nextDueDateOverride),
+        if (plan.nextDueDate != null)
+          'scheduled_due_date': _formatDate(plan.nextDueDate!),
+      },
+    );
+    return PetRecord.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<PetAttachment> uploadPetRecordAttachment(
+    String familyId,
+    String recordId, {
+    required List<int> bytes,
+    String filename = 'attachment.jpg',
+  }) async =>
+      PetAttachment.fromJson(
+        await _client.uploadFile(
+          '/families/$familyId/plugins/pet/records/$recordId/attachments',
+          bytes: bytes,
+          filename: filename,
+        ) as Map<String, dynamic>,
+      );
+
+  Future<void> deletePetRecordAttachment(
+    String familyId,
+    String recordId,
+    String attachmentId,
+  ) =>
+      _client.delete(
+        '/families/$familyId/plugins/pet/records/$recordId/attachments/$attachmentId',
+      );
 
   static String _formatDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

@@ -10,6 +10,7 @@ from app.models.family import Family
 from app.models.invitation import Invitation
 from app.models.membership import Membership
 from app.models.notification import Notification
+from app.models.pet import Pet
 from app.models.plugin import InstalledPlugin, Plugin
 from app.models.push_outbox import PushOutbox
 from app.models.user import User
@@ -23,6 +24,7 @@ __all__ = [
     "Invitation",
     "Membership",
     "Notification",
+    "Pet",
     "Plugin",
     "PushOutbox",
     "User",

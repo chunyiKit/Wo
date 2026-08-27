@@ -20,7 +20,7 @@ from app.core.ids import new_uuid7
 if TYPE_CHECKING:
     from app.models.membership import Membership
 
-Role = Literal["owner", "admin", "member", "child", "pet"]
+Role = Literal["owner", "admin", "member", "child"]
 
 
 class FamilyBase(SQLModel):
@@ -60,6 +60,7 @@ class FamilyRead(BaseModel):
     emoji: str
     created_at: datetime
     member_count: int
+    pet_count: int = 0
     my_role: Role
     my_unread_count: int = 0
 
@@ -69,6 +70,7 @@ class FamilyRead(BaseModel):
         family: Family,
         membership: Membership,
         member_count: int,
+        pet_count: int = 0,
         unread_count: int = 0,
     ) -> FamilyRead:
         """Compose a FamilyRead from a (Family, viewer's Membership, count) triple."""
@@ -79,6 +81,7 @@ class FamilyRead(BaseModel):
             emoji=family.emoji,
             created_at=family.created_at,
             member_count=member_count,
+            pet_count=pet_count,
             my_role=membership.role,  # type: ignore[arg-type]
             my_unread_count=unread_count,
         )

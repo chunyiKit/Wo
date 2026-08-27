@@ -111,18 +111,18 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
   }
 
   Future<void> _addLog() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = await showWoModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.camera_alt_outlined),
               title: const Text('拍照'),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
-            ListTile(
+            WoListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('从相册选'),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
@@ -139,8 +139,9 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
       final one = await pickAndCompressImage(source: ImageSource.camera);
       photos = one == null ? const [] : [one];
     } else {
-      photos =
-          (await pickAndCompressMultiImage()).map<List<int>>((e) => e).toList();
+      photos = (await pickAndCompressMultiImage())
+          .map<List<int>>((e) => e)
+          .toList();
     }
     if (photos.isEmpty) return;
 
@@ -166,29 +167,30 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _uploading = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('上传失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('上传失败:$e')));
       }
     }
   }
 
   Future<String?> _askNote() async {
     final ctrl = TextEditingController();
-    return showDialog<String>(
+    return showWoDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('备注(可选)'),
-        content: TextField(
+        content: WoTextField(
           controller: ctrl,
           autofocus: true,
           decoration: const InputDecoration(hintText: '如:今天换了盆 / 叶子有点黄'),
         ),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, null),
             child: const Text('跳过'),
           ),
-          FilledButton(
+          WoFilledButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
             child: const Text('确定'),
           ),
@@ -198,7 +200,7 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
   }
 
   Future<void> _editPlant(Plant plant) async {
-    final changed = await showModalBottomSheet<bool>(
+    final changed = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => PlantEditSheet(existing: plant),
@@ -207,7 +209,7 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
   }
 
   Future<void> _editCycle(Plant plant) async {
-    final changed = await showModalBottomSheet<bool>(
+    final changed = await showWoModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _CycleSheet(plant: plant),
@@ -228,30 +230,32 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
         fert: log.aiSuggestedFertDays != null,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已采纳建议周期')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('已采纳建议周期')));
         await _refreshSilently();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('采纳失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('采纳失败:$e')));
       }
     }
   }
 
   Future<void> _deleteLog(PlantLog log) async {
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除这条记录'),
         content: const Text('会删除这条养护记录和它的照片,正在进行的 AI 分析也会停止。确定吗?'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -267,8 +271,9 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
       if (mounted) await _refreshSilently();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('删除失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('删除失败:$e')));
       }
     }
   }
@@ -286,13 +291,13 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(
+      appBar: WoAppBar(
         title: const Text('植物详情'),
         actions: [
           if (_data?.plant != null)
-            IconButton(
+            WoIconButton(
               tooltip: '编辑',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () => _editPlant(_data!.plant!),
@@ -308,7 +313,7 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
                 builder: _buildContent,
               ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: _uploading ? null : _addLog,
         backgroundColor: wo.plant,
         foregroundColor: wo.fg,
@@ -316,7 +321,7 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
             ? const SizedBox(
                 height: 18,
                 width: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: WoProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.add_a_photo_outlined),
         label: Text(_uploading ? '上传中' : '记录'),
@@ -337,8 +342,9 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
         const SizedBox(height: WoTokens.space5),
         Text(
           '养护记录',
-          style:
-              Theme.of(context).textTheme.titleMedium?.copyWith(color: wo.fg),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(color: wo.fg),
         ),
         const SizedBox(height: WoTokens.space3),
         if (data.logs.isEmpty)
@@ -347,10 +353,9 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
             child: Center(
               child: Text(
                 '还没有记录,拍一张开始吧',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: wo.fgMid),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: wo.fgMid),
               ),
             ),
           )
@@ -419,8 +424,10 @@ class _Header extends StatelessWidget {
                 : Container(
                     color: wo.plant,
                     alignment: Alignment.center,
-                    child:
-                        Text(plant.emoji, style: const TextStyle(fontSize: 48)),
+                    child: Text(
+                      plant.emoji,
+                      style: const TextStyle(fontSize: 48),
+                    ),
                   ),
           ),
           Padding(
@@ -443,7 +450,7 @@ class _Header extends StatelessWidget {
                         style: t.bodyMedium?.copyWith(color: wo.fg),
                       ),
                     ),
-                    TextButton.icon(
+                    WoTextButton.icon(
                       onPressed: onEditCycle,
                       icon: const Icon(Icons.edit_outlined, size: 18),
                       label: const Text('周期'),
@@ -555,8 +562,10 @@ class _LogCard extends StatelessWidget {
                     else if (log.aiAssessment != null)
                       Text(
                         log.aiAssessment!,
-                        style:
-                            t.bodyMedium?.copyWith(color: wo.fg, height: 1.4),
+                        style: t.bodyMedium?.copyWith(
+                          color: wo.fg,
+                          height: 1.4,
+                        ),
                       ),
                     if (log.note != null && log.note!.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -630,7 +639,7 @@ class _LogCard extends StatelessWidget {
                       style: t.bodySmall?.copyWith(color: wo.fg),
                     ),
                   ),
-                  TextButton(onPressed: onAdopt, child: const Text('采纳')),
+                  WoTextButton(onPressed: onAdopt, child: const Text('采纳')),
                 ],
               ),
             ),
@@ -722,8 +731,9 @@ class _CycleSheetState extends State<_CycleSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败:$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(WoSnackBar(content: Text('保存失败:$e')));
       }
     }
   }
@@ -751,27 +761,31 @@ class _CycleSheetState extends State<_CycleSheet> {
             style: t.bodySmall?.copyWith(color: wo.fgMid),
           ),
           const SizedBox(height: WoTokens.space4),
-          TextField(
+          WoTextField(
             controller: _water,
             keyboardType: TextInputType.number,
-            decoration:
-                const InputDecoration(labelText: '浇水间隔(天)', suffixText: '天'),
+            decoration: const InputDecoration(
+              labelText: '浇水间隔(天)',
+              suffixText: '天',
+            ),
           ),
           const SizedBox(height: WoTokens.space3),
-          TextField(
+          WoTextField(
             controller: _fert,
             keyboardType: TextInputType.number,
-            decoration:
-                const InputDecoration(labelText: '施肥间隔(天)', suffixText: '天'),
+            decoration: const InputDecoration(
+              labelText: '施肥间隔(天)',
+              suffixText: '天',
+            ),
           ),
           const SizedBox(height: WoTokens.space5),
-          FilledButton(
+          WoFilledButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   )
                 : const Text('保存'),
           ),

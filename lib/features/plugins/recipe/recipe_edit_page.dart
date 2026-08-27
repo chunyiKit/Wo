@@ -86,12 +86,10 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
     _note = TextEditingController(text: r?.note ?? '');
 
     for (final ing in r?.ingredients ?? const <RecipeIngredient>[]) {
-      _ingredients.add(
-        (
-          TextEditingController(text: ing.name),
-          TextEditingController(text: ing.amount),
-        ),
-      );
+      _ingredients.add((
+        TextEditingController(text: ing.name),
+        TextEditingController(text: ing.amount),
+      ));
     }
     if (_ingredients.isEmpty) _addIngredient();
 
@@ -138,17 +136,17 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
 
   // 展示用的标签集：后端清单 + 当前分类（即便它已被移出清单也保留可见）。
   List<String> get _displayTags => [
-        ..._tags,
-        if (_category.isNotEmpty && !_tags.contains(_category)) _category,
-      ];
+    ..._tags,
+    if (_category.isNotEmpty && !_tags.contains(_category)) _category,
+  ];
 
   Future<void> _addTag() async {
     final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final name = await showWoDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('新建标签'),
-        content: TextField(
+        content: WoTextField(
           controller: controller,
           autofocus: true,
           maxLength: 16,
@@ -156,11 +154,11 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
           onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
         ),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
             child: const Text('添加'),
           ),
@@ -185,17 +183,17 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
   }
 
   Future<void> _deleteTag(String tag) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除标签'),
         content: Text('确定删除标签「$tag」吗？已用这个分类的菜谱不受影响。'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -236,10 +234,8 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
   }
 
   void _addIngredient() => setState(
-        () => _ingredients.add(
-          (TextEditingController(), TextEditingController()),
-        ),
-      );
+    () => _ingredients.add((TextEditingController(), TextEditingController())),
+  );
 
   void _removeIngredient(int i) {
     final (n, a) = _ingredients[i];
@@ -347,8 +343,11 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
       }
 
       if (_pendingCoverBytes != null) {
-        await session.api
-            .uploadRecipeCover(familyId, saved.id, bytes: _pendingCoverBytes!);
+        await session.api.uploadRecipeCover(
+          familyId,
+          saved.id,
+          bytes: _pendingCoverBytes!,
+        );
       } else if (_removeCover) {
         await session.api.deleteRecipeCover(familyId, saved.id);
       }
@@ -368,7 +367,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -377,9 +376,9 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
     final t = Theme.of(context).textTheme;
     final canSave = _name.text.trim().isNotEmpty && !_submitting;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑菜谱' : '加菜谱')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑菜谱' : '加菜谱')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -431,7 +430,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 64,
                 onChanged: (_) => setState(() {}),
@@ -458,7 +457,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                   child: SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: WoProgressIndicator(strokeWidth: 2),
                   ),
                 )
               else
@@ -469,7 +468,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                     for (final c in _displayTags)
                       GestureDetector(
                         onLongPress: () => _deleteTag(c),
-                        child: ChoiceChip(
+                        child: WoChoiceChip(
                           label: Text(c),
                           selected: _category == c,
                           onSelected: (_) => setState(
@@ -488,7 +487,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: WoTextField(
                       controller: _minutes,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
@@ -499,7 +498,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                   ),
                   const SizedBox(width: WoTokens.space4),
                   Expanded(
-                    child: TextField(
+                    child: WoTextField(
                       controller: _servings,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
@@ -517,7 +516,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                 children: [
                   for (var d = 1; d <= 3; d++) ...[
                     Expanded(
-                      child: ChoiceChip(
+                      child: WoChoiceChip(
                         label: Center(child: Text(difficultyLabel(d))),
                         selected: _difficulty == d,
                         onSelected: (_) => setState(() => _difficulty = d),
@@ -528,10 +527,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                 ],
               ),
               const SizedBox(height: WoTokens.space5),
-              _RowHeader(
-                title: '食材',
-                onAdd: _addIngredient,
-              ),
+              _RowHeader(title: '食材', onAdd: _addIngredient),
               const SizedBox(height: WoTokens.space2),
               for (var i = 0; i < _ingredients.length; i++)
                 Padding(
@@ -540,7 +536,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                     children: [
                       Expanded(
                         flex: 3,
-                        child: TextField(
+                        child: WoTextField(
                           controller: _ingredients[i].$1,
                           decoration: const InputDecoration(
                             isDense: true,
@@ -551,7 +547,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                       const SizedBox(width: WoTokens.space2),
                       Expanded(
                         flex: 2,
-                        child: TextField(
+                        child: WoTextField(
                           controller: _ingredients[i].$2,
                           decoration: const InputDecoration(
                             isDense: true,
@@ -559,9 +555,11 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                           ),
                         ),
                       ),
-                      IconButton(
-                        icon:
-                            Icon(Icons.remove_circle_outline, color: wo.fgDim),
+                      WoIconButton(
+                        icon: Icon(
+                          Icons.remove_circle_outline,
+                          color: wo.fgDim,
+                        ),
                         onPressed: _ingredients.length > 1
                             ? () => _removeIngredient(i)
                             : null,
@@ -587,7 +585,7 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                       ),
                       const SizedBox(width: WoTokens.space2),
                       Expanded(
-                        child: TextField(
+                        child: WoTextField(
                           controller: _steps[i],
                           minLines: 1,
                           maxLines: 4,
@@ -597,17 +595,20 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                           ),
                         ),
                       ),
-                      IconButton(
-                        icon:
-                            Icon(Icons.remove_circle_outline, color: wo.fgDim),
-                        onPressed:
-                            _steps.length > 1 ? () => _removeStep(i) : null,
+                      WoIconButton(
+                        icon: Icon(
+                          Icons.remove_circle_outline,
+                          color: wo.fgDim,
+                        ),
+                        onPressed: _steps.length > 1
+                            ? () => _removeStep(i)
+                            : null,
                       ),
                     ],
                   ),
                 ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 500,
                 maxLines: 3,
@@ -618,13 +619,13 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),
@@ -648,7 +649,7 @@ class _RowHeader extends StatelessWidget {
       children: [
         Text(title, style: t.titleSmall),
         const Spacer(),
-        TextButton.icon(
+        WoTextButton.icon(
           onPressed: onAdd,
           icon: const Icon(Icons.add, size: 18),
           label: const Text('添加'),
@@ -714,7 +715,7 @@ class _CoverPicker extends StatelessWidget {
                   ColoredBox(
                     color: Colors.black.withValues(alpha: 0.25),
                     child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: WoProgressIndicator(strokeWidth: 2),
                     ),
                   ),
               ],
@@ -725,7 +726,7 @@ class _CoverPicker extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
+              child: WoOutlinedButton.icon(
                 onPressed: busy ? null : onPick,
                 icon: const Icon(Icons.photo_library_outlined, size: 18),
                 label: Text(hasCover ? '换封面照片' : '上传封面照片'),
@@ -733,7 +734,7 @@ class _CoverPicker extends StatelessWidget {
             ),
             if (hasCover) ...[
               const SizedBox(width: WoTokens.space2),
-              TextButton(
+              WoTextButton(
                 onPressed: busy ? null : onClear,
                 child: Text('改用 emoji', style: TextStyle(color: wo.fgMid)),
               ),

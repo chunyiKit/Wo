@@ -92,7 +92,9 @@ class _MessagesPageState extends State<MessagesPage> {
     try {
       await session.api.markNotificationRead(n.id);
       await _reload();
-    } catch (_) {/* 标记失败不阻断浏览 */}
+    } catch (_) {
+      /* 标记失败不阻断浏览 */
+    }
   }
 
   /// 点击一条通知：标记已读（后台）并按 deeplink 跳到对应页面（无法识别则只读不跳）。
@@ -112,17 +114,17 @@ class _MessagesPageState extends State<MessagesPage> {
   /// 左滑后弹确认；确认且删除成功才返回 true（让 Dismissible 真正移除）。
   Future<bool> _confirmDelete(WoNotification n) async {
     final session = WoScope.of(context);
-    final ok = await showDialog<bool>(
+    final ok = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除消息'),
         content: const Text('确定删除这条消息吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -151,17 +153,15 @@ class _MessagesPageState extends State<MessagesPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return WoScaffold(
+      appBar: WoAppBar(
         title: const Text('消息'),
-        actions: [
-          TextButton(onPressed: _markAll, child: const Text('全部已读')),
-        ],
+        actions: [WoTextButton(onPressed: _markAll, child: const Text('全部已读'))],
       ),
       body: SafeArea(top: false, child: _body()),
     );
@@ -170,8 +170,10 @@ class _MessagesPageState extends State<MessagesPage> {
   Widget _body() {
     final items = _items;
     if (items == null) {
-      if (_error != null) return _ErrorState(error: _error!, onRetry: _firstLoad);
-      return const Center(child: CircularProgressIndicator());
+      if (_error != null) {
+        return _ErrorState(error: _error!, onRetry: _firstLoad);
+      }
+      return const Center(child: WoProgressIndicator());
     }
     if (items.isEmpty) {
       return RefreshIndicator(
@@ -218,7 +220,10 @@ class _MessagesPageState extends State<MessagesPage> {
             SizedBox(width: 6),
             Text(
               '删除',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -313,7 +318,7 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+            WoFilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       ),

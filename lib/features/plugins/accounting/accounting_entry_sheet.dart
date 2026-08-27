@@ -16,7 +16,7 @@ Future<bool?> showExpenseEntrySheet(
   Expense? existing,
   ReceiptDraft? draft,
 }) {
-  return showModalBottomSheet<bool>(
+  return showWoModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -62,7 +62,8 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
     final e = widget.existing;
     // 拍小票草稿仅在新增时预填；分类要落在内置标签里才采用，否则回退到默认。
     final d = e == null ? widget.draft : null;
-    final draftCat = d != null && expenseCategories.any((c) => c.code == d.category)
+    final draftCat =
+        d != null && expenseCategories.any((c) => c.code == d.category)
         ? d.category
         : null;
     _category = e?.category ?? draftCat ?? expenseCategories.first.code;
@@ -312,7 +313,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -354,8 +355,9 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                       Center(
                         child: Text(
                           _isEditing ? '编辑支出' : '记一笔',
-                          style: t.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                          style: t.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(height: WoTokens.space5),
@@ -383,7 +385,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                         ],
                       ),
                       const SizedBox(height: WoTokens.space4),
-                      TextField(
+                      WoTextField(
                         controller: _note,
                         focusNode: _noteFocus,
                         maxLength: 200,
@@ -588,8 +590,8 @@ class _CalcKeypad extends StatelessWidget {
     final kind = _digits.contains(label)
         ? _KeyKind.digit
         : _utils.contains(label)
-            ? _KeyKind.util
-            : _KeyKind.op;
+        ? _KeyKind.util
+        : _KeyKind.op;
     return _CalcKey(
       label: label,
       kind: kind,
@@ -690,7 +692,7 @@ class _SaveKey extends StatelessWidget {
                     ? SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(
+                        child: WoProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation(fg),
                         ),

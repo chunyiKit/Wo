@@ -12,7 +12,7 @@ and keyed by each family in-app under 我的 → 设置 → AI 集成设置.
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, UniqueConstraint
+from sqlalchemy import Column, DateTime, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.core.ids import new_uuid7
@@ -22,9 +22,7 @@ class FamilyAiModel(SQLModel, table=True):
     """A model service one family configured for one AI capability type."""
 
     __tablename__ = "family_ai_models"
-    __table_args__ = (
-        UniqueConstraint("family_id", "ai_type", name="uq_family_ai_type"),
-    )
+    __table_args__ = (UniqueConstraint("family_id", "ai_type", name="uq_family_ai_type"),)
 
     id: UUID = Field(default_factory=new_uuid7, primary_key=True)
     family_id: UUID = Field(
@@ -39,7 +37,7 @@ class FamilyAiModel(SQLModel, table=True):
     base_url: str = Field(max_length=255)  # OpenAI-compatible /v1 base
     model: str = Field(max_length=80)  # model id sent to the provider
     # Fernet ciphertext of the API key. Never returned to clients in plaintext.
-    api_key_encrypted: str = Field()
+    api_key_encrypted: str = Field(sa_column=Column(Text, nullable=False))
     # Non-secret last-4 of the key, shown in the UI so the user recognizes which
     # key is set without ever exposing it (and without decrypting on read).
     key_hint: str = Field(default="", max_length=8)

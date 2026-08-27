@@ -62,7 +62,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
   }
 
   void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(m)));
 
   @override
   Widget build(BuildContext context) {
@@ -74,8 +74,8 @@ class _MarketplacePageState extends State<MarketplacePage> {
         ip.pluginId,
     };
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('插件市场')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('插件市场')),
       body: SafeArea(
         top: false,
         child: AsyncView<List<Plugin>>(
@@ -86,7 +86,8 @@ class _MarketplacePageState extends State<MarketplacePage> {
             final q = _query.trim();
             final list = all.where((p) {
               final matchCat = cat == null || p.category == cat;
-              final matchQ = q.isEmpty ||
+              final matchQ =
+                  q.isEmpty ||
                   p.name.contains(q) ||
                   p.descriptionShort.contains(q);
               return matchCat && matchQ;
@@ -100,7 +101,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
                 WoTokens.space8,
               ),
               children: [
-                TextField(
+                WoTextField(
                   onChanged: (v) => setState(() => _query = v),
                   decoration: InputDecoration(
                     hintText: '搜索插件',
@@ -115,7 +116,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
                     itemCount: _categories.length,
                     separatorBuilder: (_, __) =>
                         const SizedBox(width: WoTokens.space2),
-                    itemBuilder: (_, i) => ChoiceChip(
+                    itemBuilder: (_, i) => WoChoiceChip(
                       label: Text(_categories[i].$1),
                       selected: i == _selected,
                       onSelected: (_) => setState(() => _selected = i),
@@ -129,10 +130,9 @@ class _MarketplacePageState extends State<MarketplacePage> {
                     child: Center(
                       child: Text(
                         '没有匹配的插件',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: wo.fgMid),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: wo.fgMid),
                       ),
                     ),
                   )
@@ -190,9 +190,9 @@ class _MarketplacePageState extends State<MarketplacePage> {
               ),
             ),
             if (installed)
-              OutlinedButton(
+              WoOutlinedButton(
                 onPressed: null,
-                style: OutlinedButton.styleFrom(
+                style: WoOutlinedButton.styleFrom(
                   minimumSize: const Size(0, 32),
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   foregroundColor: wo.fgDim,
@@ -200,9 +200,9 @@ class _MarketplacePageState extends State<MarketplacePage> {
                 child: const Text('已安装'),
               )
             else
-              FilledButton(
+              WoFilledButton(
                 onPressed: installing ? null : () => _install(p),
-                style: FilledButton.styleFrom(
+                style: WoFilledButton.styleFrom(
                   minimumSize: const Size(0, 32),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
@@ -210,7 +210,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('安装'),
               ),
@@ -228,7 +228,7 @@ String _compact(int n) {
 }
 
 String _msg(Object e) => switch (e) {
-      ApiException a => a.message,
-      NetworkException a => a.message,
-      _ => '操作失败',
-    };
+  ApiException a => a.message,
+  NetworkException a => a.message,
+  _ => '操作失败',
+};

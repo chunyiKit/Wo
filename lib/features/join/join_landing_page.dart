@@ -13,8 +13,8 @@ class JoinLandingPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(),
+    return WoScaffold(
+      appBar: WoAppBar(),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(WoTokens.space6),
@@ -80,7 +80,7 @@ class JoinLandingPage extends StatelessWidget {
               ),
               const Spacer(),
               Center(
-                child: TextButton(
+                child: WoTextButton(
                   onPressed: () => context.go(WoRoutes.home),
                   child: const Text('先逛逛 →'),
                 ),

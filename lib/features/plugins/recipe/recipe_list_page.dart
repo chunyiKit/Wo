@@ -68,9 +68,9 @@ class _RecipeListPageState extends State<RecipeListPage> {
   }
 
   Future<void> _openEditor() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const RecipeEditPage()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const RecipeEditPage()));
     if (changed == true) await _refreshSilently();
   }
 
@@ -87,8 +87,10 @@ class _RecipeListPageState extends State<RecipeListPage> {
 
   // 数据里实际出现过的分类，按推荐顺序排，其余追加在后面。
   List<String> _categoriesOf(List<Recipe> all) {
-    final present =
-        all.map((r) => r.category).where((c) => c.isNotEmpty).toSet();
+    final present = all
+        .map((r) => r.category)
+        .where((c) => c.isNotEmpty)
+        .toSet();
     final ordered = [
       for (final c in kRecipeCategories)
         if (present.contains(c)) c,
@@ -100,10 +102,10 @@ class _RecipeListPageState extends State<RecipeListPage> {
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('菜谱')),
-      floatingActionButton: FloatingActionButton.extended(
+      appBar: WoAppBar(title: const Text('菜谱')),
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: _openEditor,
         icon: const Icon(Icons.add),
         label: const Text('加菜谱'),
@@ -318,8 +320,10 @@ class _CategoryTag extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: WoTokens.space2, vertical: 3),
+      padding: const EdgeInsets.symmetric(
+        horizontal: WoTokens.space2,
+        vertical: 3,
+      ),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.38),
         borderRadius: BorderRadius.circular(WoTokens.chipRadius),
@@ -359,7 +363,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('添加第一道菜')),
+            WoFilledButton(onPressed: onAdd, child: const Text('添加第一道菜')),
           ],
         ),
       ),
@@ -382,10 +386,7 @@ class _EmptyCategory extends StatelessWidget {
           children: [
             const Text('🍽️', style: TextStyle(fontSize: 40)),
             const SizedBox(height: WoTokens.space3),
-            Text(
-              '这个分类还没有菜谱',
-              style: t.bodyMedium?.copyWith(color: wo.fgMid),
-            ),
+            Text('这个分类还没有菜谱', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           ],
         ),
       ),

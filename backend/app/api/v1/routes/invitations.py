@@ -157,4 +157,5 @@ async def accept_invitation_endpoint(
         session, invitation, current_user
     )
     member_count = await family_service._count_active_members(session, family.id)
-    return ok(FamilyRead.from_components(family, membership, member_count))
+    pet_count = await family_service._count_active_pets(session, family.id)
+    return ok(FamilyRead.from_components(family, membership, member_count, pet_count))

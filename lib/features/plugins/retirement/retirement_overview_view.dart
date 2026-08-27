@@ -76,9 +76,9 @@ class _RetirementOverviewViewState extends State<RetirementOverviewView> {
   }
 
   Future<void> _openPlanEditor() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const PlanEditPage()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const PlanEditPage()));
     if (changed == true) {
       await _refreshSilently();
       if (mounted) await WoScope.of(context).refresh();
@@ -245,7 +245,7 @@ class _GoalCard extends StatelessWidget {
           const SizedBox(height: WoTokens.space2),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
+            child: WoLinearProgressIndicator(
               value: ratio,
               minHeight: 10,
               backgroundColor: wo.bgTint,
@@ -277,7 +277,8 @@ class _GoalCard extends StatelessWidget {
     } else if (d.monthsToGoal == null) {
       text = '按当前每月结余（${yuan(d.monthlySurplus)}）无法达成目标';
     } else {
-      text = '按当前每月结余 ${yuan(d.monthlySurplus)}，'
+      text =
+          '按当前每月结余 ${yuan(d.monthlySurplus)}，'
           '还需 ${_months(d.monthsToGoal!)}达标';
     }
     return Row(
@@ -412,8 +413,10 @@ class _SurplusCard extends StatelessWidget {
     bool bold = false,
   }) {
     final t = Theme.of(context).textTheme;
-    final style = (bold ? t.titleSmall : t.bodyMedium)
-        ?.copyWith(color: color, fontWeight: bold ? FontWeight.w700 : null);
+    final style = (bold ? t.titleSmall : t.bodyMedium)?.copyWith(
+      color: color,
+      fontWeight: bold ? FontWeight.w700 : null,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -460,8 +463,10 @@ class _NetWorthCard extends StatelessWidget {
     bool bold = false,
   }) {
     final t = Theme.of(context).textTheme;
-    final style = (bold ? t.titleSmall : t.bodyMedium)
-        ?.copyWith(color: color, fontWeight: bold ? FontWeight.w700 : null);
+    final style = (bold ? t.titleSmall : t.bodyMedium)?.copyWith(
+      color: color,
+      fontWeight: bold ? FontWeight.w700 : null,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(

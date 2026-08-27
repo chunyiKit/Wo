@@ -129,7 +129,7 @@ class _DebtEditPageState extends State<DebtEditPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
@@ -138,9 +138,9 @@ class _DebtEditPageState extends State<DebtEditPage> {
     final t = Theme.of(context).textTheme;
     final canSave = _name.text.trim().isNotEmpty && !_submitting;
 
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑负债' : '加负债')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑负债' : '加负债')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -151,7 +151,7 @@ class _DebtEditPageState extends State<DebtEditPage> {
                 spacing: WoTokens.space2,
                 children: [
                   for (final k in debtKinds)
-                    ChoiceChip(
+                    WoChoiceChip(
                       label: Text('${debtKindEmoji(k)} ${debtKindLabel(k)}'),
                       selected: _kind == k,
                       onSelected: (_) => setState(() => _kind = k),
@@ -159,7 +159,7 @@ class _DebtEditPageState extends State<DebtEditPage> {
                 ],
               ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 40,
                 onChanged: (_) => setState(() {}),
@@ -169,20 +169,22 @@ class _DebtEditPageState extends State<DebtEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _balance,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: '剩余欠款',
                   prefixText: '¥ ',
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _payment,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: '每月月供',
                   prefixText: '¥ ',
@@ -193,7 +195,7 @@ class _DebtEditPageState extends State<DebtEditPage> {
                 children: [
                   Text('每月扣款日', style: t.bodyMedium),
                   const Spacer(),
-                  DropdownButton<int>(
+                  WoDropdownButton<int>(
                     value: _paymentDay,
                     items: [
                       for (var d = 1; d <= 28; d++)
@@ -208,7 +210,7 @@ class _DebtEditPageState extends State<DebtEditPage> {
               Row(
                 children: [
                   Expanded(child: Text('从哪个账户扣款', style: t.bodyMedium)),
-                  DropdownButton<String?>(
+                  WoDropdownButton<String?>(
                     value: _fromAccountId,
                     hint: const Text('不关联'),
                     items: [
@@ -232,7 +234,7 @@ class _DebtEditPageState extends State<DebtEditPage> {
               ),
               if (_isEditing) ...[
                 const SizedBox(height: WoTokens.space2),
-                SwitchListTile(
+                WoSwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('启用自动扣款'),
                   subtitle: const Text('关闭后这笔负债不再自动扣款'),
@@ -241,13 +243,13 @@ class _DebtEditPageState extends State<DebtEditPage> {
                 ),
               ],
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: canSave ? _save : null,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

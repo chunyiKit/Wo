@@ -69,7 +69,8 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
   Future<void> _openEditor([Subscription? existing]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-          builder: (_) => SubscriptionEditPage(existing: existing)),
+        builder: (_) => SubscriptionEditPage(existing: existing),
+      ),
     );
     if (changed == true) await _refreshSilently();
   }
@@ -87,17 +88,17 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
   }
 
   Future<void> _delete(Subscription s) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showWoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => WoAlertDialog(
         title: const Text('删除订阅'),
         content: Text('确定删除「${s.name}」吗？'),
         actions: [
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
+          WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -122,16 +123,16 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
       NetworkException e => e.message,
       _ => '操作失败',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: const Text('订阅管家')),
-      floatingActionButton: FloatingActionButton.extended(
+      appBar: WoAppBar(title: const Text('订阅管家')),
+      floatingActionButton: WoFloatingActionButton.extended(
         onPressed: () => _openEditor(),
         backgroundColor: wo.subscribe,
         foregroundColor: wo.fg,
@@ -312,7 +313,7 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: WoTokens.space5),
-            FilledButton(onPressed: onAdd, child: const Text('加第一个订阅')),
+            WoFilledButton(onPressed: onAdd, child: const Text('加第一个订阅')),
           ],
         ),
       ),
@@ -399,7 +400,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
     );
     if (picked != null) {
       setState(
-          () => _nextDue = DateTime(picked.year, picked.month, picked.day));
+        () => _nextDue = DateTime(picked.year, picked.month, picked.day),
+      );
     }
   }
 
@@ -459,8 +461,9 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
     }
   }
 
-  void _toastMsg(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _toastMsg(String msg) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(WoSnackBar(content: Text(msg)));
 
   void _toast(Object error) {
     final msg = switch (error) {
@@ -475,9 +478,9 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    return Scaffold(
+    return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: AppBar(title: Text(_isEditing ? '编辑订阅' : '加订阅')),
+      appBar: WoAppBar(title: Text(_isEditing ? '编辑订阅' : '加订阅')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
@@ -516,7 +519,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              TextField(
+              WoTextField(
                 controller: _name,
                 maxLength: 40,
                 decoration: const InputDecoration(
@@ -525,10 +528,11 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space2),
-              TextField(
+              WoTextField(
                 controller: _amount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: '金额',
                   prefixText: '¥ ',
@@ -541,12 +545,12 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
               Wrap(
                 spacing: WoTokens.space2,
                 children: [
-                  ChoiceChip(
+                  WoChoiceChip(
                     label: const Text('按月'),
                     selected: _cycle == 'monthly',
                     onSelected: (_) => setState(() => _cycle = 'monthly'),
                   ),
-                  ChoiceChip(
+                  WoChoiceChip(
                     label: const Text('按年'),
                     selected: _cycle == 'yearly',
                     onSelected: (_) => setState(() => _cycle = 'yearly'),
@@ -554,7 +558,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 ],
               ),
               const SizedBox(height: WoTokens.space3),
-              ListTile(
+              WoListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.event, color: wo.subscribe),
                 title: const Text('下次扣费日'),
@@ -562,11 +566,13 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                   '${_nextDue.year}年${_nextDue.month}月${_nextDue.day}日',
                   style: t.bodyMedium?.copyWith(color: wo.fgMid),
                 ),
-                trailing:
-                    TextButton(onPressed: _pickDate, child: const Text('选择')),
+                trailing: WoTextButton(
+                  onPressed: _pickDate,
+                  child: const Text('选择'),
+                ),
                 onTap: _pickDate,
               ),
-              SwitchListTile(
+              WoSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _autoRecord,
                 activeColor: wo.subscribe,
@@ -577,7 +583,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 ),
                 onChanged: (v) => setState(() => _autoRecord = v),
               ),
-              SwitchListTile(
+              WoSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _notify,
                 activeColor: wo.subscribe,
@@ -585,8 +591,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 subtitle: Text(
                   _notify
                       ? (_notifyDaysBefore == 0
-                          ? '当天提醒全家'
-                          : '提前 $_notifyDaysBefore 天提醒全家')
+                            ? '当天提醒全家'
+                            : '提前 $_notifyDaysBefore 天提醒全家')
                       : '开启后会在扣费前推送通知',
                   style: t.labelSmall?.copyWith(color: wo.fgMid),
                 ),
@@ -597,7 +603,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                   children: [
                     Text('提前', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
                     Expanded(
-                      child: Slider(
+                      child: WoSlider(
                         value: _notifyDaysBefore.toDouble(),
                         min: 0,
                         max: 14,
@@ -617,7 +623,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                   ],
                 ),
               const SizedBox(height: WoTokens.space3),
-              TextField(
+              WoTextField(
                 controller: _note,
                 maxLength: 200,
                 maxLines: 2,
@@ -628,9 +634,9 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 ),
               ),
               const SizedBox(height: WoTokens.space4),
-              FilledButton(
+              WoFilledButton(
                 onPressed: _submitting ? null : _save,
-                style: FilledButton.styleFrom(
+                style: WoFilledButton.styleFrom(
                   backgroundColor: wo.subscribe,
                   foregroundColor: wo.fg,
                 ),
@@ -638,7 +644,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: WoProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? '保存' : '添加'),
               ),

@@ -57,8 +57,9 @@ class _ScanPageState extends State<ScanPage> {
         .firstWhere((v) => v != null && v.isNotEmpty, orElse: () => null);
     if (!mounted) return;
     if (raw == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('图片里没有识别到二维码')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(WoSnackBar(content: Text('图片里没有识别到二维码')));
       return;
     }
     await _handlePayload(raw);
@@ -71,18 +72,18 @@ class _ScanPageState extends State<ScanPage> {
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
       ),
-      child: Scaffold(
+      child: WoScaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(
+        appBar: WoAppBar(
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
           title: const Text('扫码加入', style: TextStyle(color: Colors.white)),
-          leading: IconButton(
+          leading: WoIconButton(
             icon: const Icon(Icons.close, color: Colors.white),
             onPressed: () => context.pop(),
           ),
           actions: [
-            IconButton(
+            WoIconButton(
               tooltip: '闪光灯',
               icon: const Icon(Icons.flash_on, color: Colors.white),
               onPressed: () => _controller.toggleTorch(),
@@ -204,7 +205,7 @@ class _CameraError extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: WoTokens.space5),
-          FilledButton(
+          WoFilledButton(
             onPressed: () => context.pop(),
             child: const Text('手动输入'),
           ),
@@ -229,22 +230,10 @@ class _ScanFramePainter extends CustomPainter {
     // 四角
     canvas.drawLine(const Offset(0, 0), const Offset(corner, 0), p);
     canvas.drawLine(const Offset(0, 0), const Offset(0, corner), p);
-    canvas.drawLine(
-      Offset(size.width, 0),
-      Offset(size.width - corner, 0),
-      p,
-    );
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width - corner, 0), p);
     canvas.drawLine(Offset(size.width, 0), Offset(size.width, corner), p);
-    canvas.drawLine(
-      Offset(0, size.height),
-      Offset(corner, size.height),
-      p,
-    );
-    canvas.drawLine(
-      Offset(0, size.height),
-      Offset(0, size.height - corner),
-      p,
-    );
+    canvas.drawLine(Offset(0, size.height), Offset(corner, size.height), p);
+    canvas.drawLine(Offset(0, size.height), Offset(0, size.height - corner), p);
     canvas.drawLine(
       Offset(size.width, size.height),
       Offset(size.width - corner, size.height),

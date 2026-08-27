@@ -26,7 +26,6 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
     ('member', '家人'),
     ('admin', '管理员'),
     ('child', '孩子'),
-    ('pet', '宠物'),
   ];
 
   Future<InvitationResult>? _future;
@@ -44,8 +43,8 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
     final familyId = WoScope.of(context).currentFamilyId;
 
     if (familyId == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('邀请成员')),
+      return WoScaffold(
+        appBar: WoAppBar(title: const Text('邀请成员')),
         body: Center(
           child: Text('还没有家庭', style: t.titleMedium?.copyWith(color: wo.fgMid)),
         ),
@@ -56,8 +55,8 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
       _regen(context, familyId);
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('邀请成员')),
+    return WoScaffold(
+      appBar: WoAppBar(title: const Text('邀请成员')),
       body: SafeArea(
         top: false,
         child: AsyncView<InvitationResult>(
@@ -95,7 +94,7 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
                       spacing: WoTokens.space2,
                       children: [
                         for (final r in _roles)
-                          ChoiceChip(
+                          WoChoiceChip(
                             label: Text(r.$2),
                             selected: _role == r.$1,
                             onSelected: (_) {
@@ -120,8 +119,9 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
 
   void _copy(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('已复制$label')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(WoSnackBar(content: Text('已复制$label')));
   }
 
   Widget _faceToFace(
@@ -186,7 +186,7 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
               style: t.bodyLarge?.copyWith(color: wo.accentDeep),
             ),
           ),
-          FilledButton.tonal(
+          WoFilledButton.tonal(
             onPressed: () => _copy(inv.link, '链接'),
             child: const Text('复制'),
           ),
@@ -215,7 +215,7 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
           const SizedBox(height: WoTokens.space2),
           Text('把这串码发给对方', style: t.bodySmall?.copyWith(color: wo.fgMid)),
           const SizedBox(height: WoTokens.space4),
-          FilledButton.tonal(
+          WoFilledButton.tonal(
             onPressed: () => _copy(inv.code, '邀请码'),
             child: const Text('复制邀请码'),
           ),

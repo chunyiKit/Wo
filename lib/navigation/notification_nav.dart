@@ -5,7 +5,11 @@ import '../data/wo_session.dart';
 import '../features/family/family_manage_page.dart';
 import '../features/plugins/accounting/accounting_page.dart';
 import '../features/plugins/anniversary/anniversary_list_page.dart';
+import '../features/plugins/chat/chat_page.dart';
 import '../features/plugins/chore/chore_list_page.dart';
+import '../features/plugins/pet/pet_detail_page.dart';
+import '../features/plugins/pet/pet_list_page.dart';
+import '../widgets/wo_material_controls.dart';
 
 /// 通知点击跳转：根据 [WoNotification.deeplink] 打开对应页面。支持
 ///   wo://family/{fid}/plugins/anniversary  → 纪念日列表
@@ -15,8 +19,15 @@ import '../features/plugins/chore/chore_list_page.dart';
 ///
 /// 目标家庭与当前不同时先 [WoSession.switchFamily]（这些页面都按 currentFamilyId
 /// 取数）。deeplink 为空或无法识别则不跳转，调用方此时仅标记已读即可。
-Future<void> openNotificationTarget(BuildContext context, WoNotification n) async {
-  final target = _resolve(n.deeplink);
+Future<void> openNotificationTarget(
+  BuildContext context,
+  WoNotification n,
+) async {
+  await openDeeplinkTarget(context, n.deeplink);
+}
+
+Future<void> openDeeplinkTarget(BuildContext context, String? deeplink) async {
+  final target = _resolve(deeplink);
   if (target == null) return;
 
   final session = WoScope.of(context);
@@ -27,9 +38,7 @@ Future<void> openNotificationTarget(BuildContext context, WoNotification n) asyn
     try {
       await session.switchFamily(target.familyId!);
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('无法打开：你可能已不在该家庭')),
-      );
+      messenger.showSnackBar(WoSnackBar(content: Text('无法打开：你可能已不在该家庭')));
       return;
     }
   }
@@ -58,7 +67,12 @@ _Target? _resolve(String? deeplink) {
     page = switch (rest[1]) {
       'anniversary' => const AnniversaryListPage(),
       'accounting' => const AccountingPage(),
+      'chat' => const ChatPage(),
       'chore' => const ChoreListPage(),
+      'pet' =>
+        uri.queryParameters['pet']?.isNotEmpty == true
+            ? PetDetailPage(petId: uri.queryParameters['pet']!)
+            : const PetListPage(),
       _ => null,
     };
   } else if (rest.length == 1 && rest[0] == 'members') {

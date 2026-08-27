@@ -21,7 +21,7 @@ layer so the model stays a plain record.
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, Index
 from sqlmodel import Field, SQLModel
 
 from app.core.ids import new_uuid7
@@ -54,6 +54,7 @@ class MemoryBase(SQLModel):
 
 class Memory(MemoryBase, table=True):
     __tablename__ = "memory_memories"
+    __table_args__ = (Index("ix_memory_timeline", "family_id", "event_date", "created_at", "id"),)
 
     id: UUID = Field(default_factory=new_uuid7, primary_key=True)
     family_id: UUID = Field(
