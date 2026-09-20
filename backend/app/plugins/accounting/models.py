@@ -11,15 +11,16 @@ isolation key is `family_id` (who recorded it lives in `created_by`).
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from secrets import token_hex
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, Numeric
+from pydantic import field_validator
+from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.core.ids import new_uuid7
 
-# Built-in expense tags. Labels/emoji live on the client; the backend only
-# stores and validates these stable codes.
+# 保留内置分类的稳定代码，兼容已有账目和旧客户端。
 ALLOWED_CATEGORIES: tuple[str, ...] = (
     "dining",
     "snack",
@@ -29,6 +30,35 @@ ALLOWED_CATEGORIES: tuple[str, ...] = (
     "pet",
     "subscription",
 )
+
+
+class CategoryCreate(SQLModel):
+    label: str = Field(min_length=1, max_length=20)
+    emoji: str = Field(default="💰", min_length=1, max_length=16)
+
+    @field_validator("label", "emoji", mode="before")
+    @classmethod
+    def strip_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class CategoryRead(CategoryCreate):
+    code: str
+
+
+class CustomCategory(SQLModel, table=True):
+    __tablename__ = "acct_categories"
+    __table_args__ = (UniqueConstraint("family_id", "label", name="uq_acct_category_label"),)
+
+    # 与现有账目的 VARCHAR(16) 兼容；代码不依赖用户输入的分类名称。
+    code: str = Field(default_factory=lambda: "c_" + token_hex(7), primary_key=True, max_length=16)
+    family_id: UUID = Field(foreign_key="families.id", ondelete="CASCADE", index=True)
+    label: str = Field(max_length=20)
+    emoji: str = Field(max_length=16)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class TransactionBase(SQLModel):

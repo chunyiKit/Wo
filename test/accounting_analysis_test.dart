@@ -10,6 +10,8 @@ import 'package:wo/data/wo_api.dart';
 import 'package:wo/data/wo_session.dart';
 import 'package:wo/features/plugins/accounting/accounting_analysis_view.dart';
 import 'package:wo/features/plugins/accounting/accounting_page.dart';
+import 'package:wo/features/plugins/accounting/expense_categories.dart';
+import 'package:wo/widgets/wo_material_controls.dart';
 import 'package:wo/theme/wo_theme.dart';
 
 Expense _expense({
@@ -56,7 +58,15 @@ Map<String, dynamic> _envelope(Object? data) => {
       'meta': null,
     };
 
-Future<WoSession> _session() async {
+Future<WoSession> _session({
+  List<Map<String, dynamic>>? savedExpenses,
+  bool failCategoryOnce = false,
+}) async {
+  final categories = [
+    for (final c in expenseCategories)
+      {'code': c.code, 'label': c.label, 'emoji': c.emoji},
+  ];
+  var categoryAttempts = 0;
   final client = MockClient((request) async {
     final path = request.url.path;
     Object? data;
@@ -91,6 +101,29 @@ Future<WoSession> _session() async {
         'installed_plugins': [],
         'unread_count': 0,
       };
+    } else if (path.endsWith('/plugins/accounting/categories')) {
+      if (request.method == 'POST') {
+        categoryAttempts++;
+        if (failCategoryOnce && categoryAttempts == 1) {
+          return http.Response(
+            jsonEncode({
+              'success': false,
+              'error': {'code': 'VALIDATION_ERROR', 'message': '新增失败，请重试'},
+            }),
+            422,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        final payload = jsonDecode(request.body) as Map<String, dynamic>;
+        categories.add({
+          'code': 'c_travel',
+          'label': payload['label'] as String,
+          'emoji': payload['emoji'] as String,
+        });
+        data = categories.last;
+      } else {
+        data = categories;
+      }
     } else if (path.endsWith('/plugins/accounting/summary')) {
       data = {
         'month_total': '150.00',
@@ -99,8 +132,19 @@ Future<WoSession> _session() async {
         'budgeted_total': '150.00',
         'excluded_total': '0',
       };
+    } else if (path.endsWith('/plugins/accounting/transactions') &&
+        request.method == 'POST') {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      data = _expenseJson(
+        id: 'new',
+        amount: payload['amount'].toString(),
+        category: payload['category'] as String,
+        note: '',
+      );
+      savedExpenses?.add(data as Map<String, dynamic>);
     } else if (path.endsWith('/plugins/accounting/transactions')) {
       data = [
+        ...?savedExpenses,
         _expenseJson(
           id: 'e1',
           amount: '70.00',
@@ -142,6 +186,95 @@ Widget _app(WoSession session) => WoScope(
     );
 
 void main() {
+  testWidgets('新增分类失败可重试，保存后自动选中并用于记账', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final saved = <Map<String, dynamic>>[];
+    final session =
+        await _session(savedExpenses: saved, failCategoryOnce: true);
+    await tester.pumpWidget(_app(session));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(WoFloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新增分类'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存分类'));
+    await tester.pumpAndSettle();
+    expect(find.text('请输入分类名称'), findsOneWidget);
+    final name = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(name, '餐饮');
+    await tester.tap(find.text('保存分类'));
+    await tester.pumpAndSettle();
+    expect(find.text('分类名称已存在'), findsOneWidget);
+    await tester.enterText(name, '旅行');
+    await tester.tap(find.text('✈️'));
+    await tester.tap(find.text('保存分类'));
+    await tester.pumpAndSettle();
+    expect(find.text('新增失败，请重试'), findsOneWidget);
+    expect(find.text('旅行'), findsOneWidget);
+    await tester.tap(find.text('保存分类'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('旅行'), findsOneWidget);
+    await tester.tap(find.text('8'));
+    await tester.pump();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(saved.single['category'], 'c_travel');
+    expect(find.textContaining('旅行'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('取消记账后重新打开仍能选择已保存分类', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final session = await _session();
+    await tester.pumpWidget(_app(session));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(WoFloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新增分类'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      '旅行',
+    );
+    await tester.tap(find.text('保存分类'));
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.text('旅行'))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(WoFloatingActionButton));
+    await tester.pumpAndSettle();
+    expect(find.text('旅行'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('custom categories remain separate from unknown categories', () {
+    const travel = ExpenseCategory('c_travel', '旅行', '✈️');
+    final result = buildCategoryExpenseBreakdown(
+      [
+        _expense(id: '1', amount: 80, category: travel.code),
+        _expense(id: '2', amount: 20, category: 'unknown'),
+      ],
+      categories: [
+        ...expenseCategories,
+        travel,
+      ],
+    );
+    expect(result.map((item) => item.category.label), ['旅行', '其他']);
+    expect(result.first.fraction, 0.8);
+    expect(
+      categoryFor(travel.code, [...expenseCategories, travel]).emoji,
+      '✈️',
+    );
+  });
+
   test('category breakdown totals amounts, counts, and fractions', () {
     final result = buildCategoryExpenseBreakdown([
       _expense(id: '1', amount: 70, category: 'dining'),

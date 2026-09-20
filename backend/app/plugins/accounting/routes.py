@@ -9,6 +9,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, File, UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.api.deps import SessionDep
@@ -18,11 +19,18 @@ from app.core.errors import AppError, ErrorCode
 from app.core.images import validate_image
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
+from app.plugins.accounting.categories import (
+    BUILTIN_CATEGORIES,
+    family_categories,
+    validate_category,
+)
 from app.plugins.accounting.models import (
-    ALLOWED_CATEGORIES,
     Budget,
     BudgetRead,
     BudgetUpdate,
+    CategoryCreate,
+    CategoryRead,
+    CustomCategory,
     SummaryRead,
     Transaction,
     TransactionCreate,
@@ -46,14 +54,35 @@ router = APIRouter(
 )
 
 
-def _validate_category(category: str) -> None:
-    if category not in ALLOWED_CATEGORIES:
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            f"未知标签：{category}",
-            status_code=422,
-            details={"allowed": list(ALLOWED_CATEGORIES)},
-        )
+@router.get("/categories", response_model=ApiResponse[list[CategoryRead]])
+async def list_categories(
+    family_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[list[CategoryRead]]:
+    await require_membership(session, current_user.id, family_id)
+    return ok(await family_categories(session, family_id))
+
+
+@router.post("/categories", response_model=ApiResponse[CategoryRead], status_code=201)
+async def create_category(
+    family_id: UUID,
+    payload: CategoryCreate,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[CategoryRead]:
+    await require_membership(session, current_user.id, family_id)
+    if any(c.label == payload.label for c in BUILTIN_CATEGORIES):
+        raise AppError(ErrorCode.VALIDATION_ERROR, "分类名称已存在", status_code=422)
+    row = CustomCategory(family_id=family_id, **payload.model_dump())
+    session.add(row)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise AppError(ErrorCode.VALIDATION_ERROR, "分类名称已存在", status_code=422) from exc
+    await session.refresh(row)
+    return ok(CategoryRead.model_validate(row))
 
 
 @router.get("/transactions", response_model=ApiResponse[list[TransactionRead]])
@@ -90,7 +119,7 @@ async def create_transaction(
     current_user: CurrentUserDep,
 ) -> ApiResponse[TransactionRead]:
     await require_membership(session, current_user.id, family_id)
-    _validate_category(payload.category)
+    await validate_category(session, family_id, payload.category)
     row = Transaction(
         **payload.model_dump(),
         family_id=family_id,
@@ -120,7 +149,7 @@ async def update_transaction(
         raise AppError(ErrorCode.NOT_FOUND, "支出记录不存在", status_code=404)
     updates = payload.model_dump(exclude_unset=True)
     if "category" in updates and updates["category"] is not None:
-        _validate_category(updates["category"])
+        await validate_category(session, family_id, updates["category"])
     for key, value in updates.items():
         setattr(row, key, value)
     session.add(row)
@@ -236,9 +265,7 @@ async def receipt_scan(
     content_type, _ext, _w, _h = validate_image(content)
 
     try:
-        draft = await scan_receipt(
-            session, family_id, content, content_type=content_type
-        )
+        draft = await scan_receipt(session, family_id, content, content_type=content_type)
     except AiNotConfiguredError as exc:
         # Surface the actionable message (points the user at AI 集成设置).
         raise AppError(ErrorCode.INTERNAL, str(exc), status_code=503) from exc

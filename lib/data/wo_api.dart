@@ -897,6 +897,26 @@ class WoApi {
   }
 
   // ── 记账插件 ────────────────────────────────────────────────
+  Future<List<ExpenseCategory>> accountingCategories(String familyId) async {
+    final data = await _client
+        .get('/families/$familyId/plugins/accounting/categories') as List;
+    return data
+        .map((e) => ExpenseCategory.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ExpenseCategory> createAccountingCategory(
+    String familyId, {
+    required String label,
+    required String emoji,
+  }) async {
+    final data = await _client.post(
+      '/families/$familyId/plugins/accounting/categories',
+      body: {'label': label, 'emoji': emoji},
+    );
+    return ExpenseCategory.fromJson(data as Map<String, dynamic>);
+  }
+
   Future<List<Expense>> expenses(
     String familyId, {
     int? year,

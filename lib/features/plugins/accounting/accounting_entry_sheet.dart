@@ -5,7 +5,7 @@ import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
-import 'expense_categories.dart';
+import 'accounting_category_dialog.dart';
 
 /// 记一笔 / 编辑支出的底部表单。保存成功后 `Navigator.pop(true)`。
 ///
@@ -13,6 +13,7 @@ import 'expense_categories.dart';
 /// 用户仍可在保存前修改。
 Future<bool?> showExpenseEntrySheet(
   BuildContext context, {
+  required List<ExpenseCategory> categories,
   Expense? existing,
   ReceiptDraft? draft,
 }) {
@@ -20,12 +21,22 @@ Future<bool?> showExpenseEntrySheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _ExpenseEntrySheet(existing: existing, draft: draft),
+    builder: (_) => _ExpenseEntrySheet(
+      categories: categories,
+      existing: existing,
+      draft: draft,
+    ),
   );
 }
 
 class _ExpenseEntrySheet extends StatefulWidget {
-  const _ExpenseEntrySheet({this.existing, this.draft});
+  const _ExpenseEntrySheet({
+    required this.categories,
+    this.existing,
+    this.draft,
+  });
+
+  final List<ExpenseCategory> categories;
 
   final Expense? existing;
   final ReceiptDraft? draft;
@@ -35,6 +46,7 @@ class _ExpenseEntrySheet extends StatefulWidget {
 }
 
 class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
+  late List<ExpenseCategory> _categories;
   late String _category;
   late final TextEditingController _note;
   late final FocusNode _noteFocus;
@@ -59,14 +71,16 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
   @override
   void initState() {
     super.initState();
+    _categories = List.of(widget.categories);
     final e = widget.existing;
-    // 拍小票草稿仅在新增时预填；分类要落在内置标签里才采用，否则回退到默认。
+    // 拍小票草稿仅在新增时预填；分类要落在家庭分类里才采用，否则回退到默认。
     final d = e == null ? widget.draft : null;
-    final draftCat =
-        d != null && expenseCategories.any((c) => c.code == d.category)
-            ? d.category
-            : null;
-    _category = e?.category ?? draftCat ?? expenseCategories.first.code;
+    final draftCat = d != null && _categories.any((c) => c.code == d.category)
+        ? d.category
+        : null;
+    _category = e?.category ??
+        draftCat ??
+        (_categories.isEmpty ? 'dining' : _categories.first.code);
     _input = e != null
         ? _trimAmount(e.amount)
         : (d?.amount != null ? _trimAmount(d!.amount!) : '');
@@ -74,6 +88,28 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
     _excludeFromBudget = e?.excludeFromBudget ?? false;
     _noteFocus = FocusNode();
     _noteFocus.addListener(_onNoteFocusChange);
+  }
+
+  Future<void> _addCategory() async {
+    _noteFocus.unfocus();
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    final category = await showWoDialog<ExpenseCategory>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AccountingCategoryDialog(
+        api: session.api,
+        familyId: familyId,
+        categories: _categories,
+      ),
+    );
+    if (category != null && mounted) {
+      setState(() {
+        _categories = [..._categories, category];
+        _category = category.code;
+      });
+    }
   }
 
   void _onNoteFocusChange() {
@@ -367,16 +403,26 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                         onTap: () => _noteFocus.unfocus(),
                       ),
                       const SizedBox(height: WoTokens.space4),
-                      Text(
-                        '标签',
-                        style: t.titleSmall?.copyWith(color: wo.fgMid),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '分类',
+                            style: t.titleSmall?.copyWith(color: wo.fgMid),
+                          ),
+                          WoTextButton.icon(
+                            onPressed: _submitting ? null : _addCategory,
+                            icon: const Icon(Icons.add),
+                            label: const Text('新增分类'),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: WoTokens.space3),
                       Wrap(
                         spacing: WoTokens.space2,
                         runSpacing: WoTokens.space2,
                         children: [
-                          for (final c in expenseCategories)
+                          for (final c in _categories)
                             _CategoryChip(
                               category: c,
                               selected: c.code == _category,

@@ -15,7 +15,11 @@ import 'accounting_analysis_view.dart';
 import 'accounting_entry_sheet.dart';
 import 'expense_categories.dart';
 
-typedef _AccountingData = ({AccountingSummary summary, List<Expense> expenses});
+typedef _AccountingData = ({
+  AccountingSummary summary,
+  List<Expense> expenses,
+  List<ExpenseCategory> categories
+});
 
 enum _AccountingView { details, analysis }
 
@@ -70,6 +74,7 @@ class _AccountingPageState extends State<AccountingPage> {
             (
               summary: const AccountingSummary(monthTotal: 0),
               expenses: const <Expense>[],
+              categories: expenseCategories,
             ),
           )
         : _load(session, familyId);
@@ -86,7 +91,8 @@ class _AccountingPageState extends State<AccountingPage> {
       year: _selected.year,
       month: _selected.month,
     );
-    return (summary: summary, expenses: expenses);
+    final categories = await session.api.accountingCategories(familyId);
+    return (summary: summary, expenses: expenses, categories: categories);
   }
 
   void _store(_AccountingData data) {
@@ -119,8 +125,33 @@ class _AccountingPageState extends State<AccountingPage> {
   }
 
   Future<void> _addExpense() async {
-    final changed = await showExpenseEntrySheet(context);
-    if (changed == true) await _refreshSilently();
+    await _openEntry();
+  }
+
+  bool _openingEntry = false;
+
+  Future<void> _openEntry({Expense? existing, ReceiptDraft? draft}) async {
+    if (_openingEntry) return;
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    _openingEntry = true;
+    try {
+      final categories = await session.api.accountingCategories(familyId);
+      if (!mounted) return;
+      await showExpenseEntrySheet(
+        context,
+        categories: categories,
+        existing: existing,
+        draft: draft,
+      );
+      // 新增分类后即使取消记账，分类也已保存；静默同步到主页。
+      if (mounted) await _refreshSilently();
+    } catch (error) {
+      if (mounted) _toast(error);
+    } finally {
+      _openingEntry = false;
+    }
   }
 
   /// 拍小票：选图 → AI 识别一笔草稿 → 预填「记一笔」表单供确认。识别失败也照常
@@ -175,13 +206,11 @@ class _AccountingPageState extends State<AccountingPage> {
     if (error != null) _toast(error);
 
     // 识别成功就预填草稿；失败则 draft 为空，打开空白表单手填。
-    final changed = await showExpenseEntrySheet(context, draft: draft);
-    if (changed == true) await _refreshSilently();
+    await _openEntry(draft: draft);
   }
 
   Future<void> _editExpense(Expense e) async {
-    final changed = await showExpenseEntrySheet(context, existing: e);
-    if (changed == true) await _refreshSilently();
+    await _openEntry(existing: e);
   }
 
   Future<void> _onLongPress(Expense e) async {
@@ -363,6 +392,7 @@ class _AccountingPageState extends State<AccountingPage> {
             for (var index = 0; index < data.expenses.length; index++) ...[
               _ExpenseTile(
                 expense: data.expenses[index],
+                categories: data.categories,
                 onLongPress: () => _onLongPress(data.expenses[index]),
               ),
               if (index != data.expenses.length - 1)
@@ -371,8 +401,10 @@ class _AccountingPageState extends State<AccountingPage> {
         ] else
           AccountingAnalysisView(
             expenses: data.expenses,
+            categories: data.categories,
             expenseBuilder: (expense) => _ExpenseTile(
               expense: expense,
+              categories: data.categories,
               onLongPress: () => _onLongPress(expense),
             ),
           ),
@@ -561,7 +593,13 @@ class _StatItem extends StatelessWidget {
 }
 
 class _ExpenseTile extends StatelessWidget {
-  const _ExpenseTile({required this.expense, required this.onLongPress});
+  const _ExpenseTile({
+    required this.expense,
+    required this.categories,
+    required this.onLongPress,
+  });
+
+  final List<ExpenseCategory> categories;
 
   final Expense expense;
   final VoidCallback onLongPress;
@@ -570,7 +608,7 @@ class _ExpenseTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    final cat = categoryFor(expense.category);
+    final cat = categoryFor(expense.category, categories);
     final who = expense.creatorName ?? '家人';
     final whoEmoji = expense.creatorEmoji ?? '👤';
     final created = expense.createdAt;

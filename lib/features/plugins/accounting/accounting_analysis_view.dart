@@ -21,13 +21,14 @@ class CategoryExpenseBreakdown {
   final double fraction;
 }
 
-/// 按内置分类顺序汇总支出；未知分类统一归入「其他」。
+/// 按家庭分类顺序汇总支出；未知分类统一归入「其他」。
 List<CategoryExpenseBreakdown> buildCategoryExpenseBreakdown(
-  List<Expense> expenses,
-) {
+  List<Expense> expenses, {
+  List<ExpenseCategory> categories = expenseCategories,
+}) {
   final totals = <String, double>{};
   final counts = <String, int>{};
-  final knownCodes = expenseCategories.map((item) => item.code).toSet();
+  final knownCodes = categories.map((item) => item.code).toSet();
   for (final expense in expenses) {
     final code =
         knownCodes.contains(expense.category) ? expense.category : 'other';
@@ -41,9 +42,9 @@ List<CategoryExpenseBreakdown> buildCategoryExpenseBreakdown(
   final total = totals.values.fold<double>(0, (sum, value) => sum + value);
   if (total <= 0) return const [];
   const other = ExpenseCategory('other', '其他', '💰');
-  final categories = [...expenseCategories, other];
+  final allCategories = [...categories, other];
   return [
-    for (final category in categories)
+    for (final category in allCategories)
       if ((totals[category.code] ?? 0) > 0)
         CategoryExpenseBreakdown(
           category: category,
@@ -58,10 +59,12 @@ class AccountingAnalysisView extends StatefulWidget {
   const AccountingAnalysisView({
     super.key,
     required this.expenses,
+    this.categories = expenseCategories,
     required this.expenseBuilder,
   });
 
   final List<Expense> expenses;
+  final List<ExpenseCategory> categories;
   final Widget Function(Expense expense) expenseBuilder;
 
   @override
@@ -78,6 +81,7 @@ class _AccountingAnalysisViewState extends State<AccountingAnalysisView> {
     if (selected != null &&
         !buildCategoryExpenseBreakdown(
           widget.expenses,
+          categories: widget.categories,
         ).any((item) => item.category.code == selected)) {
       _selectedCategory = null;
     }
@@ -85,12 +89,15 @@ class _AccountingAnalysisViewState extends State<AccountingAnalysisView> {
 
   bool _matches(Expense expense, String category) {
     if (category != 'other') return expense.category == category;
-    return !expenseCategories.any((item) => item.code == expense.category);
+    return !widget.categories.any((item) => item.code == expense.category);
   }
 
   @override
   Widget build(BuildContext context) {
-    final breakdown = buildCategoryExpenseBreakdown(widget.expenses);
+    final breakdown = buildCategoryExpenseBreakdown(
+      widget.expenses,
+      categories: widget.categories,
+    );
     if (breakdown.isEmpty) return const _EmptyAnalysis();
     final selected = _selectedCategory;
     final filtered = selected == null
@@ -330,7 +337,17 @@ Color _categoryColor(String code) => switch (code) {
       'car' => const Color(0xFF6F9FB3),
       'pet' => const Color(0xFFC982A8),
       'subscription' => const Color(0xFF7E86B8),
-      _ => const Color(0xFF9A9085),
+      'other' => const Color(0xFF9A9085),
+      _ => const [
+          Color(0xFFB66A4E),
+          Color(0xFF5D8B88),
+          Color(0xFF8C79A8),
+          Color(0xFFB49A50),
+          Color(0xFF6D8A58),
+          Color(0xFFAC7390),
+        ][code.codeUnits
+                .fold<int>(0, (hash, unit) => (hash * 31 + unit) & 0x7fffffff) %
+            6],
     };
 
 String _money(double value) {

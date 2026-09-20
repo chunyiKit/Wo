@@ -1,14 +1,8 @@
-/// 内置支出标签：餐饮、零食、购物、水电、养车、宠物、软件/订阅。
-///
-/// 后端只存 [code]（稳定标识），label/emoji 在客户端定义。
-class ExpenseCategory {
-  const ExpenseCategory(this.code, this.label, this.emoji);
+import '../../../data/models.dart';
 
-  final String code;
-  final String label;
-  final String emoji;
-}
+export '../../../data/models.dart' show ExpenseCategory;
 
+/// 内置分类用于默认值；实际家庭分类由服务端返回。
 const expenseCategories = <ExpenseCategory>[
   ExpenseCategory('dining', '餐饮', '🍜'),
   ExpenseCategory('snack', '零食', '🍭'),
@@ -19,7 +13,11 @@ const expenseCategories = <ExpenseCategory>[
   ExpenseCategory('subscription', '软件/订阅', '💳'),
 ];
 
-ExpenseCategory categoryFor(String code) => expenseCategories.firstWhere(
+ExpenseCategory categoryFor(
+  String code, [
+  List<ExpenseCategory> categories = expenseCategories,
+]) =>
+    categories.firstWhere(
       (c) => c.code == code,
       orElse: () => const ExpenseCategory('', '其他', '💰'),
     );

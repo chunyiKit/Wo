@@ -1,7 +1,7 @@
 """Receipt scanning — turn a photo of a 小票 / 账单 / 付款截图 into a draft expense.
 
 `scan_receipt` inlines the photo to the multimodal model and asks it to extract
-the paid amount, the best-fitting built-in category, the merchant, and a short
+the paid amount, the best-fitting family category, the merchant, and a short
 note. It returns a *draft* only — nothing is written to the ledger and the photo
 is never persisted. The client pre-fills the 记一笔 form with the draft so the
 user reviews and confirms before saving (mirrors plant: AI suggestions are never
@@ -25,6 +25,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.plugins.accounting.categories import family_categories
 from app.plugins.accounting.models import ALLOWED_CATEGORIES
 from app.services.ai import AiError, ai_complete_vision
 
@@ -94,8 +95,8 @@ def _coerce_amount(value: Any) -> Decimal | None:
     return amount.quantize(Decimal("0.01"))
 
 
-def _coerce_category(value: Any) -> str:
-    if isinstance(value, str) and value.strip() in ALLOWED_CATEGORIES:
+def _coerce_category(value: Any, allowed: tuple[str, ...]) -> str:
+    if isinstance(value, str) and value.strip() in allowed:
         return value.strip()
     return _DEFAULT_CATEGORY
 
@@ -107,8 +108,8 @@ def _coerce_text(value: Any, *, limit: int) -> str | None:
     return cleaned[:limit] or None
 
 
-def _build_prompt() -> str:
-    cats = "\n".join(f'- "{code}"：{hint}' for code, hint in _CATEGORY_HINTS.items())
+def _build_prompt(hints: dict[str, str]) -> str:
+    cats = json.dumps(hints, ensure_ascii=False)
     return (
         "请识别这张图片里的一笔消费，返回一个 JSON 对象，字段如下：\n"
         '"amount"：实付总金额（数字，人民币元；识别不到填 null）；\n'
@@ -119,7 +120,9 @@ def _build_prompt() -> str:
     )
 
 
-def parse_receipt_json(raw: str) -> ReceiptScanResult:
+def parse_receipt_json(
+    raw: str, allowed: tuple[str, ...] = ALLOWED_CATEGORIES
+) -> ReceiptScanResult:
     """Parse the model's text answer into a validated draft. Pure function.
 
     Raises `AiError` when the answer isn't a usable JSON object.
@@ -137,7 +140,7 @@ def parse_receipt_json(raw: str) -> ReceiptScanResult:
     # is never empty when we did recognize a shop.
     return ReceiptScanResult(
         amount=_coerce_amount(data.get("amount")),
-        category=_coerce_category(data.get("category")),
+        category=_coerce_category(data.get("category"), allowed),
         merchant=merchant,
         note=note or merchant,
     )
@@ -155,17 +158,19 @@ async def scan_receipt(
     Raises `AiNotConfiguredError` when the family has no multimodal model set and
     `AiError` on a provider/transport failure or an unparseable answer.
     """
+    categories = await family_categories(session, family_id)
+    hints = {c.code: _CATEGORY_HINTS.get(c.code, c.label) for c in categories}
     result = await ai_complete_vision(
         session=session,
         family_id=family_id,
         ai_type="multimodal",
         system=_SYSTEM_PROMPT,
-        user=_build_prompt(),
+        user=_build_prompt(hints),
         image_data=image_data,
         content_type=content_type,
         max_tokens=_MAX_TOKENS,
     )
-    return parse_receipt_json(result.content)
+    return parse_receipt_json(result.content, tuple(hints))
 
 
 __all__ = ["ReceiptScanResult", "parse_receipt_json", "scan_receipt"]

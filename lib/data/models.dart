@@ -503,6 +503,21 @@ class Anniversary {
       );
 }
 
+/// 支出分类，内置代码和家庭自定义代码使用同一个模型。
+class ExpenseCategory {
+  const ExpenseCategory(this.code, this.label, this.emoji);
+
+  final String code;
+  final String label;
+  final String emoji;
+
+  factory ExpenseCategory.fromJson(Map<String, dynamic> j) => ExpenseCategory(
+        j['code'] as String,
+        j['label'] as String,
+        j['emoji'] as String,
+      );
+}
+
 class Expense {
   const Expense({
     required this.id,
