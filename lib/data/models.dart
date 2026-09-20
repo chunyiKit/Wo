@@ -1462,7 +1462,7 @@ class CalendarItem {
 /// 订阅管家插件 · 一条订阅 / 定期账单（对应后端 subscription_items / SubscriptionRead）。
 ///
 /// [cycle] 为 monthly / yearly。到期时若 [autoRecord] 且家庭装了记账，后端会自动把这笔
-/// 扣费记进账本（订阅分类）并把 [nextDue] 顺延一个周期。[daysUntil] 由后端算好。
+/// 扣费按 [accountingCategory] 和 [excludeFromBudget] 记进账本并把 [nextDue] 顺延一个周期。[daysUntil] 由后端算好。
 class Subscription {
   const Subscription({
     required this.id,
@@ -1476,6 +1476,8 @@ class Subscription {
     this.notifyEnabled = true,
     this.notifyDaysBefore = 3,
     this.autoRecord = true,
+    this.accountingCategory = 'subscription',
+    this.excludeFromBudget = false,
     this.active = true,
     this.daysUntil = 0,
     this.createdAt,
@@ -1500,6 +1502,10 @@ class Subscription {
   /// 到期是否自动记入「记账」（仅当家庭装了记账才会真正写入）。
   final bool autoRecord;
 
+  /// 自动生成账单使用的家庭分类和预算选项。
+  final String accountingCategory;
+  final bool excludeFromBudget;
+
   /// 是否启用；暂停的订阅不提醒也不扣费。
   final bool active;
 
@@ -1522,6 +1528,9 @@ class Subscription {
         notifyEnabled: j['notify_enabled'] as bool? ?? true,
         notifyDaysBefore: (j['notify_days_before'] as num?)?.toInt() ?? 3,
         autoRecord: j['auto_record'] as bool? ?? true,
+        accountingCategory:
+            j['accounting_category'] as String? ?? 'subscription',
+        excludeFromBudget: j['exclude_from_budget'] as bool? ?? false,
         active: j['active'] as bool? ?? true,
         daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
         createdAt: _parseDate(j['created_at']),

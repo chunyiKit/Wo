@@ -15,6 +15,7 @@ from app.core.auth import CurrentUserDep
 from app.core.errors import AppError, ErrorCode
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, ok
+from app.plugins.accounting.categories import validate_category
 from app.plugins.subscription.models import (
     Subscription,
     SubscriptionCreate,
@@ -63,9 +64,7 @@ async def list_subscriptions(
     return ok([build_read(r) for r in rows])
 
 
-@router.post(
-    "/subscriptions", response_model=ApiResponse[SubscriptionRead], status_code=201
-)
+@router.post("/subscriptions", response_model=ApiResponse[SubscriptionRead], status_code=201)
 async def create_subscription(
     family_id: UUID,
     payload: SubscriptionCreate,
@@ -74,6 +73,7 @@ async def create_subscription(
 ) -> ApiResponse[SubscriptionRead]:
     await require_membership(session, current_user.id, family_id)
     name = _validate(payload.name, payload.amount)
+    await validate_category(session, family_id, payload.accounting_category)
     row = Subscription(
         **payload.model_dump(),
         family_id=family_id,
@@ -86,9 +86,7 @@ async def create_subscription(
     return ok(build_read(row))
 
 
-@router.put(
-    "/subscriptions/{sub_id}", response_model=ApiResponse[SubscriptionRead]
-)
+@router.put("/subscriptions/{sub_id}", response_model=ApiResponse[SubscriptionRead])
 async def update_subscription(
     family_id: UUID,
     sub_id: UUID,
@@ -99,6 +97,11 @@ async def update_subscription(
     await require_membership(session, current_user.id, family_id)
     row = await _load(session, family_id, sub_id)
     updates = payload.model_dump(exclude_unset=True)
+    for field in ("accounting_category", "exclude_from_budget"):
+        if field in updates and updates[field] is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "记账设置不能为空", status_code=422)
+    if "accounting_category" in updates:
+        await validate_category(session, family_id, updates["accounting_category"])
     if "name" in updates and updates["name"] is not None:
         updates["name"] = _validate(updates["name"], row.amount)
     if "amount" in updates and updates["amount"] is not None and updates["amount"] <= 0:

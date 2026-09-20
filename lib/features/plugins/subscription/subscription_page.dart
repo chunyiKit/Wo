@@ -7,6 +7,7 @@ import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/wo_card.dart';
+import '../accounting/accounting_category_dialog.dart';
 
 String _money(double v) =>
     v == v.roundToDouble() ? '¥${v.toInt()}' : '¥${v.toStringAsFixed(2)}';
@@ -362,6 +363,12 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
   bool _notify = true;
   int _notifyDaysBefore = 3;
   bool _autoRecord = true;
+  String _accountingCategory = 'subscription';
+  bool _excludeFromBudget = false;
+  List<ExpenseCategory>? _categories;
+  bool _categoriesRequested = false;
+  bool _loadingCategories = false;
+  String? _categoryError;
   bool _submitting = false;
 
   bool get _isEditing => widget.existing != null;
@@ -381,6 +388,58 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
     _notify = s?.notifyEnabled ?? true;
     _notifyDaysBefore = s?.notifyDaysBefore ?? 3;
     _autoRecord = s?.autoRecord ?? true;
+    _accountingCategory = s?.accountingCategory ?? 'subscription';
+    _excludeFromBudget = s?.excludeFromBudget ?? false;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_categoriesRequested) {
+      _categoriesRequested = true;
+      _loadCategories();
+    }
+  }
+
+  Future<void> _loadCategories() async {
+    if (_loadingCategories) return;
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (familyId == null) return;
+    setState(() {
+      _loadingCategories = true;
+      _categoryError = null;
+    });
+    try {
+      final categories = await session.api.accountingCategories(familyId);
+      if (mounted) setState(() => _categories = categories);
+    } catch (_) {
+      if (mounted) setState(() => _categoryError = '分类加载失败，已保留当前设置');
+    } finally {
+      if (mounted) setState(() => _loadingCategories = false);
+    }
+  }
+
+  Future<void> _addCategory() async {
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    final categories = _categories;
+    if (familyId == null || categories == null) return;
+    final category = await showWoDialog<ExpenseCategory>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AccountingCategoryDialog(
+        api: session.api,
+        familyId: familyId,
+        categories: categories,
+      ),
+    );
+    if (category != null && mounted) {
+      setState(() {
+        _categories = [...categories, category];
+        _accountingCategory = category.code;
+      });
+    }
   }
 
   @override
@@ -438,6 +497,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
           notifyEnabled: _notify,
           notifyDaysBefore: _notifyDaysBefore,
           autoRecord: _autoRecord,
+          accountingCategory: _accountingCategory,
+          excludeFromBudget: _excludeFromBudget,
         );
       } else {
         await session.api.createSubscription(
@@ -451,6 +512,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
           notifyEnabled: _notify,
           notifyDaysBefore: _notifyDaysBefore,
           autoRecord: _autoRecord,
+          accountingCategory: _accountingCategory,
+          excludeFromBudget: _excludeFromBudget,
         );
       }
       if (mounted) nav.pop(true);
@@ -584,6 +647,82 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 ),
                 onChanged: (v) => setState(() => _autoRecord = v),
               ),
+              if (_autoRecord) ...[
+                const SizedBox(height: WoTokens.space3),
+                if (_categories != null) ...[
+                  WoDropdownButtonFormField<String>(
+                    key: ValueKey('accounting-category-$_accountingCategory'),
+                    value:
+                        _categories!.any((c) => c.code == _accountingCategory)
+                            ? _accountingCategory
+                            : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: '账单分类'),
+                    items: [
+                      for (final category in _categories!)
+                        DropdownMenuItem(
+                          value: category.code,
+                          child: Text(
+                            '${category.emoji} ${category.label}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: _submitting
+                        ? null
+                        : (value) {
+                            if (value != null) {
+                              setState(() => _accountingCategory = value);
+                            }
+                          },
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: WoTextButton.icon(
+                      onPressed: _submitting ? null : _addCategory,
+                      icon: const Icon(Icons.add),
+                      label: const Text('新增分类'),
+                    ),
+                  ),
+                ] else if (_loadingCategories)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: WoTokens.space3),
+                    child: Text('正在加载账单分类…'),
+                  ),
+                if (_categoryError != null)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _categoryError!,
+                          style: TextStyle(color: wo.fgMid),
+                        ),
+                      ),
+                      WoTextButton(
+                        onPressed: _loadCategories,
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                WoSwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: !_excludeFromBudget,
+                  activeColor: wo.subscribe,
+                  title: const Text('计入月预算'),
+                  subtitle: Text(
+                    _excludeFromBudget ? '仍计入本月支出，但不扣减预算' : '自动生成的账单会扣减当月预算',
+                    style: t.labelSmall?.copyWith(color: wo.fgMid),
+                  ),
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() => _excludeFromBudget = !value),
+                ),
+                Text(
+                  '修改仅影响之后自动生成的账单。',
+                  style: t.labelSmall?.copyWith(color: wo.fgMid),
+                ),
+                const SizedBox(height: WoTokens.space3),
+              ],
               WoSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _notify,

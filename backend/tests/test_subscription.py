@@ -18,9 +18,7 @@ BASE = "/api/v1/families/{fid}/plugins/subscription/subscriptions"
 
 
 async def _create_family(client: AsyncClient) -> str:
-    resp = await client.post(
-        "/api/v1/families", json={"name": f"测试-{uuid.uuid4().hex[:6]}"}
-    )
+    resp = await client.post("/api/v1/families", json={"name": f"测试-{uuid.uuid4().hex[:6]}"})
     return resp.json()["data"]["id"]
 
 
@@ -61,12 +59,14 @@ async def _create_sub(client: AsyncClient, fid: str, **overrides) -> dict:
 async def _family_txns(family_id: str) -> list[Transaction]:
     async with async_session_maker() as session:
         rows = (
-            await session.execute(
-                select(Transaction).where(
-                    Transaction.family_id == uuid.UUID(family_id)
+            (
+                await session.execute(
+                    select(Transaction).where(Transaction.family_id == uuid.UUID(family_id))
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
 
@@ -132,6 +132,7 @@ async def test_due_records_to_accounting_and_advances(client: AsyncClient) -> No
     txns = await _family_txns(fid)
     assert len(txns) == 1
     assert txns[0].category == "subscription"
+    assert txns[0].exclude_from_budget is False
     assert str(txns[0].amount) == "30.00"
     assert "Netflix" in (txns[0].note or "")
 
@@ -144,9 +145,7 @@ async def test_due_yearly_advances_one_year(client: AsyncClient) -> None:
     fid = await _create_family(client)
     await _install_accounting(fid)
     today = date.today()
-    sub = await _create_sub(
-        client, fid, cycle="yearly", next_due=today.isoformat()
-    )
+    sub = await _create_sub(client, fid, cycle="yearly", next_due=today.isoformat())
     async with async_session_maker() as session:
         await check_due_subscriptions(session, today=today)
     rolled = await _get_sub(sub["id"])
@@ -194,9 +193,7 @@ async def test_predue_reminder_marks_and_no_advance(client: AsyncClient) -> None
     fid = await _create_family(client)
     today = date.today()
     due = today + timedelta(days=2)
-    sub = await _create_sub(
-        client, fid, next_due=due.isoformat(), notify_days_before=3
-    )
+    sub = await _create_sub(client, fid, next_due=due.isoformat(), notify_days_before=3)
     async with async_session_maker() as session:
         await check_due_subscriptions(session, today=today)
     rolled = await _get_sub(sub["id"])
@@ -248,3 +245,107 @@ async def test_due_then_repoll_charges_once_and_advances(client: AsyncClient) ->
     rolled = await _get_sub(sub["id"])
     assert rolled.next_due == advance_due(today, "monthly")
     assert rolled.last_charged_due == today
+
+
+async def test_default_accounting_options_and_partial_update(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    sub = await _create_sub(client, fid)
+    assert sub["accounting_category"] == "subscription"
+    assert sub["exclude_from_budget"] is False
+    updated = await client.put(
+        BASE.format(fid=fid) + f"/{sub['id']}",
+        json={"accounting_category": "utilities", "exclude_from_budget": True},
+    )
+    assert updated.status_code == 200, updated.text
+    paused = await client.put(BASE.format(fid=fid) + f"/{sub['id']}", json={"active": False})
+    assert paused.json()["data"]["accounting_category"] == "utilities"
+    assert paused.json()["data"]["exclude_from_budget"] is True
+    listed = (await client.get(BASE.format(fid=fid))).json()["data"]
+    assert listed[0]["accounting_category"] == "utilities"
+    assert listed[0]["exclude_from_budget"] is True
+
+
+async def test_custom_category_budget_and_future_charges(client: AsyncClient) -> None:
+    fid = await _create_family(client)
+    await _install_accounting(fid)
+    accounting = f"/api/v1/families/{fid}/plugins/accounting"
+    category = (await client.post(accounting + "/categories", json={"label": "房租"})).json()[
+        "data"
+    ]
+    await client.put(accounting + "/budget", json={"monthly_amount": 1000})
+    sub = await _create_sub(
+        client,
+        fid,
+        accounting_category=category["code"],
+        exclude_from_budget=True,
+    )
+    async with async_session_maker() as session:
+        await check_due_subscriptions(session, today=date.today())
+    txns = await _family_txns(fid)
+    assert len(txns) == 1
+    original_id = txns[0].id
+    assert txns[0].category == category["code"]
+    assert txns[0].exclude_from_budget is True
+    summary = (await client.get(accounting + "/summary")).json()["data"]
+    assert float(summary["month_total"]) == 30
+    assert float(summary["excluded_total"]) == 30
+    assert float(summary["remaining"]) == 1000
+    notifications = (await client.get("/api/v1/notifications")).json()["data"]
+    charged = [
+        n for n in notifications if n["type"] == "subscription_charged" and n["family_id"] == fid
+    ]
+    assert charged and "不计入月预算" in charged[0]["body"]
+    assert "订阅分类" not in charged[0]["body"]
+
+    updated = await client.put(
+        BASE.format(fid=fid) + f"/{sub['id']}",
+        json={"accounting_category": "utilities", "exclude_from_budget": False},
+    )
+    assert updated.status_code == 200
+    next_due = date.fromisoformat(updated.json()["data"]["next_due"])
+    async with async_session_maker() as session:
+        await check_due_subscriptions(session, today=next_due)
+    async with async_session_maker() as session:
+        await check_due_subscriptions(session, today=next_due)
+    txns = await _family_txns(fid)
+    assert len(txns) == 2
+    original = next(t for t in txns if t.id == original_id)
+    following = next(t for t in txns if t.id != original_id)
+    assert original.category == category["code"] and original.exclude_from_budget is True
+    assert following.category == "utilities" and following.exclude_from_budget is False
+    summary = (await client.get(accounting + "/summary")).json()["data"]
+    assert float(summary["month_total"]) == 60
+    assert float(summary["budgeted_total"]) == 30
+    assert float(summary["remaining"]) == 970
+
+
+async def test_accounting_settings_reject_invalid_or_foreign_category(client: AsyncClient) -> None:
+    fid, other = await _create_family(client), await _create_family(client)
+    category = (
+        await client.post(
+            f"/api/v1/families/{other}/plugins/accounting/categories",
+            json={"label": "房租"},
+        )
+    ).json()["data"]
+    sub = await _create_sub(client, fid)
+    for value in ("bogus", category["code"], "", None):
+        created = await client.post(
+            BASE.format(fid=fid),
+            json={
+                "name": "房租",
+                "amount": 100,
+                "next_due": date.today().isoformat(),
+                "accounting_category": value,
+            },
+        )
+        assert created.status_code == 422, created.text
+        updated = await client.put(
+            BASE.format(fid=fid) + f"/{sub['id']}",
+            json={"accounting_category": value},
+        )
+        assert updated.status_code == 422, updated.text
+    updated = await client.put(
+        BASE.format(fid=fid) + f"/{sub['id']}",
+        json={"exclude_from_budget": None},
+    )
+    assert updated.status_code == 422

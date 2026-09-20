@@ -3,7 +3,7 @@
 A single resource — `Subscription`: a recurring bill / subscription a family
 pays monthly or yearly. The plugin reminds before each due date and, when the
 family also has the accounting plugin installed, auto-records the charge as a
-`subscription`-category transaction on the due date.
+transaction with the configured category and budget option on the due date.
 
 Table is `subscription_items` (plugin-prefixed), mirroring the other plugins.
 """
@@ -41,8 +41,10 @@ class SubscriptionBase(SQLModel):
     notify_enabled: bool = Field(default=True)
     notify_days_before: int = Field(default=3, ge=0, le=MAX_NOTIFY_DAYS_BEFORE)
     # When True and the family has the accounting plugin installed, the due-date
-    # charge is auto-recorded as a `subscription` transaction.
+    # charge is auto-recorded using the settings below.
     auto_record: bool = Field(default=True)
+    accounting_category: str = Field(default="subscription", min_length=1, max_length=16)
+    exclude_from_budget: bool = Field(default=False)
     # Paused subscriptions are neither reminded nor charged.
     active: bool = Field(default=True)
 
@@ -68,13 +70,9 @@ class Subscription(SubscriptionBase, table=True):
     )
     # Dedup guards (internal, not exposed in reads):
     # which due date we last sent a pre-due reminder for …
-    last_notified_due: date | None = Field(
-        default=None, sa_column=Column(Date, nullable=True)
-    )
+    last_notified_due: date | None = Field(default=None, sa_column=Column(Date, nullable=True))
     # … and which due date we last processed a charge for.
-    last_charged_due: date | None = Field(
-        default=None, sa_column=Column(Date, nullable=True)
-    )
+    last_charged_due: date | None = Field(default=None, sa_column=Column(Date, nullable=True))
 
 
 class SubscriptionCreate(SubscriptionBase):
@@ -93,10 +91,10 @@ class SubscriptionUpdate(SQLModel):
     next_due: date | None = None
     note: str | None = Field(default=None, max_length=MAX_NOTE_LEN)
     notify_enabled: bool | None = None
-    notify_days_before: int | None = Field(
-        default=None, ge=0, le=MAX_NOTIFY_DAYS_BEFORE
-    )
+    notify_days_before: int | None = Field(default=None, ge=0, le=MAX_NOTIFY_DAYS_BEFORE)
     auto_record: bool | None = None
+    accounting_category: str | None = Field(default=None, min_length=1, max_length=16)
+    exclude_from_budget: bool | None = None
     active: bool | None = None
 
 

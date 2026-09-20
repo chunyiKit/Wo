@@ -1406,6 +1406,8 @@ class WoApi {
     bool notifyEnabled = true,
     int notifyDaysBefore = 3,
     bool autoRecord = true,
+    String accountingCategory = 'subscription',
+    bool excludeFromBudget = false,
   }) async {
     final data = await _client.post(
       '/families/$familyId/plugins/subscription/subscriptions',
@@ -1419,6 +1421,8 @@ class WoApi {
         'notify_enabled': notifyEnabled,
         'notify_days_before': notifyDaysBefore,
         'auto_record': autoRecord,
+        'accounting_category': accountingCategory,
+        'exclude_from_budget': excludeFromBudget,
       },
     );
     return Subscription.fromJson(data as Map<String, dynamic>);
@@ -1436,6 +1440,8 @@ class WoApi {
     bool? notifyEnabled,
     int? notifyDaysBefore,
     bool? autoRecord,
+    String? accountingCategory,
+    bool? excludeFromBudget,
     bool? active,
   }) async {
     final data = await _client.put(
@@ -1450,6 +1456,9 @@ class WoApi {
         if (notifyEnabled != null) 'notify_enabled': notifyEnabled,
         if (notifyDaysBefore != null) 'notify_days_before': notifyDaysBefore,
         if (autoRecord != null) 'auto_record': autoRecord,
+        if (accountingCategory != null)
+          'accounting_category': accountingCategory,
+        if (excludeFromBudget != null) 'exclude_from_budget': excludeFromBudget,
         if (active != null) 'active': active,
       },
     );

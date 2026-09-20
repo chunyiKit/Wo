@@ -85,7 +85,7 @@ class _AccountingCategoryDialogState extends State<AccountingCategoryDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('保存后全家可用，取消记账也会保留此分类。', style: TextStyle(color: wo.fgMid)),
+              Text('保存后全家可用，关闭当前表单也会保留此分类。', style: TextStyle(color: wo.fgMid)),
               const SizedBox(height: WoTokens.space4),
               WoTextField(
                 controller: _name,

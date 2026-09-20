@@ -4,8 +4,8 @@ A daily background pass over active subscriptions:
 
 1. Pre-due reminder: within `notify_days_before` days of `next_due`, emit a
    family notification once per due date (idempotent via `last_notified_due`).
-2. On/after the due date: optionally auto-record the charge as a `subscription`
-   transaction (only when `auto_record` and the family actually has the
+2. On/after the due date: optionally auto-record the charge using its configured
+   category and budget option (only when `auto_record` and the family actually has the
    accounting plugin installed), notify that it was charged, then roll
    `next_due` forward one cycle so the next period re-arms.
 
@@ -35,10 +35,6 @@ from app.services import notification as notification_service
 
 logger = logging.getLogger(__name__)
 
-# The accounting category an auto-recorded charge lands in (must be in
-# accounting's ALLOWED_CATEGORIES).
-_ACCOUNTING_CATEGORY = "subscription"
-
 
 async def _accounting_installed(session: AsyncSession, family_id) -> bool:
     stmt = (
@@ -53,22 +49,21 @@ async def _accounting_installed(session: AsyncSession, family_id) -> bool:
 
 
 async def _record_to_accounting(session: AsyncSession, sub: Subscription) -> None:
-    """Stage a subscription-category transaction for this charge (not committed —
+    """Stage a transaction using this subscription's settings (not committed —
     the caller's commit makes it atomic with the date roll-forward)."""
     session.add(
         Transaction(
             family_id=sub.family_id,
             amount=sub.amount,
-            category=_ACCOUNTING_CATEGORY,
+            category=sub.accounting_category,
+            exclude_from_budget=sub.exclude_from_budget,
             note=f"{sub.name} 订阅扣费",
             created_by=sub.created_by,
         )
     )
 
 
-async def check_due_subscriptions(
-    session: AsyncSession, *, today: date | None = None
-) -> int:
+async def check_due_subscriptions(session: AsyncSession, *, today: date | None = None) -> int:
     """One pass. Returns how many subscriptions had a notification/charge event.
 
     Stages everything (notifications, transactions, date roll-forward) and
@@ -97,7 +92,8 @@ async def check_due_subscriptions(
             amount = format_amount(sub.amount)
             if recorded:
                 title = f"「{sub.name}」已扣费 {amount}"
-                body = "已自动记入「记账」的订阅分类 💳"
+                budget_note = "不计入月预算" if sub.exclude_from_budget else "计入月预算"
+                body = f"已按设置自动记入「记账」，{budget_note} 💳"
             else:
                 title = f"「{sub.name}」到期 {amount}"
                 body = "记得续费哦 💳"
@@ -153,7 +149,5 @@ async def run_subscription_reminder_loop(stop: asyncio.Event) -> None:
         except Exception:  # noqa: BLE001 — the loop must survive transient failures
             logger.exception("subscription reminder check failed")
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(
-                stop.wait(), timeout=settings.subscription_reminder_poll_seconds
-            )
+            await asyncio.wait_for(stop.wait(), timeout=settings.subscription_reminder_poll_seconds)
     logger.info("subscription reminder loop stopped")
