@@ -9,6 +9,7 @@ import '../../data/memory_cache.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
+import '../../widgets/wo_cinema.dart';
 
 /// 启动页：品牌底色 + Wo 圆环标记。浅/深两套配色随 app（系统）主题切换，
 /// 与原生启动屏、应用图标视觉一致。拉取 bootstrap 后决定下一跳：
@@ -86,9 +87,8 @@ class _SplashPageState extends State<SplashPage> {
         setState(() => _error = session.error);
         return;
       }
-      target = session.currentFamily != null
-          ? WoRoutes.home
-          : WoRoutes.joinLanding;
+      target =
+          session.currentFamily != null ? WoRoutes.home : WoRoutes.joinLanding;
       // 转圈期间后台预热「回忆」媒体：杀进程重进后内存缓存没了，这里用磁盘已有内容
       // 把媒体重新拉热（离线可用），并顺带网络刷新，让随后进回忆秒开。不阻塞跳转。
       unawaited(
@@ -117,8 +117,7 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final palette = isDark ? _SplashPalette.dark : _SplashPalette.light;
+    const palette = _SplashPalette.dark;
     final hasError = _error != null;
 
     return WoScaffold(
@@ -127,63 +126,68 @@ class _SplashPageState extends State<SplashPage> {
         opacity: _opacity,
         duration: _fadeDuration,
         curve: Curves.easeOut,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 132,
-                height: 132,
-                child: CustomPaint(painter: _WoMarkPainter(palette.mark)),
-              ),
-              const SizedBox(height: 28),
-              Text(
-                'Wo',
-                style: TextStyle(
-                  fontFamily: 'serif',
-                  fontStyle: FontStyle.italic,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 56,
-                  height: 1.0,
-                  color: palette.title,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _tagline,
-                style: TextStyle(
-                  fontSize: 13,
-                  letterSpacing: 3,
-                  color: palette.subtitle,
-                ),
-              ),
-              const SizedBox(height: 36),
-              if (!hasError)
+        child: WoCinemaBackdrop(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: WoProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: palette.mark,
-                  ),
-                )
-              else ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    _error is ApiException
-                        ? (_error as ApiException).message
-                        : _error is NetworkException
-                        ? (_error as NetworkException).message
-                        : '启动失败',
-                    style: TextStyle(fontSize: 13, color: palette.subtitle),
-                    textAlign: TextAlign.center,
+                  width: 132,
+                  height: 132,
+                  child: CustomPaint(painter: _WoMarkPainter(palette.mark)),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  'Wo',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 56,
+                    height: 1.0,
+                    color: palette.title,
                   ),
                 ),
-                const SizedBox(height: 16),
-                WoFilledButton.tonal(onPressed: _boot, child: const Text('重试')),
+                const SizedBox(height: 12),
+                Text(
+                  _tagline,
+                  style: TextStyle(
+                    fontSize: 13,
+                    letterSpacing: 3,
+                    color: palette.subtitle,
+                  ),
+                ),
+                const SizedBox(height: 36),
+                if (!hasError)
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: WoProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: palette.mark,
+                    ),
+                  )
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      _error is ApiException
+                          ? (_error as ApiException).message
+                          : _error is NetworkException
+                              ? (_error as NetworkException).message
+                              : '启动失败',
+                      style: TextStyle(fontSize: 13, color: palette.subtitle),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  WoFilledButton.tonal(
+                    onPressed: _boot,
+                    child: const Text('重试'),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -205,18 +209,11 @@ class _SplashPalette {
   final Color title;
   final Color subtitle;
 
-  static const light = _SplashPalette(
-    bg: Color(0xFFF0E4D0),
-    mark: Color(0xFFA8462E),
-    title: Color(0xFF2A2118),
-    subtitle: Color(0x8C2A2118), // rgba(42,33,24,.55)
-  );
-
   static const dark = _SplashPalette(
-    bg: Color(0xFF1F2733),
-    mark: Color(0xFFF0E4D0),
-    title: Color(0xFFF0E4D0),
-    subtitle: Color(0x8CF0E4D0), // rgba(240,228,208,.55)
+    bg: Color(0xFF160F0D),
+    mark: Color(0xFFFFEAD0),
+    title: Color(0xFFFFEAD0),
+    subtitle: Color(0xFFE9C9A7), // rgba(240,228,208,.55)
   );
 }
 

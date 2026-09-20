@@ -50,10 +50,10 @@ Future<bool> joinFamilyWithCode(BuildContext context, String code) async {
 }
 
 String _errorText(Object e) => switch (e) {
-  ApiException a => a.message,
-  NetworkException a => a.message,
-  _ => '加入失败',
-};
+      ApiException a => a.message,
+      NetworkException a => a.message,
+      _ => '加入失败',
+    };
 
 Future<bool?> _confirm(BuildContext context, InvitationPreview p) {
   final t = Theme.of(context).textTheme;

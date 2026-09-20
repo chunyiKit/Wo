@@ -97,9 +97,7 @@ class _ScanPageState extends State<ScanPage> {
             MobileScanner(
               controller: _controller,
               onDetect: (capture) {
-                final raw = capture.barcodes
-                    .map((b) => b.rawValue)
-                    .firstWhere(
+                final raw = capture.barcodes.map((b) => b.rawValue).firstWhere(
                       (v) => v != null && v.isNotEmpty,
                       orElse: () => null,
                     );

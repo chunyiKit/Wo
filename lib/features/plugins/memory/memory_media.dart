@@ -94,9 +94,9 @@ class MemoryMediaGrid extends StatelessWidget {
     final n = shown.length;
 
     MemoryMediaTile tile(int i) => MemoryMediaTile(
-      media: shown[i],
-      onTap: onTapMedia == null ? null : () => onTapMedia!(i),
-    );
+          media: shown[i],
+          onTap: onTapMedia == null ? null : () => onTapMedia!(i),
+        );
 
     if (n == 1) {
       return ClipRRect(

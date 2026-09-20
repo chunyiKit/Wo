@@ -291,104 +291,106 @@ class _PetDetailPageState extends State<PetDetailPage> {
   }
 
   Widget _heading(String title, String? trailing) => Padding(
-    padding: const EdgeInsets.only(bottom: WoTokens.space2),
-    child: Row(
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-        const Spacer(),
-        if (trailing != null) Text(trailing),
-      ],
-    ),
-  );
+        padding: const EdgeInsets.only(bottom: WoTokens.space2),
+        child: Row(
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            if (trailing != null) Text(trailing),
+          ],
+        ),
+      );
 
   Widget _empty(String text) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: WoTokens.space4),
-    child: Text(text, style: TextStyle(color: context.wo.fgMid)),
-  );
+        padding: const EdgeInsets.symmetric(vertical: WoTokens.space4),
+        child: Text(text, style: TextStyle(color: context.wo.fgMid)),
+      );
 
   Widget _plan(PetCarePlan plan, {bool complete = false}) => Padding(
-    padding: const EdgeInsets.only(bottom: WoTokens.space2),
-    child: WoCard(
-      child: Row(
-        children: [
-          Text(plan.typeEmoji, style: const TextStyle(fontSize: 25)),
-          const SizedBox(width: WoTokens.space3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(plan.name),
-                Text(
-                  plan.nextDueDate == null ? '未设置日期' : _ymd(plan.nextDueDate!),
-                  style: TextStyle(color: context.wo.fgMid),
+        padding: const EdgeInsets.only(bottom: WoTokens.space2),
+        child: WoCard(
+          child: Row(
+            children: [
+              Text(plan.typeEmoji, style: const TextStyle(fontSize: 25)),
+              const SizedBox(width: WoTokens.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(plan.name),
+                    Text(
+                      plan.nextDueDate == null
+                          ? '未设置日期'
+                          : _ymd(plan.nextDueDate!),
+                      style: TextStyle(color: context.wo.fgMid),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              if (complete)
+                WoFilledButton.tonal(
+                  onPressed: _completing.contains(plan.id)
+                      ? null
+                      : () => _complete(plan),
+                  child: Text(_completing.contains(plan.id) ? '处理中' : '完成'),
+                ),
+            ],
           ),
-          if (complete)
-            WoFilledButton.tonal(
-              onPressed: _completing.contains(plan.id)
-                  ? null
-                  : () => _complete(plan),
-              child: Text(_completing.contains(plan.id) ? '处理中' : '完成'),
-            ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 
   Widget _record(PetRecord record) => Padding(
-    padding: const EdgeInsets.only(bottom: WoTokens.space2),
-    child: WoCard(
-      onTap: () => _editRecord(record),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(record.typeEmoji, style: const TextStyle(fontSize: 25)),
-          const SizedBox(width: WoTokens.space3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        padding: const EdgeInsets.only(bottom: WoTokens.space2),
+        child: WoCard(
+          onTap: () => _editRecord(record),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(record.typeEmoji, style: const TextStyle(fontSize: 25)),
+              const SizedBox(width: WoTokens.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: Text(record.name)),
-                    Text(_ymd(record.occurredOn)),
-                  ],
-                ),
-                if (record.weightKg != null)
-                  Text('${record.weightKg!.toStringAsFixed(2)} kg'),
-                if (record.note != null && record.note!.isNotEmpty)
-                  Text(
-                    record.note!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: context.wo.fgMid),
-                  ),
-                const SizedBox(height: WoTokens.space2),
-                Row(
-                  children: [
-                    MemberAvatar(
-                      url: record.creatorAvatarUrl,
-                      emoji: record.creatorEmoji ?? '👤',
-                      size: 20,
+                    Row(
+                      children: [
+                        Expanded(child: Text(record.name)),
+                        Text(_ymd(record.occurredOn)),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Text(record.creatorName ?? '家庭成员'),
-                    if (record.attachments.isNotEmpty) ...[
-                      const Spacer(),
-                      const Icon(Icons.attach_file, size: 16),
-                      Text('${record.attachments.length}'),
-                    ],
+                    if (record.weightKg != null)
+                      Text('${record.weightKg!.toStringAsFixed(2)} kg'),
+                    if (record.note != null && record.note!.isNotEmpty)
+                      Text(
+                        record.note!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: context.wo.fgMid),
+                      ),
+                    const SizedBox(height: WoTokens.space2),
+                    Row(
+                      children: [
+                        MemberAvatar(
+                          url: record.creatorAvatarUrl,
+                          emoji: record.creatorEmoji ?? '👤',
+                          size: 20,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(record.creatorName ?? '家庭成员'),
+                        if (record.attachments.isNotEmpty) ...[
+                          const Spacer(),
+                          const Icon(Icons.attach_file, size: 16),
+                          Text('${record.attachments.length}'),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 }
 
 String _ymd(DateTime date) =>

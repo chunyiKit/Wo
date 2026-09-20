@@ -49,20 +49,20 @@ class _PetSettingsPageState extends State<PetSettingsPage> {
 
   @override
   Widget build(BuildContext context) => WoScaffold(
-    appBar: WoAppBar(title: const Text('档案与照护计划')),
-    body: _data != null
-        ? _content(_data!)
-        : AsyncView<(List<PetCarePlan>, List<PetRecordType>)>(
-            future: _future,
-            onRetry: () {
-              setState(() {
-                _data = null;
-                _future = _fetch()..then(_store);
-              });
-            },
-            builder: (_, data) => _content(_data ?? data),
-          ),
-  );
+        appBar: WoAppBar(title: const Text('档案与照护计划')),
+        body: _data != null
+            ? _content(_data!)
+            : AsyncView<(List<PetCarePlan>, List<PetRecordType>)>(
+                future: _future,
+                onRetry: () {
+                  setState(() {
+                    _data = null;
+                    _future = _fetch()..then(_store);
+                  });
+                },
+                builder: (_, data) => _content(_data ?? data),
+              ),
+      );
 
   Widget _content((List<PetCarePlan>, List<PetRecordType>) data) {
     final plans = data.$1;
@@ -416,69 +416,74 @@ class _PetTypeManagePageState extends State<PetTypeManagePage> {
 
   @override
   Widget build(BuildContext context) => WoScaffold(
-    appBar: WoAppBar(
-      title: const Text('记录类型'),
-      actions: [WoIconButton(onPressed: _edit, icon: const Icon(Icons.add))],
-    ),
-    body: _types == null
-        ? AsyncView<List<PetRecordType>>(
-            future: _future,
-            onRetry: () {},
-            builder: (_, value) => _list(_types ?? value),
-          )
-        : _list(_types!),
-  );
-
-  Widget _list(List<PetRecordType> types) => ReorderableListView.builder(
-    padding: const EdgeInsets.all(WoTokens.space4),
-    itemCount: types.length,
-    onReorderItem: (oldIndex, newIndex) async {
-      final copy = [...types];
-      final item = copy.removeAt(oldIndex);
-      copy.insert(newIndex, item);
-      setState(() => _types = copy);
-      final fid = WoScope.of(context).currentFamilyId!;
-      await WoScope.api(context).reorderPetRecordTypes(
-        fid,
-        copy.where((item) => !item.archived).map((item) => item.id).toList(),
-      );
-    },
-    itemBuilder: (_, index) {
-      final type = types[index];
-      return WoListTile(
-        key: ValueKey(type.id),
-        leading: Text(type.emoji, style: const TextStyle(fontSize: 25)),
-        title: Text(type.name),
-        subtitle: Text(type.isWeight ? '体重（kg）' : '普通记录'),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            WoSwitch(
-              value: !type.archived,
-              onChanged: (enabled) async {
-                final fid = WoScope.of(context).currentFamilyId!;
-                await WoScope.api(
-                  context,
-                ).updatePetRecordType(fid, type.id, archived: !enabled);
-                final copy = [...types];
-                copy[index] = PetRecordType(
-                  id: type.id,
-                  name: type.name,
-                  emoji: type.emoji,
-                  dataKind: type.dataKind,
-                  sortOrder: type.sortOrder,
-                  archived: !enabled,
-                );
-                if (mounted) setState(() => _types = copy);
-              },
-            ),
-            const Icon(Icons.drag_handle),
+        appBar: WoAppBar(
+          title: const Text('记录类型'),
+          actions: [
+            WoIconButton(onPressed: _edit, icon: const Icon(Icons.add)),
           ],
         ),
-        onTap: () => _edit(type),
+        body: _types == null
+            ? AsyncView<List<PetRecordType>>(
+                future: _future,
+                onRetry: () {},
+                builder: (_, value) => _list(_types ?? value),
+              )
+            : _list(_types!),
       );
-    },
-  );
+
+  Widget _list(List<PetRecordType> types) => ReorderableListView.builder(
+        padding: const EdgeInsets.all(WoTokens.space4),
+        itemCount: types.length,
+        onReorderItem: (oldIndex, newIndex) async {
+          final copy = [...types];
+          final item = copy.removeAt(oldIndex);
+          copy.insert(newIndex, item);
+          setState(() => _types = copy);
+          final fid = WoScope.of(context).currentFamilyId!;
+          await WoScope.api(context).reorderPetRecordTypes(
+            fid,
+            copy
+                .where((item) => !item.archived)
+                .map((item) => item.id)
+                .toList(),
+          );
+        },
+        itemBuilder: (_, index) {
+          final type = types[index];
+          return WoListTile(
+            key: ValueKey(type.id),
+            leading: Text(type.emoji, style: const TextStyle(fontSize: 25)),
+            title: Text(type.name),
+            subtitle: Text(type.isWeight ? '体重（kg）' : '普通记录'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                WoSwitch(
+                  value: !type.archived,
+                  onChanged: (enabled) async {
+                    final fid = WoScope.of(context).currentFamilyId!;
+                    await WoScope.api(
+                      context,
+                    ).updatePetRecordType(fid, type.id, archived: !enabled);
+                    final copy = [...types];
+                    copy[index] = PetRecordType(
+                      id: type.id,
+                      name: type.name,
+                      emoji: type.emoji,
+                      dataKind: type.dataKind,
+                      sortOrder: type.sortOrder,
+                      archived: !enabled,
+                    );
+                    if (mounted) setState(() => _types = copy);
+                  },
+                ),
+                const Icon(Icons.drag_handle),
+              ],
+            ),
+            onTap: () => _edit(type),
+          );
+        },
+      );
 }
 
 String _cycle(PetCarePlan plan) {

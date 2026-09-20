@@ -49,11 +49,13 @@ class _TravelCityPageState extends State<TravelCityPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           WoSnackBar(
-            content: Text(switch (e) {
-              ApiException ex => ex.message,
-              NetworkException ex => ex.message,
-              _ => '删除失败',
-            }),
+            content: Text(
+              switch (e) {
+                ApiException ex => ex.message,
+                NetworkException ex => ex.message,
+                _ => '删除失败',
+              },
+            ),
           ),
         );
       }
@@ -80,11 +82,13 @@ class _TravelCityPageState extends State<TravelCityPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           WoSnackBar(
-            content: Text(switch (e) {
-              ApiException ex => ex.message,
-              NetworkException ex => ex.message,
-              _ => '操作失败,请稍后再试',
-            }),
+            content: Text(
+              switch (e) {
+                ApiException ex => ex.message,
+                NetworkException ex => ex.message,
+                _ => '操作失败,请稍后再试',
+              },
+            ),
           ),
         );
       }
@@ -250,7 +254,7 @@ class _Viewer extends StatefulWidget {
 
   /// 置 / 清关联回忆,返回更新后的 trip(失败 null)。由城市页落地调用 API。
   final Future<TravelTrip?> Function(TravelTrip trip, String? memoryId)
-  onSetMemory;
+      onSetMemory;
 
   @override
   State<_Viewer> createState() => _ViewerState();
@@ -345,11 +349,13 @@ class _ViewerState extends State<_Viewer> {
       if (!mounted) return;
       messenger.showSnackBar(
         WoSnackBar(
-          content: Text(switch (e) {
-            ApiException _ => '这段回忆可能已被删除或不可见,可重新关联',
-            NetworkException ex => ex.message,
-            _ => '打开回忆失败',
-          }),
+          content: Text(
+            switch (e) {
+              ApiException _ => '这段回忆可能已被删除或不可见,可重新关联',
+              NetworkException ex => ex.message,
+              _ => '打开回忆失败',
+            },
+          ),
         ),
       );
     }
@@ -537,8 +543,7 @@ class _ViewerState extends State<_Viewer> {
 /// 下载一张图到系统相册。返回错误提示;null 表示成功。
 Future<String?> _saveToGallery(String url, Map<String, String> headers) async {
   try {
-    final ok =
-        await Gal.hasAccess(toAlbum: true) ||
+    final ok = await Gal.hasAccess(toAlbum: true) ||
         await Gal.requestAccess(toAlbum: true);
     if (!ok) return '需要相册权限才能保存';
   } on GalException catch (e) {

@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/api_client.dart';
@@ -236,8 +237,7 @@ class _ChoreListPageState extends State<ChoreListPage> {
                       const SizedBox(height: WoTokens.space3),
                   itemBuilder: (_, i) => _ChoreTile(
                     chore: items[i],
-                    isMine:
-                        items[i].assignedTo != null &&
+                    isMine: items[i].assignedTo != null &&
                         items[i].assignedTo == myId,
                     onToggle: () => _toggleDone(items[i]),
                     onRemind: () => _remind(items[i]),
@@ -473,7 +473,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🧹', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.check_circle_outline),
             const SizedBox(height: WoTokens.space4),
             Text('还没有家务', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
@@ -504,7 +504,7 @@ class _EmptyFilter extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('✨', style: TextStyle(fontSize: 40)),
+            const WoEmptyMark(icon: Icons.check_circle_outline),
             const SizedBox(height: WoTokens.space3),
             Text('这里空空如也', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           ],

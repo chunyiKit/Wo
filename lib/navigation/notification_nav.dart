@@ -69,10 +69,9 @@ _Target? _resolve(String? deeplink) {
       'accounting' => const AccountingPage(),
       'chat' => const ChatPage(),
       'chore' => const ChoreListPage(),
-      'pet' =>
-        uri.queryParameters['pet']?.isNotEmpty == true
-            ? PetDetailPage(petId: uri.queryParameters['pet']!)
-            : const PetListPage(),
+      'pet' => uri.queryParameters['pet']?.isNotEmpty == true
+          ? PetDetailPage(petId: uri.queryParameters['pet']!)
+          : const PetListPage(),
       _ => null,
     };
   } else if (rest.length == 1 && rest[0] == 'members') {

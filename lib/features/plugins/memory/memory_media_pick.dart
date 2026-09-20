@@ -66,8 +66,7 @@ Future<PickedPhotos> pickAndCompressMemoryPhotos({
 Future<DateTime?> _readExifCaptureDate(Uint8List bytes) async {
   try {
     final tags = await readExifFromBytes(bytes);
-    final tag =
-        tags['EXIF DateTimeOriginal'] ??
+    final tag = tags['EXIF DateTimeOriginal'] ??
         tags['EXIF DateTimeDigitized'] ??
         tags['Image DateTime'];
     if (tag == null) return null;

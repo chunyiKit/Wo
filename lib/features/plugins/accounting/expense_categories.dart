@@ -20,6 +20,6 @@ const expenseCategories = <ExpenseCategory>[
 ];
 
 ExpenseCategory categoryFor(String code) => expenseCategories.firstWhere(
-  (c) => c.code == code,
-  orElse: () => const ExpenseCategory('', '其他', '💰'),
-);
+      (c) => c.code == code,
+      orElse: () => const ExpenseCategory('', '其他', '💰'),
+    );

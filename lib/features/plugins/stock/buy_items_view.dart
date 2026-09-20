@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/api_client.dart';
@@ -387,7 +388,7 @@ class _EmptyBuy extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🛒', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.shopping_bag_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('采买清单是空的', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),

@@ -157,22 +157,22 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
   }
 
   Memory _withComment(Memory m, MemoryComment c) => Memory(
-    id: m.id,
-    familyId: m.familyId,
-    title: m.title,
-    body: m.body,
-    mood: m.mood,
-    location: m.location,
-    visibility: m.visibility,
-    eventDate: m.eventDate,
-    createdBy: m.createdBy,
-    authorName: m.authorName,
-    authorEmoji: m.authorEmoji,
-    createdAt: m.createdAt,
-    media: m.media,
-    commentCount: m.commentCount + 1,
-    comments: [...m.comments, c],
-  );
+        id: m.id,
+        familyId: m.familyId,
+        title: m.title,
+        body: m.body,
+        mood: m.mood,
+        location: m.location,
+        visibility: m.visibility,
+        eventDate: m.eventDate,
+        createdBy: m.createdBy,
+        authorName: m.authorName,
+        authorEmoji: m.authorEmoji,
+        createdAt: m.createdAt,
+        media: m.media,
+        commentCount: m.commentCount + 1,
+        comments: [...m.comments, c],
+      );
 
   Memory _withoutComment(Memory m, String commentId) {
     final remaining = m.comments.where((c) => c.id != commentId).toList();
@@ -500,15 +500,19 @@ class _CommentInput extends StatelessWidget {
               radius: 20,
               backgroundColor: wo.accent,
               child: sending
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: WoProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onPrimary,
                       ),
                     )
-                  : const Icon(Icons.send, size: 18, color: Colors.white),
+                  : Icon(
+                      Icons.send,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
             ),
           ),
         ],

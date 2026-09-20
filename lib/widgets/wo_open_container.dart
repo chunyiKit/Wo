@@ -20,7 +20,7 @@ class WoOpenContainer extends StatelessWidget {
     required this.openBuilder,
     this.onClosed,
     this.radius = WoTokens.cardRadius,
-    this.transitionDuration = const Duration(milliseconds: 380),
+    this.transitionDuration = const Duration(milliseconds: 480),
   });
 
   /// 闭合态（卡片）。`open` 调用即触发形变展开，把它接到卡片的 onTap 上。
@@ -50,7 +50,9 @@ class WoOpenContainer extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
       ),
       transitionType: ContainerTransitionType.fadeThrough,
-      transitionDuration: transitionDuration,
+      transitionDuration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : transitionDuration,
       closedBuilder: (context, open) => closedBuilder(context, open),
       openBuilder: (context, _) => openBuilder(context),
       onClosed: onClosed,

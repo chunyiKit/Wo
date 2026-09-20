@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/wo_tokens.dart';
 
-/// 圆角 22 + 暖色阴影的标准卡片。
-class WoCard extends StatelessWidget {
+/// 琥珀细边与柔和反光的影院面板。
+class WoCard extends StatefulWidget {
   const WoCard({
     super.key,
     required this.child,
@@ -24,22 +24,50 @@ class WoCard extends StatelessWidget {
   final bool showShadow;
 
   @override
+  State<WoCard> createState() => _WoCardState();
+}
+
+class _WoCardState extends State<WoCard> {
+  bool _pressed = false;
+  @override
   Widget build(BuildContext context) {
     final wo = context.wo;
-    final shape = BorderRadius.circular(radius);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color ?? wo.bgElev,
-        borderRadius: shape,
-        boxShadow: showShadow ? WoTokens.cardShadow : null,
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
+    final shape = BorderRadius.circular(widget.radius);
+    return AnimatedScale(
+      scale: _pressed ? .985 : 1,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 130),
+      curve: Curves.easeOutCubic,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.alphaBlend(
+                wo.accent.withValues(alpha: 0.035),
+                widget.color ?? wo.bgElev,
+              ),
+              widget.color ?? wo.bgElev,
+            ],
+          ),
+          border: Border.all(color: wo.hairline, width: 0.7),
           borderRadius: shape,
-          onTap: onTap,
-          onLongPress: onLongPress,
-          child: Padding(padding: padding, child: child),
+          boxShadow: widget.showShadow ? WoTokens.cardShadow : null,
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: shape,
+            onHighlightChanged:
+                widget.onTap == null && widget.onLongPress == null
+                    ? null
+                    : (value) => setState(() => _pressed = value),
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            child: Padding(padding: widget.padding, child: widget.child),
+          ),
         ),
       ),
     );

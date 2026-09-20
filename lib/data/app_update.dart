@@ -93,7 +93,8 @@ class AppUpdateService {
 
     final client = HttpClient(context: WoHttpOverrides.inclusiveContext());
     try {
-      final req = await client.getUrl(Uri.parse(_absoluteUrl(release.downloadUrl)));
+      final req =
+          await client.getUrl(Uri.parse(_absoluteUrl(release.downloadUrl)));
       final resp = await req.close();
       if (resp.statusCode != HttpStatus.ok) {
         throw HttpException('下载失败（${resp.statusCode}）');

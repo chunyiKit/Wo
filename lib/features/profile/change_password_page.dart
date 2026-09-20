@@ -59,18 +59,20 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        _toast(switch (e) {
-          ApiException a => a.message,
-          NetworkException a => a.message,
-          _ => '修改失败',
-        });
+        _toast(
+          switch (e) {
+            ApiException a => a.message,
+            NetworkException a => a.message,
+            _ => '修改失败',
+          },
+        );
       }
     }
   }
 
   void _toast(String msg) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(WoSnackBar(content: Text(msg)));
+        context,
+      ).showSnackBar(WoSnackBar(content: Text(msg)));
 
   @override
   Widget build(BuildContext context) {
@@ -108,17 +110,17 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   }
 
   Widget _field(TextEditingController c, String label) => WoTextField(
-    controller: c,
-    obscureText: _obscure,
-    maxLength: 64,
-    onChanged: (_) => setState(() {}),
-    decoration: InputDecoration(
-      labelText: label,
-      counterText: '',
-      suffixIcon: WoIconButton(
-        icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
-        onPressed: () => setState(() => _obscure = !_obscure),
-      ),
-    ),
-  );
+        controller: c,
+        obscureText: _obscure,
+        maxLength: 64,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: label,
+          counterText: '',
+          suffixIcon: WoIconButton(
+            icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _obscure = !_obscure),
+          ),
+        ),
+      );
 }

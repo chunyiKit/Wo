@@ -86,10 +86,12 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
     _note = TextEditingController(text: r?.note ?? '');
 
     for (final ing in r?.ingredients ?? const <RecipeIngredient>[]) {
-      _ingredients.add((
-        TextEditingController(text: ing.name),
-        TextEditingController(text: ing.amount),
-      ));
+      _ingredients.add(
+        (
+          TextEditingController(text: ing.name),
+          TextEditingController(text: ing.amount),
+        ),
+      );
     }
     if (_ingredients.isEmpty) _addIngredient();
 
@@ -136,9 +138,9 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
 
   // 展示用的标签集：后端清单 + 当前分类（即便它已被移出清单也保留可见）。
   List<String> get _displayTags => [
-    ..._tags,
-    if (_category.isNotEmpty && !_tags.contains(_category)) _category,
-  ];
+        ..._tags,
+        if (_category.isNotEmpty && !_tags.contains(_category)) _category,
+      ];
 
   Future<void> _addTag() async {
     final controller = TextEditingController();
@@ -234,8 +236,9 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
   }
 
   void _addIngredient() => setState(
-    () => _ingredients.add((TextEditingController(), TextEditingController())),
-  );
+        () => _ingredients
+            .add((TextEditingController(), TextEditingController())),
+      );
 
   void _removeIngredient(int i) {
     final (n, a) = _ingredients[i];
@@ -600,9 +603,8 @@ class _RecipeEditPageState extends State<RecipeEditPage> {
                           Icons.remove_circle_outline,
                           color: wo.fgDim,
                         ),
-                        onPressed: _steps.length > 1
-                            ? () => _removeStep(i)
-                            : null,
+                        onPressed:
+                            _steps.length > 1 ? () => _removeStep(i) : null,
                       ),
                     ],
                   ),

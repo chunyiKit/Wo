@@ -8,6 +8,7 @@ import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_cinema.dart';
 
 /// 插件市场首页：搜索 + 分类筛选 + 列表。数据来自 GET /plugins。
 class MarketplacePage extends StatefulWidget {
@@ -86,8 +87,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
             final q = _query.trim();
             final list = all.where((p) {
               final matchCat = cat == null || p.category == cat;
-              final matchQ =
-                  q.isEmpty ||
+              final matchQ = q.isEmpty ||
                   p.name.contains(q) ||
                   p.descriptionShort.contains(q);
               return matchCat && matchQ;
@@ -101,6 +101,11 @@ class _MarketplacePageState extends State<MarketplacePage> {
                 WoTokens.space8,
               ),
               children: [
+                const WoCinemaMasthead(
+                  title: '给生活\n加一点可能',
+                  subtitle: '挑选适合小家的插件，让日常更从容。',
+                ),
+                const SizedBox(height: 24),
                 WoTextField(
                   onChanged: (v) => setState(() => _query = v),
                   decoration: InputDecoration(
@@ -174,7 +179,7 @@ class _MarketplacePageState extends State<MarketplacePage> {
                 color: wo.bgTint,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Text(p.emoji, style: const TextStyle(fontSize: 22)),
+              child: Icon(woPluginIcon(p.id), size: 22, color: wo.accentDeep),
             ),
             const SizedBox(width: WoTokens.space3),
             Expanded(
@@ -228,7 +233,7 @@ String _compact(int n) {
 }
 
 String _msg(Object e) => switch (e) {
-  ApiException a => a.message,
-  NetworkException a => a.message,
-  _ => '操作失败',
-};
+      ApiException a => a.message,
+      NetworkException a => a.message,
+      _ => '操作失败',
+    };

@@ -67,11 +67,11 @@ class _PetRecordEditPageState extends State<PetRecordEditPage> {
   }
 
   Future<DateTime?> _pick(DateTime initial) => showDatePicker(
-    context: context,
-    initialDate: initial,
-    firstDate: DateTime(1980),
-    lastDate: DateTime(2100),
-  );
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(1980),
+        lastDate: DateTime(2100),
+      );
 
   Future<void> _save(List<PetRecordType> types) async {
     final typeId = _typeId;
@@ -138,25 +138,26 @@ class _PetRecordEditPageState extends State<PetRecordEditPage> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<PetRecordType>>(
-    future: _typesFuture,
-    builder: (context, snapshot) {
-      final types = snapshot.data;
-      return WoScaffold(
-        appBar: WoAppBar(
-          title: Text(widget.record == null ? '新增记录' : '编辑记录'),
-          actions: [
-            WoTextButton(
-              onPressed: types == null || _saving ? null : () => _save(types),
-              child: const Text('保存'),
+        future: _typesFuture,
+        builder: (context, snapshot) {
+          final types = snapshot.data;
+          return WoScaffold(
+            appBar: WoAppBar(
+              title: Text(widget.record == null ? '新增记录' : '编辑记录'),
+              actions: [
+                WoTextButton(
+                  onPressed:
+                      types == null || _saving ? null : () => _save(types),
+                  child: const Text('保存'),
+                ),
+              ],
             ),
-          ],
-        ),
-        body: types == null
-            ? const Center(child: WoProgressIndicator())
-            : _form(types),
+            body: types == null
+                ? const Center(child: WoProgressIndicator())
+                : _form(types),
+          );
+        },
       );
-    },
-  );
 
   Widget _form(List<PetRecordType> types) {
     _typeId ??= types.isEmpty ? null : types.first.id;

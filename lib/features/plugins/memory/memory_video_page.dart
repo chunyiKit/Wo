@@ -70,28 +70,28 @@ class _MemoryVideoPageState extends State<MemoryVideoPage> {
         child: _error != null
             ? const Text('视频加载失败', style: TextStyle(color: Colors.white70))
             : (!_ready || c == null)
-            ? const WoProgressIndicator(color: Colors.white)
-            : GestureDetector(
-                onTap: _toggle,
-                child: AspectRatio(
-                  aspectRatio: c.value.aspectRatio == 0
-                      ? 16 / 9
-                      : c.value.aspectRatio,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      VideoPlayer(c),
-                      VideoProgressIndicator(c, allowScrubbing: true),
-                      if (!c.value.isPlaying)
-                        const Icon(
-                          Icons.play_circle_fill,
-                          size: 72,
-                          color: Colors.white70,
-                        ),
-                    ],
+                ? const WoProgressIndicator(color: Colors.white)
+                : GestureDetector(
+                    onTap: _toggle,
+                    child: AspectRatio(
+                      aspectRatio: c.value.aspectRatio == 0
+                          ? 16 / 9
+                          : c.value.aspectRatio,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          VideoPlayer(c),
+                          VideoProgressIndicator(c, allowScrubbing: true),
+                          if (!c.value.isPlaying)
+                            const Icon(
+                              Icons.play_circle_fill,
+                              size: 72,
+                              color: Colors.white70,
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import '../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/device_cache.dart';
@@ -400,7 +401,7 @@ class _ErrorRetry extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('😣', style: TextStyle(fontSize: 40)),
+            const WoEmptyMark(icon: Icons.cloud_off_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('读取占用失败', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),

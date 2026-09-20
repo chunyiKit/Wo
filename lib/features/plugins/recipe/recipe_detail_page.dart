@@ -571,8 +571,8 @@ class _BuySelectSheetState extends State<_BuySelectSheet> {
                       onPressed: none
                           ? null
                           : () => Navigator.of(
-                              context,
-                            ).pop(_selected.toList()..sort()),
+                                context,
+                              ).pop(_selected.toList()..sort()),
                       child: Text(none ? '加入采买' : '加入采买 (${_selected.length})'),
                     ),
                   ),

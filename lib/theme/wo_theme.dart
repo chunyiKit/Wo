@@ -4,241 +4,263 @@ import 'package:flutter/services.dart';
 import 'wo_tokens.dart';
 import 'wo_typography.dart';
 
-/// 「窝（Wo）」Material 3 主题。
-///
-/// 主色 = 暖橙 `#E8895A`，浅深两套都以同一种 accent 派生 / 调节，
-/// 整体调性保持一致。所有色板与 [WoColors] 一一对应。
+/// 日落影院：酒棕、象牙与琥珀。共享组件和原生 Material 控件使用同一套样式。
 class WoTheme {
   WoTheme._();
-
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
   static ThemeData _build(Brightness brightness) {
-    final isLight = brightness == Brightness.light;
-    final wo = isLight ? WoColors.light : WoColors.dark;
-
-    final colorScheme = ColorScheme(
+    final dark = brightness == Brightness.dark;
+    final wo = dark ? WoColors.dark : WoColors.light;
+    final onAccent = dark ? const Color(0xFF2A170B) : Colors.white;
+    final scheme = ColorScheme.fromSeed(
+      seedColor: wo.accent,
       brightness: brightness,
       primary: wo.accent,
-      onPrimary: Colors.white,
+      onPrimary: onAccent,
       primaryContainer: wo.accentSoft,
-      onPrimaryContainer: wo.accentDeep,
+      onPrimaryContainer: wo.fg,
       secondary: wo.accentDeep,
-      onSecondary: Colors.white,
+      onSecondary: onAccent,
       secondaryContainer: wo.bgTint,
       onSecondaryContainer: wo.fg,
-      tertiary: wo.anniv,
-      onTertiary: wo.fg,
-      tertiaryContainer: wo.anniv,
-      onTertiaryContainer: wo.fg,
-      error: const Color(0xFFB3261E),
-      onError: Colors.white,
-      errorContainer: const Color(0xFFF9DEDC),
-      onErrorContainer: const Color(0xFF410E0B),
       surface: wo.bg,
       onSurface: wo.fg,
+      onSurfaceVariant: wo.fgMid,
       surfaceContainerLowest: wo.bg,
       surfaceContainerLow: wo.bgTint,
-      surfaceContainer: wo.bgTint,
+      surfaceContainer: wo.bgElev,
       surfaceContainerHigh: wo.bgElev,
-      surfaceContainerHighest: wo.bgElev,
-      onSurfaceVariant: wo.fgMid,
+      surfaceContainerHighest: wo.accentSoft,
       outline: wo.fgDim,
       outlineVariant: wo.hairline,
-      shadow: Colors.black,
-      scrim: Colors.black,
-      inverseSurface: isLight ? wo.fg : wo.bg,
-      onInverseSurface: isLight ? wo.bg : wo.fg,
-      inversePrimary: isLight ? WoTokens.darkAccent : WoTokens.accent,
+      error: wo.danger,
     );
-
-    final textTheme = WoTypography.textTheme(wo.fg, wo.fgMid);
-
+    final text = WoTypography.textTheme(wo.fg, wo.fgMid);
+    final shape =
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(18));
+    final outline = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: wo.hairline),
+    );
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      colorScheme: colorScheme,
+      colorScheme: scheme,
       scaffoldBackgroundColor: wo.bg,
       canvasColor: wo.bg,
       fontFamily: WoTypography.fontFamily,
-      textTheme: textTheme,
+      textTheme: text,
       splashFactory: InkSparkle.splashFactory,
+      extensions: [wo],
       pageTransitionsTheme: const PageTransitionsTheme(
-        builders: <TargetPlatform, PageTransitionsBuilder>{
+        builders: {
           TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
           TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
         },
       ),
-      extensions: <ThemeExtension<dynamic>>[wo],
-
-      // ── 顶部栏 · Material 3 风格 TopAppBar
       appBarTheme: AppBarTheme(
         backgroundColor: wo.bg,
         foregroundColor: wo.fg,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleSpacing: 16,
-        titleTextStyle: textTheme.titleLarge,
-        systemOverlayStyle: isLight
-            ? SystemUiOverlayStyle.dark.copyWith(
-                statusBarColor: Colors.transparent,
-                systemNavigationBarColor: wo.bg,
-                systemNavigationBarIconBrightness: Brightness.dark,
-              )
-            : SystemUiOverlayStyle.light.copyWith(
-                statusBarColor: Colors.transparent,
-                systemNavigationBarColor: wo.bg,
-                systemNavigationBarIconBrightness: Brightness.light,
-              ),
+        titleSpacing: 20,
+        titleTextStyle: WoTypography.editorial(wo.fg, size: 23),
+        iconTheme: IconThemeData(color: wo.accent, size: 22),
+        systemOverlayStyle:
+            (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+                .copyWith(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: wo.bg,
+          systemNavigationBarIconBrightness:
+              dark ? Brightness.light : Brightness.dark,
+        ),
       ),
-
-      // ── 底部导航 · Material 3 NavigationBar
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: wo.bg.withValues(alpha: 0.96),
-        indicatorColor: wo.accentSoft,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        height: 72,
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          final selected = states.contains(WidgetState.selected);
-          return TextStyle(
-            fontFamily: WoTypography.fontFamily,
-            fontFamilyFallback: WoTypography.fontFamilyFallback,
-            fontSize: 11,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? wo.accentDeep : wo.fgDim,
-          );
-        }),
-        iconTheme: WidgetStateProperty.resolveWith((states) {
-          final selected = states.contains(WidgetState.selected);
-          return IconThemeData(
-            size: 22,
-            color: selected ? wo.accentDeep : wo.fgDim,
-          );
-        }),
-      ),
-
-      // ── 卡片
       cardTheme: CardThemeData(
         color: wo.bgElev,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(WoTokens.cardRadius),
+          side: BorderSide(color: wo.hairline),
         ),
       ),
-
-      // ── 主按钮（暖橙 FilledButton）
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: wo.accent,
-          foregroundColor: Colors.white,
-          textStyle: textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          minimumSize: const Size(0, 48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          foregroundColor: onAccent,
+          disabledBackgroundColor: wo.bgTint,
+          disabledForegroundColor: wo.fgDim,
+          textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 15),
+          minimumSize: const Size(48, 50),
+          shape: shape,
           elevation: 0,
         ),
       ),
-
-      // ── 次级按钮
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: wo.fg,
           side: BorderSide(color: wo.hairline),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          minimumSize: const Size(0, 44),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          minimumSize: const Size(48, 48),
+          shape: shape,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         ),
       ),
-
-      // ── 文字按钮
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: wo.accentDeep,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          textStyle: textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          minimumSize: const Size(44, 44),
+          textStyle: text.labelLarge,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
       ),
-
-      // ── FAB · 加插件
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(44, 44),
+        ),
+      ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: wo.accent,
-        foregroundColor: Colors.white,
-        elevation: 4,
-        focusElevation: 4,
-        hoverElevation: 4,
-        highlightElevation: 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(WoTokens.fabRadius),
-        ),
+        foregroundColor: onAccent,
+        elevation: 3,
+        highlightElevation: 5,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
-
-      // ── 输入框
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: wo.bgTint,
-        hintStyle: textTheme.bodyMedium?.copyWith(color: wo.fgDim),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+        hintStyle: text.bodyMedium?.copyWith(color: wo.fgDim),
+        labelStyle: text.bodyMedium?.copyWith(color: wo.fgMid),
+        floatingLabelStyle: text.bodySmall?.copyWith(color: wo.accent),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        border: outline,
+        enabledBorder: outline,
+        focusedBorder: outline.copyWith(
           borderSide: BorderSide(color: wo.accent, width: 1.5),
         ),
+        errorBorder: outline.copyWith(borderSide: BorderSide(color: wo.danger)),
+        focusedErrorBorder: outline.copyWith(
+          borderSide: BorderSide(color: wo.danger, width: 1.5),
+        ),
       ),
-
-      // ── 分割线
-      dividerTheme: DividerThemeData(
-        color: wo.hairline,
-        thickness: 1,
-        space: 1,
+      dividerTheme:
+          DividerThemeData(color: wo.hairline, thickness: .7, space: 1),
+      listTileTheme: ListTileThemeData(
+        iconColor: wo.accentDeep,
+        textColor: wo.fg,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+        minVerticalPadding: 12,
+        horizontalTitleGap: 14,
+        titleTextStyle: text.bodyMedium,
+        subtitleTextStyle: text.bodySmall,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
-
-      // ── Chip（分类筛选）
       chipTheme: ChipThemeData(
         backgroundColor: wo.bgTint,
         selectedColor: wo.accentSoft,
-        labelStyle: textTheme.labelMedium,
-        secondaryLabelStyle: textTheme.labelMedium?.copyWith(
-          color: wo.accentDeep,
-        ),
-        side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(WoTokens.chipRadius),
-        ),
+        labelStyle: text.labelMedium?.copyWith(color: wo.fgMid),
+        secondaryLabelStyle: text.labelMedium?.copyWith(color: wo.fg),
+        side: BorderSide(color: wo.hairline),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-
-      // ── 底部 Sheet
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: wo.bg,
-        modalBackgroundColor: wo.bg,
-        surfaceTintColor: Colors.transparent,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(WoTokens.sheetRadius),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) =>
+                states.contains(WidgetState.selected) ? wo.accentSoft : wo.bg,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? wo.accentDeep
+                : wo.fgMid,
+          ),
+          side: WidgetStatePropertyAll(BorderSide(color: wo.hairline)),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: wo.accent,
+        unselectedLabelColor: wo.fgMid,
+        labelStyle: text.labelLarge,
+        unselectedLabelStyle: text.labelLarge,
+        dividerColor: wo.hairline,
+        indicatorSize: TabBarIndicatorSize.label,
+        indicator: UnderlineTabIndicator(
+          borderSide: BorderSide(color: wo.accent, width: 2),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: wo.bgElev,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: WoTypography.editorial(wo.fg, size: 23),
+        contentTextStyle: text.bodyMedium,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(26),
+          side: BorderSide(color: wo.hairline),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: wo.bgElev,
+        modalBackgroundColor: wo.bgElev,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        dragHandleColor: wo.fgDim,
+        dragHandleSize: const Size(32, 3),
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          side: BorderSide(color: wo.hairline),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: wo.accentSoft,
+        contentTextStyle: text.bodyMedium,
+        actionTextColor: wo.accentDeep,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: wo.hairline),
+        ),
+        elevation: 4,
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: wo.bgElev,
+        surfaceTintColor: Colors.transparent,
+        textStyle: text.bodyMedium,
+        shape: shape,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: wo.accent,
+        linearTrackColor: wo.hairline,
+        circularTrackColor: wo.bgTint,
+      ),
+      checkboxTheme: CheckboxThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        side: BorderSide(color: wo.fgDim),
+      ),
+      switchTheme: SwitchThemeData(
+        trackOutlineColor: WidgetStatePropertyAll(wo.hairline),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: wo.bgElev,
+        indicatorColor: wo.accentSoft,
+        surfaceTintColor: Colors.transparent,
+        height: 68,
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: wo.accentSoft,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        textStyle: text.bodySmall,
       ),
     );
   }

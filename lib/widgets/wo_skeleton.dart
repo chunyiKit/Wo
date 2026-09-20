@@ -21,6 +21,10 @@ class WoShimmer extends StatelessWidget {
     final base = Color.alphaBlend(wo.fgDim.withValues(alpha: 0.18), wo.bgElev);
     final highlight =
         Color.alphaBlend(wo.fgDim.withValues(alpha: 0.05), wo.bgElev);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      return ColorFiltered(
+          colorFilter: ColorFilter.mode(base, BlendMode.srcATop), child: child,);
+    }
     return Shimmer.fromColors(
       baseColor: base,
       highlightColor: highlight,

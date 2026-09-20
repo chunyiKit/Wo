@@ -64,8 +64,8 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
     final d = e == null ? widget.draft : null;
     final draftCat =
         d != null && expenseCategories.any((c) => c.code == d.category)
-        ? d.category
-        : null;
+            ? d.category
+            : null;
     _category = e?.category ?? draftCat ?? expenseCategories.first.code;
     _input = e != null
         ? _trimAmount(e.amount)
@@ -590,8 +590,8 @@ class _CalcKeypad extends StatelessWidget {
     final kind = _digits.contains(label)
         ? _KeyKind.digit
         : _utils.contains(label)
-        ? _KeyKind.util
-        : _KeyKind.op;
+            ? _KeyKind.util
+            : _KeyKind.op;
     return _CalcKey(
       label: label,
       kind: kind,
@@ -675,7 +675,7 @@ class _SaveKey extends StatelessWidget {
     final wo = context.wo;
     final enabled = onTap != null;
     final bg = enabled ? wo.accent : wo.bgElev;
-    final fg = enabled ? Colors.white : wo.fgDim;
+    final fg = enabled ? Theme.of(context).colorScheme.onPrimary : wo.fgDim;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(4),

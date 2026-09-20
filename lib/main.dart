@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -32,6 +33,12 @@ Future<void> _applyHighRefreshRate() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(
+      ['Noto Serif SC'],
+      await rootBundle.loadString('assets/fonts/OFL-NotoSerifSC.txt'),
+    );
+  });
   // 尽早申请高刷新率，让首帧起就跑满屏幕刷新率。
   await _applyHighRefreshRate();
   // 信任内置私有 CA(裸 IP + 自签证书的 HTTPS)。必须在任何网络请求前装好。

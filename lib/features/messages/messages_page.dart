@@ -1,3 +1,4 @@
+import '../../widgets/wo_cinema.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -308,7 +309,7 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('😣', style: TextStyle(fontSize: 40)),
+            const WoEmptyMark(icon: Icons.cloud_off_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('加载失败', style: t.titleMedium, textAlign: TextAlign.center),
             const SizedBox(height: WoTokens.space2),

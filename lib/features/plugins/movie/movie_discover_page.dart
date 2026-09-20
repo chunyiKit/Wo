@@ -231,11 +231,11 @@ class _MovieDiscoverPageState extends State<MovieDiscoverPage> {
                       child: WoProgressIndicator(strokeWidth: 2),
                     )
                   : (!_hasMore
-                        ? Text(
-                            '没有更多了',
-                            style: t.labelSmall?.copyWith(color: wo.fgDim),
-                          )
-                        : const SizedBox.shrink()),
+                      ? Text(
+                          '没有更多了',
+                          style: t.labelSmall?.copyWith(color: wo.fgDim),
+                        )
+                      : const SizedBox.shrink()),
             ),
           ),
         ),
@@ -405,10 +405,10 @@ class _PosterImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final wo = context.wo;
     Widget placeholder() => Container(
-      color: wo.bgTint,
-      alignment: Alignment.center,
-      child: const Text('🎬', style: TextStyle(fontSize: 28)),
-    );
+          color: wo.bgTint,
+          alignment: Alignment.center,
+          child: const Text('🎬', style: TextStyle(fontSize: 28)),
+        );
     if (url == null || url!.isEmpty) return placeholder();
     final api = WoScope.api(context);
     return CachedNetworkImage(

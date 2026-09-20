@@ -190,8 +190,8 @@ class _TravelMapState extends State<TravelMap> {
     final rec = ui.PictureRecorder();
     final c = Canvas(rec, Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()));
     c.scale(_supersample);
-    final land = isDark ? const Color(0xFF1E2A25) : const Color(0xFFDCE8E2);
-    final stroke = isDark ? const Color(0xFF33463D) : const Color(0xFFB9D0C5);
+    final land = isDark ? const Color(0xFF392D23) : const Color(0xFFE7D8C4);
+    final stroke = isDark ? const Color(0xFF69503B) : const Color(0xFFBEA98F);
     c.drawPath(data.landPath, Paint()..color = land);
     c.drawPath(
       data.landPath,
@@ -284,7 +284,7 @@ class _TravelMapState extends State<TravelMap> {
         }
         if (data == null) {
           return ColoredBox(
-            color: isDark ? const Color(0xFF11201B) : const Color(0xFFEAF1EE),
+            color: isDark ? const Color(0xFF1B1512) : const Color(0xFFF5EBDB),
             child: const Center(child: WoProgressIndicator()),
           );
         }
@@ -522,26 +522,26 @@ class _TravelMapState extends State<TravelMap> {
 
   Widget _controls(WoColors wo, {required bool showThumbToggle}) {
     Widget btn(String s, VoidCallback onTap, {bool border = false}) => InkWell(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: border
-              ? Border(bottom: BorderSide(color: wo.hairline))
-              : null,
-        ),
-        child: Text(
-          s,
-          style: TextStyle(
-            fontSize: 20,
-            color: wo.fg,
-            fontWeight: FontWeight.w300,
+          onTap: onTap,
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: border
+                  ? Border(bottom: BorderSide(color: wo.hairline))
+                  : null,
+            ),
+            child: Text(
+              s,
+              style: TextStyle(
+                fontSize: 20,
+                color: wo.fg,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
           ),
-        ),
-      ),
-    );
+        );
     Widget iconBtn(IconData icon, VoidCallback onTap, {Color? color}) =>
         Material(
           color: wo.bgElev,
@@ -625,7 +625,7 @@ class _MapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final sea = isDark ? const Color(0xFF11201B) : const Color(0xFFEAF1EE);
+    final sea = isDark ? const Color(0xFF1B1512) : const Color(0xFFF5EBDB);
     canvas.drawRect(Offset.zero & size, Paint()..color = sea);
 
     // 省界:贴预渲染好的纹理(只是缩放采样,GPU 廉价;不每帧三角化矢量,避免

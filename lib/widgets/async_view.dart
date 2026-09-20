@@ -1,3 +1,4 @@
+import 'wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../data/api_client.dart';
@@ -34,7 +35,7 @@ class AsyncView<T> extends StatelessWidget {
     return FutureBuilder<T>(
       future: future,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return loadingBuilder?.call(context) ??
               const Center(child: CircularProgressIndicator());
         }
@@ -71,7 +72,7 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('😣', style: TextStyle(fontSize: 40)),
+            const WoEmptyMark(icon: Icons.cloud_off_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('加载失败', style: t.titleMedium, textAlign: TextAlign.center),
             const SizedBox(height: WoTokens.space2),

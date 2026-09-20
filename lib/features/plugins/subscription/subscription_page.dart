@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../widgets/wo_cinema.dart';
 
 import '../../../data/api_client.dart';
 import '../../../data/models.dart';
@@ -303,7 +304,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('💳', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.credit_card_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有订阅', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
@@ -462,8 +463,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
   }
 
   void _toastMsg(String msg) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(WoSnackBar(content: Text(msg)));
+        context,
+      ).showSnackBar(WoSnackBar(content: Text(msg)));
 
   void _toast(Object error) {
     final msg = switch (error) {
@@ -591,8 +592,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 subtitle: Text(
                   _notify
                       ? (_notifyDaysBefore == 0
-                            ? '当天提醒全家'
-                            : '提前 $_notifyDaysBefore 天提醒全家')
+                          ? '当天提醒全家'
+                          : '提前 $_notifyDaysBefore 天提醒全家')
                       : '开启后会在扣费前推送通知',
                   style: t.labelSmall?.copyWith(color: wo.fgMid),
                 ),

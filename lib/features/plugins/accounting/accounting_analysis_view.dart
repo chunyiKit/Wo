@@ -29,9 +29,8 @@ List<CategoryExpenseBreakdown> buildCategoryExpenseBreakdown(
   final counts = <String, int>{};
   final knownCodes = expenseCategories.map((item) => item.code).toSet();
   for (final expense in expenses) {
-    final code = knownCodes.contains(expense.category)
-        ? expense.category
-        : 'other';
+    final code =
+        knownCodes.contains(expense.category) ? expense.category : 'other';
     totals.update(
       code,
       (value) => value + expense.amount,
@@ -97,8 +96,8 @@ class _AccountingAnalysisViewState extends State<AccountingAnalysisView> {
     final filtered = selected == null
         ? widget.expenses
         : widget.expenses
-              .where((expense) => _matches(expense, selected))
-              .toList();
+            .where((expense) => _matches(expense, selected))
+            .toList();
     final total = breakdown.fold<double>(0, (sum, item) => sum + item.amount);
     final t = Theme.of(context).textTheme;
     final wo = context.wo;
@@ -324,15 +323,15 @@ class _ExpensePiePainter extends CustomPainter {
 }
 
 Color _categoryColor(String code) => switch (code) {
-  'dining' => const Color(0xFFE8895A),
-  'snack' => const Color(0xFFF0B35C),
-  'shopping' => const Color(0xFFB989B5),
-  'utilities' => const Color(0xFFE1BC48),
-  'car' => const Color(0xFF6F9FB3),
-  'pet' => const Color(0xFFC982A8),
-  'subscription' => const Color(0xFF7E86B8),
-  _ => const Color(0xFF9A9085),
-};
+      'dining' => const Color(0xFFE8895A),
+      'snack' => const Color(0xFFF0B35C),
+      'shopping' => const Color(0xFFB989B5),
+      'utilities' => const Color(0xFFE1BC48),
+      'car' => const Color(0xFF6F9FB3),
+      'pet' => const Color(0xFFC982A8),
+      'subscription' => const Color(0xFF7E86B8),
+      _ => const Color(0xFF9A9085),
+    };
 
 String _money(double value) {
   if (value == value.roundToDouble()) return '¥${value.toInt()}';

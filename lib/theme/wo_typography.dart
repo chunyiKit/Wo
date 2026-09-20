@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 
-/// 字体设置：iOS 用 PingFang / 系统中文；Android 用 HarmonyOS Sans / Noto Sans SC
-/// 兜底；数字用 Inter（如未安装则继承默认）。
-///
-/// 注：HarmonyOS Sans / Inter 字体文件需要在 pubspec.yaml 的 fonts 段声明并
-/// 放到 assets/fonts/。本工程默认未捆绑字体——首次集成时由设计/工程协商落地。
+/// 标题使用随包内置的 Noto Serif SC；正文使用 Roboto 与系统中文回退。
 class WoTypography {
   WoTypography._();
 
-  static const fontFamily = 'HarmonyOS Sans';
+  static const fontFamily = 'Roboto';
+  static const editorialFamily = 'NotoSerifSC';
+
+  static TextStyle editorial(Color color, {double size = 32}) => TextStyle(
+        fontFamily: editorialFamily,
+        fontSize: size,
+        fontWeight: FontWeight.w400,
+        height: 1.35,
+        letterSpacing: 0.3,
+        color: color,
+      );
 
   /// CJK 字体回退链
   static const fontFamilyFallback = <String>[
@@ -44,7 +50,7 @@ class WoTypography {
     double letter,
   ) {
     return TextStyle(
-      fontFamily: fontFamily,
+      fontFamily: size >= 18 ? editorialFamily : fontFamily,
       fontFamilyFallback: fontFamilyFallback,
       fontSize: size,
       fontWeight: weight,

@@ -384,47 +384,51 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       builder: (ctx) {
         final t = Theme.of(ctx).textTheme;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(WoTokens.space4),
-                child: Row(
-                  children: [
-                    MemberAvatar(
-                      url: m.avatarUrl,
-                      emoji: m.avatarEmoji,
-                      size: 28,
-                    ),
-                    const SizedBox(width: WoTokens.space2),
-                    Expanded(child: Text(m.displayName, style: t.titleMedium)),
-                  ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(WoTokens.space4),
+                  child: Row(
+                    children: [
+                      MemberAvatar(
+                        url: m.avatarUrl,
+                        emoji: m.avatarEmoji,
+                        size: 28,
+                      ),
+                      const SizedBox(width: WoTokens.space2),
+                      Expanded(
+                        child: Text(m.displayName, style: t.titleMedium),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1),
-              for (final r in _assignableRoles)
-                WoListTile(
-                  title: Text('设为${r.$2}'),
-                  trailing: m.role == r.$1 ? const Icon(Icons.check) : null,
-                  onTap: m.role == r.$1
-                      ? null
-                      : () {
-                          Navigator.of(ctx).pop();
-                          _changeRole(family, m, r.$1);
-                        },
-                ),
-              if (isOwner && !isSelf) ...[
                 const Divider(height: 1),
-                WoListTile(
-                  leading: const Text('👑', style: TextStyle(fontSize: 20)),
-                  title: const Text('转为主理人'),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    _transfer(family, m);
-                  },
-                ),
+                for (final r in _assignableRoles)
+                  WoListTile(
+                    title: Text('设为${r.$2}'),
+                    trailing: m.role == r.$1 ? const Icon(Icons.check) : null,
+                    onTap: m.role == r.$1
+                        ? null
+                        : () {
+                            Navigator.of(ctx).pop();
+                            _changeRole(family, m, r.$1);
+                          },
+                  ),
+                if (isOwner && !isSelf) ...[
+                  const Divider(height: 1),
+                  WoListTile(
+                    leading: const Text('👑', style: TextStyle(fontSize: 20)),
+                    title: const Text('转为主理人'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _transfer(family, m);
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },
@@ -542,9 +546,8 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
               emoji: pet.emoji,
               size: 44,
               placeholderColor: wo.pet,
-              url: pet.photoUrl == null
-                  ? null
-                  : '${api.baseUrl}${pet.photoUrl}',
+              url:
+                  pet.photoUrl == null ? null : '${api.baseUrl}${pet.photoUrl}',
               headers: api.imageHeaders,
             ),
             const SizedBox(width: WoTokens.space3),
@@ -631,11 +634,11 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
 }
 
 String _roleLabel(String role) => switch (role) {
-  'owner' => '主理人 👑',
-  'admin' => '管理员',
-  'child' => '孩子',
-  _ => '家人',
-};
+      'owner' => '主理人 👑',
+      'admin' => '管理员',
+      'child' => '孩子',
+      _ => '家人',
+    };
 
 String _ymd(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

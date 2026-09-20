@@ -350,8 +350,8 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                     _allDay
                         ? '当前为全天'
                         : (_time == null
-                              ? '点右侧选个时间'
-                              : '时间：${_time!.format(context)}'),
+                            ? '点右侧选个时间'
+                            : '时间：${_time!.format(context)}'),
                     style: t.labelSmall?.copyWith(color: wo.fgMid),
                   ),
                   onChanged: (v) {
@@ -447,8 +447,8 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
                   subtitle: Text(
                     _notify
                         ? (_notifyDaysBefore == 0
-                              ? '当天推送提醒全家'
-                              : '提前 $_notifyDaysBefore 天推送提醒全家')
+                            ? '当天推送提醒全家'
+                            : '提前 $_notifyDaysBefore 天推送提醒全家')
                         : '开启后会在到期前推送通知',
                     style: t.labelSmall?.copyWith(color: wo.fgMid),
                   ),
@@ -544,9 +544,8 @@ class _DateRow extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     final has = date != null;
-    final label = has
-        ? '${date!.year}年${date!.month}月${date!.day}日'
-        : '无日期（仅作为待办）';
+    final label =
+        has ? '${date!.year}年${date!.month}月${date!.day}日' : '无日期（仅作为待办）';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: WoTokens.space1),
       child: Row(

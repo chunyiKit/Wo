@@ -23,8 +23,11 @@ Future<Uint8List?> pickAndCompressImage({
   );
   if (picked == null) return null;
 
-  return _compress(await picked.readAsBytes(),
-      maxEdge: maxEdge, quality: quality,);
+  return _compress(
+    await picked.readAsBytes(),
+    maxEdge: maxEdge,
+    quality: quality,
+  );
 }
 
 /// 从相册多选若干张图并各自压缩。用户取消时返回空列表。最多取 [max] 张。
@@ -39,8 +42,13 @@ Future<List<Uint8List>> pickAndCompressMultiImage({
   final limited = picked.take(max);
   final out = <Uint8List>[];
   for (final x in limited) {
-    out.add(await _compress(await x.readAsBytes(),
-        maxEdge: maxEdge, quality: quality,),);
+    out.add(
+      await _compress(
+        await x.readAsBytes(),
+        maxEdge: maxEdge,
+        quality: quality,
+      ),
+    );
   }
   return out;
 }

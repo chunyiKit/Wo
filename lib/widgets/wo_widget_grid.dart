@@ -78,7 +78,9 @@ class WoWidgetGrid extends StatelessWidget {
                   // 用稳定 key 让重排后同一张卡被识别为「移动」，从而平滑过渡到
                   // 新位置；缺省回退到下标（不动画，仅保证可用）。
                   key: children[i].tileKey ?? ValueKey(i),
-                  duration: animationDuration,
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : animationDuration,
                   curve: animationCurve,
                   left: placements[i].col * (cellWidth + gap),
                   top: placements[i].row * (cellHeight + gap),
@@ -192,7 +194,9 @@ List<WoGridPos> computeWoGridPlacements(List<WoGridSize> sizes, int cols) {
 /// 内部：把 tile 列表映射为带尺寸的 [_Placement]。
 List<_Placement> _placeTiles(List<WoWidgetGridTile> tiles, int cols) {
   final positions = computeWoGridPlacements(
-      [for (final t in tiles) (cw: t.cw, ch: t.ch)], cols);
+    [for (final t in tiles) (cw: t.cw, ch: t.ch)],
+    cols,
+  );
   return [
     for (var i = 0; i < tiles.length; i++)
       _Placement(

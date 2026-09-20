@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../widgets/wo_cinema.dart';
 
 import '../../../data/api_client.dart';
 import '../../../data/models.dart';
@@ -243,9 +244,8 @@ class _ItemTile extends StatelessWidget {
                     due.text,
                     style: t.labelMedium?.copyWith(
                       color: due.tone ?? wo.fgMid,
-                      fontWeight: due.tone != null
-                          ? FontWeight.w700
-                          : FontWeight.w500,
+                      fontWeight:
+                          due.tone != null ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                 ],
@@ -288,7 +288,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('📄', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.timelapse_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有记录', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
@@ -423,8 +423,8 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
   }
 
   void _toastMsg(String msg) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(WoSnackBar(content: Text(msg)));
+        context,
+      ).showSnackBar(WoSnackBar(content: Text(msg)));
 
   void _toast(Object error) {
     final msg = switch (error) {

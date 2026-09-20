@@ -172,7 +172,7 @@ class _CountdownCard extends StatelessWidget {
       onTap: onEdit,
       child: Row(
         children: [
-          const Text('🏖️', style: TextStyle(fontSize: 34)),
+          Icon(Icons.beach_access_outlined, size: 34, color: wo.retire),
           const SizedBox(width: WoTokens.space3),
           Expanded(
             child: Column(
@@ -277,8 +277,7 @@ class _GoalCard extends StatelessWidget {
     } else if (d.monthsToGoal == null) {
       text = '按当前每月结余（${yuan(d.monthlySurplus)}）无法达成目标';
     } else {
-      text =
-          '按当前每月结余 ${yuan(d.monthlySurplus)}，'
+      text = '按当前每月结余 ${yuan(d.monthlySurplus)}，'
           '还需 ${_months(d.monthsToGoal!)}达标';
     }
     return Row(
@@ -323,7 +322,8 @@ class _GoalCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text('$headline ', style: t.bodyMedium),
                   Text(
@@ -379,11 +379,13 @@ class _SurplusCard extends StatelessWidget {
                 '每月结余',
                 style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
-              const Spacer(),
-              Text(
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(
                 '口径：${surplusBasisLabel(d.surplusBasis)}',
+                textAlign: TextAlign.right,
                 style: t.labelSmall?.copyWith(color: wo.fgDim),
-              ),
+              ),),
             ],
           ),
           const SizedBox(height: WoTokens.space2),

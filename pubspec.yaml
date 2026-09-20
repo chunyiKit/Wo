@@ -63,7 +63,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: NotoSerifSC
+      fonts:
+        - asset: assets/fonts/NotoSerifSC.ttf
   assets:
+    - assets/images/sunset-cinema.png
+    - assets/fonts/OFL-NotoSerifSC.txt
     # 自签 CA 公钥证书,App 启动时加载并据此信任后端 HTTPS。
     - assets/certs/wo_ca.crt
     # 旅行插件:真实中国省界(简化 GeoJSON)+ 地级市经纬度 + 区县经纬度。

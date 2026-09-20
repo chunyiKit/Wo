@@ -3,36 +3,36 @@ import 'package:flutter/material.dart';
 export '../widgets/wo_scaffold.dart';
 export '../widgets/wo_material_controls.dart';
 
-/// 设计 token — 与 design/tokens.css 一一对应。
+/// 日落影院设计 token：暖纸与酒棕两套外观。
 ///
 /// 凡是颜色/圆角/阴影/spacing 都走这里，避免在业务代码里散落数值。
 class WoTokens {
   WoTokens._();
 
-  // ── 色板 · 暖橙 / 焦糖 ─────────────────────────────────────────
-  static const accent = Color(0xFFE8895A);
-  static const accentDeep = Color(0xFFC76A3F);
-  static const accentSoft = Color(0xFFFCE4D4);
+  // ── 色板 · 落日 / 琥珀 ─────────────────────────────────────────
+  static const accent = Color(0xFFA85D2D);
+  static const accentDeep = Color(0xFF915025);
+  static const accentSoft = Color(0xFFF2DFC9);
 
   // 浅色
-  static const lightBg = Color(0xFFFBF7F1);
+  static const lightBg = Color(0xFFF8F1E7);
   static const lightBgElev = Color(0xFFFFFFFF);
-  static const lightBgTint = Color(0xFFF4EFE7);
-  static const lightFg = Color(0xFF2A2722);
-  static const lightFgMid = Color(0xFF6B635A);
-  static const lightFgDim = Color(0xFF9A9085);
-  static const lightHairline = Color(0x142A2722); // rgba(42,39,34,.08)
+  static const lightBgTint = Color(0xFFEFE4D6);
+  static const lightFg = Color(0xFF302219);
+  static const lightFgMid = Color(0xFF736052);
+  static const lightFgDim = Color(0xFF7D6655);
+  static const lightHairline = Color(0x26302219); // rgba(42,39,34,.08)
 
   // 深色
-  static const darkBg = Color(0xFF15120F);
-  static const darkBgElev = Color(0xFF221F1B);
-  static const darkBgTint = Color(0xFF1C1916);
-  static const darkFg = Color(0xFFF2EDE5);
-  static const darkFgMid = Color(0xFFA89F94);
-  static const darkFgDim = Color(0xFF6A6660);
-  static const darkHairline = Color(0x12FFF8F0); // rgba(255,248,240,.07)
-  static const darkAccent = Color(0xFFF09A6E);
-  static const darkAccentSoft = Color(0xFF3A2820);
+  static const darkBg = Color(0xFF160F0D);
+  static const darkBgElev = Color(0xFF271C17);
+  static const darkBgTint = Color(0xFF201612);
+  static const darkFg = Color(0xFFFFF0DB);
+  static const darkFgMid = Color(0xFFCEB69E);
+  static const darkFgDim = Color(0xFFA9907A);
+  static const darkHairline = Color(0x33D9A16A); // rgba(255,248,240,.07)
+  static const darkAccent = Color(0xFFF2B779);
+  static const darkAccentSoft = Color(0xFF483020);
 
   // 插件分类色（浅 / 深）
   static const photoLight = Color(0xFFE8DCC8);
@@ -41,45 +41,45 @@ class WoTokens {
   static const choreLight = Color(0xFFD6DCC8);
   static const petLight = Color(0xFFE8D0E0);
 
-  static const photoDark = Color(0xFF3A3226);
-  static const moneyDark = Color(0xFF3A331F);
-  static const annivDark = Color(0xFF3A2A22);
-  static const choreDark = Color(0xFF2C3026);
-  static const petDark = Color(0xFF3A2E36);
+  static const photoDark = Color(0xFF33271C);
+  static const moneyDark = Color(0xFF3C2A18);
+  static const annivDark = Color(0xFF42281E);
+  static const choreDark = Color(0xFF2D2B21);
+  static const petDark = Color(0xFF392624);
 
   // 囤货：柔雾蓝，区别于其它暖色插件，呼应「货架 / 仓库」的清爽感。
   static const stockLight = Color(0xFFC8D2E0);
-  static const stockDark = Color(0xFF262C33);
+  static const stockDark = Color(0xFF292825);
 
   // 回忆：暖玫瑰灰，落在 photo / anniv 之间，色温更复古。
   // ink 是在 memory tint 底色上可读的强调文字色。
   static const memoryLight = Color(0xFFDDCFC0);
-  static const memoryDark = Color(0xFF34291F);
+  static const memoryDark = Color(0xFF38271D);
 
   // 看电影：偏冷的薰衣草紫,跟剧院/胶片的紫调对应,跟暖系列(回忆/纪念日)拉开。
   static const movieLight = Color(0xFFD9CCDF);
-  static const movieDark = Color(0xFF322336);
+  static const movieDark = Color(0xFF302326);
 
   // 家历：沉静的青绿,跟「日历/计划」的冷静感对应,与既有暖色与紫蓝都拉开。
   static const calendarLight = Color(0xFFBFD8D2);
-  static const calendarDark = Color(0xFF223230);
+  static const calendarDark = Color(0xFF2B2D24);
 
   // 订阅管家：偏蓝的靛紫,呼应银行卡/账单的冷静感,与记账(money 暖金)区分开。
   static const subscribeLight = Color(0xFFC3C8EA);
-  static const subscribeDark = Color(0xFF24263A);
+  static const subscribeDark = Color(0xFF302A2B);
 
   // 植物日记：柔和的鼠尾草绿,对应草木生机,与家历(青绿)略作区分、更偏暖绿。
   static const plantLight = Color(0xFFC6DCC0);
-  static const plantDark = Color(0xFF233022);
+  static const plantDark = Color(0xFF2B2F22);
   // 退休倒计时：海松青,呼应海岛度假的松弛感,与记账(暖金)/订阅(靛紫)区分开。
   static const retireLight = Color(0xFFAFD8CE);
-  static const retireDark = Color(0xFF1E2F2B);
+  static const retireDark = Color(0xFF272D25);
   // 到期管家：沉稳的灰紫,像证件/档案/印章的庄重感,与订阅(偏蓝靛紫)、看电影(浅薰衣草)区分开。
   static const expiryLight = Color(0xFFCBC6DA);
-  static const expiryDark = Color(0xFF2A2833);
+  static const expiryDark = Color(0xFF302827);
   // 旅行：远山青绿,与暖橙互补;travelInk 用于地图上去过城市的强调点/文字。
   static const travelLight = Color(0xFFCBDAD2);
-  static const travelDark = Color(0xFF24302B);
+  static const travelDark = Color(0xFF2D2B22);
   static const travelInkLight = Color(0xFF3E7A66);
   static const travelInkDark = Color(0xFF8FC4AE);
   static const memoryInkLight = Color(0xFF8B5A3C);
@@ -92,8 +92,8 @@ class WoTokens {
   static const dangerDark = Color(0xFFF06A5D);
 
   // ── 圆角 ──────────────────────────────────────────────────────
-  static const cardRadius = 22.0;
-  static const fabRadius = 18.0;
+  static const cardRadius = 20.0;
+  static const fabRadius = 20.0;
   static const chipRadius = 999.0;
   static const sheetRadius = 28.0;
 
@@ -222,7 +222,7 @@ class WoColors extends ThemeExtension<WoColors> {
     fgDim: WoTokens.darkFgDim,
     hairline: WoTokens.darkHairline,
     accent: WoTokens.darkAccent,
-    accentDeep: WoTokens.accent,
+    accentDeep: WoTokens.darkAccent,
     accentSoft: WoTokens.darkAccentSoft,
     photo: WoTokens.photoDark,
     money: WoTokens.moneyDark,

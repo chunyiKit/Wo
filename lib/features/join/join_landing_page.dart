@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_cinema.dart';
 
 /// 加入 / 创建家庭入口选择页。
 class JoinLandingPage extends StatelessWidget {
@@ -16,11 +17,16 @@ class JoinLandingPage extends StatelessWidget {
     return WoScaffold(
       appBar: WoAppBar(),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const WoCinemaMasthead(
+                title: '故事，从一个家开始。',
+                subtitle: '和重要的人，一起把日子过好。',
+              ),
+              const SizedBox(height: 24),
               Text('开始你的窝', style: t.displaySmall),
               const SizedBox(height: WoTokens.space2),
               Text(
@@ -34,7 +40,7 @@ class JoinLandingPage extends StatelessWidget {
                 onTap: () => context.push(WoRoutes.joinByCode),
                 child: Row(
                   children: [
-                    const Text('🤝', style: TextStyle(fontSize: 36)),
+                    Icon(Icons.vpn_key_outlined, size: 30, color: wo.accent),
                     const SizedBox(width: WoTokens.space4),
                     Expanded(
                       child: Column(
@@ -59,7 +65,7 @@ class JoinLandingPage extends StatelessWidget {
                 onTap: () => context.push(WoRoutes.createFamily),
                 child: Row(
                   children: [
-                    const Text('🏡', style: TextStyle(fontSize: 36)),
+                    Icon(Icons.home_outlined, size: 30, color: wo.accent),
                     const SizedBox(width: WoTokens.space4),
                     Expanded(
                       child: Column(
@@ -78,7 +84,7 @@ class JoinLandingPage extends StatelessWidget {
                   ],
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 32),
               Center(
                 child: WoTextButton(
                   onPressed: () => context.go(WoRoutes.home),

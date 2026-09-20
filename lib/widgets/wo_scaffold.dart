@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/wo_tokens.dart';
 
 /// Material 页面骨架，保留统一命名以兼容现有业务页面。
 class WoScaffold extends StatelessWidget {
@@ -34,19 +35,36 @@ class WoScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: appBar,
-    body: body,
-    floatingActionButton: floatingActionButton,
-    floatingActionButtonLocation: floatingActionButtonLocation,
-    bottomNavigationBar: bottomNavigationBar,
-    bottomSheet: bottomSheet,
-    backgroundColor: backgroundColor,
-    resizeToAvoidBottomInset: resizeToAvoidBottomInset,
-    extendBody: extendBody,
-    extendBodyBehindAppBar: extendBodyBehindAppBar,
-    drawer: drawer,
-    endDrawer: endDrawer,
-  );
+        appBar: appBar,
+        body: body == null
+            ? null
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: const Alignment(0, -.3),
+                    colors: [
+                      Color.alphaBlend(
+                        context.wo.accent.withValues(alpha: .025),
+                        backgroundColor ?? context.wo.bg,
+                      ),
+                      backgroundColor ?? context.wo.bg,
+                    ],
+                  ),
+                ),
+                child: body,
+              ),
+        floatingActionButton: floatingActionButton,
+        floatingActionButtonLocation: floatingActionButtonLocation,
+        bottomNavigationBar: bottomNavigationBar,
+        bottomSheet: bottomSheet,
+        backgroundColor: backgroundColor,
+        resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+        extendBody: extendBody,
+        extendBodyBehindAppBar: extendBodyBehindAppBar,
+        drawer: drawer,
+        endDrawer: endDrawer,
+      );
 }
 
 /// Material [AppBar] 兼容层。
@@ -86,17 +104,17 @@ class WoAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) => AppBar(
-    leading: leading,
-    automaticallyImplyLeading: automaticallyImplyLeading,
-    title: title,
-    actions: actions,
-    bottom: bottom,
-    backgroundColor: backgroundColor,
-    foregroundColor: foregroundColor,
-    systemOverlayStyle: systemOverlayStyle,
-    centerTitle: centerTitle,
-    toolbarHeight: toolbarHeight,
-    elevation: elevation,
-    scrolledUnderElevation: scrolledUnderElevation,
-  );
+        leading: leading,
+        automaticallyImplyLeading: automaticallyImplyLeading,
+        title: title,
+        actions: actions,
+        bottom: bottom,
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        systemOverlayStyle: systemOverlayStyle,
+        centerTitle: centerTitle,
+        toolbarHeight: toolbarHeight,
+        elevation: elevation,
+        scrolledUnderElevation: scrolledUnderElevation,
+      );
 }

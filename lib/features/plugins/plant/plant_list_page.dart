@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../../widgets/wo_cinema.dart';
 
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
@@ -168,9 +169,8 @@ class _PlantCard extends StatelessWidget {
       }
     }
     if (soonest == null) return null;
-    final days = soonest
-        .difference(DateTime(now.year, now.month, now.day))
-        .inDays;
+    final days =
+        soonest.difference(DateTime(now.year, now.month, now.day)).inDays;
     if (days < 0) return '$kind已逾期';
     if (days == 0) return '今天$kind';
     return '$days 天后$kind';
@@ -265,7 +265,7 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🌿', style: TextStyle(fontSize: 48)),
+          const WoEmptyMark(icon: Icons.spa_outlined),
           const SizedBox(height: WoTokens.space3),
           Text('还没有植物', style: t.titleMedium?.copyWith(color: wo.fg)),
           const SizedBox(height: WoTokens.space2),

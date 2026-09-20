@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -65,10 +66,12 @@ class _AccountingPageState extends State<AccountingPage> {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     return familyId == null
-        ? Future.value((
-            summary: const AccountingSummary(monthTotal: 0),
-            expenses: const <Expense>[],
-          ))
+        ? Future.value(
+            (
+              summary: const AccountingSummary(monthTotal: 0),
+              expenses: const <Expense>[],
+            ),
+          )
         : _load(session, familyId);
   }
 
@@ -247,8 +250,8 @@ class _AccountingPageState extends State<AccountingPage> {
       text: current == null
           ? ''
           : (current == current.roundToDouble()
-                ? current.toInt().toString()
-                : current.toStringAsFixed(2)),
+              ? current.toInt().toString()
+              : current.toStringAsFixed(2)),
     );
     final saved = await showWoDialog<double>(
       context: context,
@@ -460,7 +463,8 @@ class _SummaryCard extends StatelessWidget {
           Text(
             _money(summary.monthTotal),
             style: t.displaySmall?.copyWith(
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w400,
+              fontSize: 38,
               letterSpacing: -1,
             ),
           ),
@@ -703,7 +707,7 @@ class _EmptyExpenses extends StatelessWidget {
       padding: const EdgeInsets.only(top: WoTokens.space8),
       child: Column(
         children: [
-          const Text('💰', style: TextStyle(fontSize: 48)),
+          const WoEmptyMark(icon: Icons.account_balance_wallet_outlined),
           const SizedBox(height: WoTokens.space4),
           Text(isCurrentMonth ? '还没有支出记录' : '这个月没有支出记录', style: t.titleMedium),
           if (isCurrentMonth) ...[

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../widgets/wo_cinema.dart';
 
 import '../../../data/api_client.dart';
 import '../../../data/models.dart';
@@ -270,7 +271,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🏠', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.home_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有负债', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),

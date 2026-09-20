@@ -40,7 +40,9 @@ class _DebtEditPageState extends State<DebtEditPage> {
     _paymentDay = d?.paymentDay ?? 5;
     _fromAccountId = d?.fromAccountId;
     _active = d?.active ?? true;
-    _loadAccounts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadAccounts();
+    });
   }
 
   static String _numText(double? v) {

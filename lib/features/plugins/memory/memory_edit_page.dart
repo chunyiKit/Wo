@@ -306,8 +306,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
             _MetaRow(
               icon: Icons.calendar_today_outlined,
               label: '日期',
-              value:
-                  '${memoryDateLabel(_eventDate)} · '
+              value: '${memoryDateLabel(_eventDate)} · '
                   '${_eventDate.year}-${_eventDate.month}-${_eventDate.day}',
               onTap: _pickDate,
             ),

@@ -6,6 +6,7 @@ import '../../data/wo_session.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_cinema.dart';
 
 /// 插件详情：GET /plugins/{id}，底部粘性安装栏装到当前家庭。
 class PluginDetailPage extends StatefulWidget {
@@ -95,10 +96,8 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
                                 color: wo.bgElev,
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Text(
-                                p.emoji,
-                                style: const TextStyle(fontSize: 32),
-                              ),
+                              child: Icon(woPluginIcon(p.id),
+                                  size: 32, color: wo.accentDeep,),
                             ),
                             const SizedBox(width: WoTokens.space4),
                             Expanded(
@@ -189,9 +188,8 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
                 ),
               ),
               WoFilledButton(
-                onPressed: (installed || _installing)
-                    ? null
-                    : () => _install(p),
+                onPressed:
+                    (installed || _installing) ? null : () => _install(p),
                 child: _installing
                     ? const SizedBox(
                         width: 16,
@@ -215,7 +213,7 @@ String _compact(int n) {
 }
 
 String _msg(Object e) => switch (e) {
-  ApiException a => a.message,
-  NetworkException a => a.message,
-  _ => '操作失败',
-};
+      ApiException a => a.message,
+      NetworkException a => a.message,
+      _ => '操作失败',
+    };

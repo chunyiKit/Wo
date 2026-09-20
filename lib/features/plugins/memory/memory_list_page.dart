@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -230,11 +231,11 @@ class _MemoryListPageState extends State<MemoryListPage> {
       body: SafeArea(
         child: memories != null
             ? (memories.isEmpty
-                  ? _Empty(onAdd: _openEditor)
-                  : RefreshIndicator(
-                      onRefresh: _refreshSilently,
-                      child: _buildList(memories),
-                    ))
+                ? _Empty(onAdd: _openEditor)
+                : RefreshIndicator(
+                    onRefresh: _refreshSilently,
+                    child: _buildList(memories),
+                  ))
             : AsyncView<MemoryPage>(
                 future: _future,
                 onRetry: _retry,
@@ -301,15 +302,15 @@ class _MemoryListPageState extends State<MemoryListPage> {
     return switch (row) {
       _NowRow(:final total) => _NowHeader(count: total),
       _MonthRow(:final label, :final count) => _MonthHeader(
-        label: label,
-        count: count,
-      ),
+          label: label,
+          count: count,
+        ),
       _CardRow(:final memory, :final first, :final animIndex) => _cardRow(
-        context,
-        memory,
-        first,
-        animIndex,
-      ),
+          context,
+          memory,
+          first,
+          animIndex,
+        ),
       _TailRow(:final loading) =>
         loading ? const _LoadingMoreRow() : _StartFooter(),
     };
@@ -863,7 +864,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('📸', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.photo_library_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有回忆', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),

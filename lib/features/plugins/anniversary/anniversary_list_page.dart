@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
@@ -186,7 +187,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🎂', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.auto_awesome_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有纪念日', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),

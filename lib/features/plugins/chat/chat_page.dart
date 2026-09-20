@@ -328,9 +328,8 @@ class _ChatPageState extends State<ChatPage> {
       padding: const EdgeInsets.only(bottom: WoTokens.space3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: mine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+        mainAxisAlignment:
+            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: mine
             ? [
                 Flexible(child: bubble),
@@ -352,9 +351,8 @@ class _ChatPageState extends State<ChatPage> {
     final bg = mine ? wo.accentSoft : wo.bgTint;
     final textColor = wo.fg;
     return Column(
-      crossAxisAlignment: mine
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
+      crossAxisAlignment:
+          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         if (!mine)
           Padding(
@@ -365,9 +363,8 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         GestureDetector(
-          onTap: message.status == chatStatusFailed
-              ? () => _retry(message)
-              : null,
+          onTap:
+              message.status == chatStatusFailed ? () => _retry(message) : null,
           child: Container(
             constraints: const BoxConstraints(maxWidth: 280),
             padding: message.isImage

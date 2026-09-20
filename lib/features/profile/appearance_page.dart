@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/wo_session.dart';
 import '../../theme/wo_tokens.dart';
+import '../../widgets/wo_cinema.dart';
 
 /// 外观设置：浅色 / 深色 / 跟随系统。选择即时生效并持久化（见 [WoSession.setThemeMode]）。
 class AppearancePage extends StatelessWidget {
@@ -27,6 +28,13 @@ class AppearancePage extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: WoTokens.space2),
               children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: WoCinemaMasthead(
+                    title: '日落影院',
+                    subtitle: '用光影，把平凡的日子收藏。',
+                  ),
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     WoTokens.space5,
@@ -41,14 +49,14 @@ class AppearancePage extends StatelessWidget {
                 ),
                 const _Option(
                   value: ThemeMode.light,
-                  title: '浅色',
+                  title: '暖纸 · 浅色',
                   subtitle: '始终使用浅色外观',
                   icon: Icons.light_mode_outlined,
                 ),
                 const _Option(
                   value: ThemeMode.dark,
-                  title: '深色',
-                  subtitle: '始终使用深色外观',
+                  title: '影院 · 深色',
+                  subtitle: '酒棕底色与琥珀微光，推荐外观',
                   icon: Icons.dark_mode_outlined,
                 ),
                 const _Option(

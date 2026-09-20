@@ -31,10 +31,10 @@ class WoSession extends ChangeNotifier {
     fetchLatest: api.latestRelease,
   );
 
-  /// 外观主题：浅色 / 深色 / 跟随系统（默认）。本地持久化，启动时由
+  /// 外观主题：浅色 / 深色（默认）/ 跟随系统。本地持久化，启动时由
   /// [loadThemeMode] 读出。用 ValueNotifier 单独承载，避免主题切换牵动其他 UI。
   final ValueNotifier<ThemeMode> themeMode =
-      ValueNotifier<ThemeMode>(ThemeMode.system);
+      ValueNotifier<ThemeMode>(ThemeMode.dark);
 
   /// 可选的推送服务。注入后会在登录/启动时上报本机 registration id、登出时注销。
   /// 测试与非移动端不注入（为 null），相关逻辑自动跳过。
@@ -94,7 +94,7 @@ class WoSession extends ChangeNotifier {
     if (isLoggedIn) unawaited(_syncPushRegistration());
   }
 
-  /// 启动时读出本地保存的外观偏好。无记录则保持默认「跟随系统」。
+  /// 启动时读出本地保存的外观偏好。无记录则使用默认「日落影院 · 深色」。
   /// 在 runApp 前调用，避免首帧用错主题再闪一下。
   Future<void> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -115,8 +115,10 @@ class WoSession extends ChangeNotifier {
         return ThemeMode.light;
       case 'dark':
         return ThemeMode.dark;
-      default:
+      case 'system':
         return ThemeMode.system;
+      default:
+        return ThemeMode.dark;
     }
   }
 

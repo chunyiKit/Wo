@@ -64,11 +64,13 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
         setState(() => _submitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           WoSnackBar(
-            content: Text(switch (e) {
-              ApiException a => a.message,
-              NetworkException a => a.message,
-              _ => '创建失败',
-            }),
+            content: Text(
+              switch (e) {
+                ApiException a => a.message,
+                NetworkException a => a.message,
+                _ => '创建失败',
+              },
+            ),
           ),
         );
       }
@@ -173,9 +175,8 @@ class _CreateFamilyPageState extends State<CreateFamilyPage> {
               ),
               const SizedBox(height: WoTokens.space6),
               WoFilledButton(
-                onPressed: (_name.text.trim().isEmpty || _submitting)
-                    ? null
-                    : _submit,
+                onPressed:
+                    (_name.text.trim().isEmpty || _submitting) ? null : _submit,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,

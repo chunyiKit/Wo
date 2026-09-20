@@ -580,8 +580,12 @@ class AccountingSummary {
 /// 拍小票识别出的一笔「草稿」支出。后端不落库、不存图，仅用于预填「记一笔」
 /// 表单，由用户确认后再正式记账。[amount] 为空表示没认出金额（让用户手填）。
 class ReceiptDraft {
-  const ReceiptDraft(
-      {this.amount, required this.category, this.merchant, this.note});
+  const ReceiptDraft({
+    this.amount,
+    required this.category,
+    this.merchant,
+    this.note,
+  });
 
   final double? amount;
   final String category;

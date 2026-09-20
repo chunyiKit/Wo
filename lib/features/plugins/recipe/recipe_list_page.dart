@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
@@ -87,10 +88,8 @@ class _RecipeListPageState extends State<RecipeListPage> {
 
   // 数据里实际出现过的分类，按推荐顺序排，其余追加在后面。
   List<String> _categoriesOf(List<Recipe> all) {
-    final present = all
-        .map((r) => r.category)
-        .where((c) => c.isNotEmpty)
-        .toSet();
+    final present =
+        all.map((r) => r.category).where((c) => c.isNotEmpty).toSet();
     final ordered = [
       for (final c in kRecipeCategories)
         if (present.contains(c)) c,
@@ -227,7 +226,8 @@ class _CategoryChip extends StatelessWidget {
         child: Text(
           label,
           style: t.labelLarge?.copyWith(
-            color: selected ? Colors.white : wo.fgMid,
+            color:
+                selected ? Theme.of(context).colorScheme.onPrimary : wo.fgMid,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -353,7 +353,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🍳', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.restaurant_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有菜谱', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
@@ -384,7 +384,7 @@ class _EmptyCategory extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🍽️', style: TextStyle(fontSize: 40)),
+            const WoEmptyMark(icon: Icons.restaurant_outlined),
             const SizedBox(height: WoTokens.space3),
             Text('这个分类还没有菜谱', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           ],

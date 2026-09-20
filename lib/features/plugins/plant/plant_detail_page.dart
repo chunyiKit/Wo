@@ -139,9 +139,8 @@ class _PlantDetailPageState extends State<PlantDetailPage> {
       final one = await pickAndCompressImage(source: ImageSource.camera);
       photos = one == null ? const [] : [one];
     } else {
-      photos = (await pickAndCompressMultiImage())
-          .map<List<int>>((e) => e)
-          .toList();
+      photos =
+          (await pickAndCompressMultiImage()).map<List<int>>((e) => e).toList();
     }
     if (photos.isEmpty) return;
 

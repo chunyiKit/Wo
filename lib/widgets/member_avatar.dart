@@ -35,7 +35,9 @@ class MemberAvatar extends StatelessWidget {
     final api = WoScope.api(context);
     return ClipOval(
       child: CachedNetworkImage(
-        imageUrl: '${api.baseUrl}${url!}',
+        imageUrl: url!.startsWith('https://') || url!.startsWith('http://')
+            ? url!
+            : '${api.baseUrl}${url!}',
         httpHeaders: api.imageHeaders,
         width: size,
         height: size,

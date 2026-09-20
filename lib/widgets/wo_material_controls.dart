@@ -487,8 +487,7 @@ class WoSwitch extends StatelessWidget {
     final control = Switch(
       value: value,
       onChanged: onChanged,
-      activeColor: activeColor,
-      activeThumbColor: activeThumbColor,
+      activeThumbColor: activeThumbColor ?? activeColor,
       activeTrackColor: activeTrackColor,
       inactiveThumbColor: inactiveThumbColor,
       inactiveTrackColor: inactiveTrackColor,
@@ -570,8 +569,7 @@ class WoSwitchListTile extends StatelessWidget {
         contentPadding: contentPadding,
         selected: selected,
         autofocus: autofocus,
-        activeColor: activeColor,
-        activeThumbColor: activeThumbColor,
+        activeThumbColor: activeThumbColor ?? activeColor,
         activeTrackColor: activeTrackColor,
         inactiveThumbColor: inactiveThumbColor,
         inactiveTrackColor: inactiveTrackColor,
@@ -997,8 +995,7 @@ class WoDropdownButtonFormField<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<T>(
-        value: value,
-        initialValue: initialValue,
+        initialValue: initialValue ?? value,
         items: items,
         onChanged: onChanged,
         onSaved: onSaved,
@@ -1398,7 +1395,13 @@ Future<T?> showWoModalBottomSheet<T>({
       routeSettings: routeSettings,
       transitionAnimationController: transitionAnimationController,
       anchorPoint: anchorPoint,
-      sheetAnimationStyle: sheetAnimationStyle,
+      sheetAnimationStyle: sheetAnimationStyle ??
+          (MediaQuery.disableAnimationsOf(context)
+              ? AnimationStyle.noAnimation
+              : const AnimationStyle(
+                  duration: Duration(milliseconds: 420),
+                  reverseDuration: Duration(milliseconds: 300),
+                )),
       requestFocus: requestFocus,
       builder: builder,
     );
@@ -1407,42 +1410,24 @@ Future<T?> showWoModalBottomSheet<T>({
 class WoSnackBar extends SnackBar {
   const WoSnackBar({
     super.key,
-    required Widget content,
-    Color? backgroundColor,
-    double? elevation,
-    EdgeInsetsGeometry? margin,
-    EdgeInsetsGeometry? padding,
-    double? width,
-    ShapeBorder? shape,
-    SnackBarBehavior? behavior,
-    SnackBarAction? action,
-    double? actionOverflowThreshold,
-    bool? showCloseIcon,
-    Color? closeIconColor,
-    Duration duration = const Duration(seconds: 4),
-    Animation<double>? animation,
-    VoidCallback? onVisible,
-    DismissDirection dismissDirection = DismissDirection.down,
-    Clip clipBehavior = Clip.hardEdge,
-  }) : super(
-          content: content,
-          backgroundColor: backgroundColor,
-          elevation: elevation,
-          margin: margin,
-          padding: padding,
-          width: width,
-          shape: shape,
-          behavior: behavior,
-          action: action,
-          actionOverflowThreshold: actionOverflowThreshold,
-          showCloseIcon: showCloseIcon,
-          closeIconColor: closeIconColor,
-          duration: duration,
-          animation: animation,
-          onVisible: onVisible,
-          dismissDirection: dismissDirection,
-          clipBehavior: clipBehavior,
-        );
+    required super.content,
+    super.backgroundColor,
+    super.elevation,
+    super.margin,
+    super.padding,
+    super.width,
+    super.shape,
+    super.behavior,
+    super.action,
+    super.actionOverflowThreshold,
+    super.showCloseIcon,
+    super.closeIconColor,
+    super.duration,
+    super.animation,
+    super.onVisible,
+    DismissDirection super.dismissDirection = DismissDirection.down,
+    super.clipBehavior,
+  });
 }
 
 /// Material 加载指示器。

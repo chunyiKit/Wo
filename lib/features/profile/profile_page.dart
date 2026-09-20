@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,6 +7,8 @@ import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_cinema.dart';
+import '../../widgets/member_avatar.dart';
 
 /// 我的：当前用户 + 我加入的家庭（来自 bootstrap），支持切换家庭。
 class ProfilePage extends StatefulWidget {
@@ -181,6 +182,11 @@ class _ProfilePageState extends State<ProfilePage> {
         child: ListView(
           padding: const EdgeInsets.all(WoTokens.space5),
           children: [
+            const WoCinemaMasthead(
+              title: '生活的主角，是你。',
+              subtitle: '在窝里，收藏属于我们的每一天。',
+            ),
+            const SizedBox(height: 20),
             WoCard(
               color: wo.accentSoft,
               padding: const EdgeInsets.all(WoTokens.space6),
@@ -274,22 +280,11 @@ class _ProfilePageState extends State<ProfilePage> {
     final wo = context.wo;
     final api = WoScope.api(context);
 
-    Widget content;
-    final url = api.userAvatarUrl(user);
-    if (url != null) {
-      content = CachedNetworkImage(
-        imageUrl: url,
-        httpHeaders: api.imageHeaders,
-        fit: BoxFit.cover,
-        width: 64,
-        height: 64,
-        // 完整 URL（含 ?v=）即缓存键，无需自定义 cacheKey。
-        placeholder: (_, __) => _emojiAvatar(user, wo.bgElev),
-        errorWidget: (_, __, ___) => _emojiAvatar(user, wo.bgElev),
-      );
-    } else {
-      content = _emojiAvatar(user, wo.bgElev);
-    }
+    final content = MemberAvatar(
+      url: api.userAvatarUrl(user),
+      emoji: user.avatarEmoji,
+      size: 64,
+    );
 
     return GestureDetector(
       onTap: _avatarBusy ? null : () => _editAvatar(user),
@@ -321,25 +316,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 shape: BoxShape.circle,
                 border: Border.all(color: wo.bgElev, width: 1.5),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.camera_alt,
                 size: 12,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onPrimary,
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _emojiAvatar(WoUser user, Color bg) {
-    return Container(
-      width: 64,
-      height: 64,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Text(user.avatarEmoji, style: const TextStyle(fontSize: 32)),
     );
   }
 

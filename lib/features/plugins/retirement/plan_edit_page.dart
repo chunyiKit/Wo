@@ -25,7 +25,9 @@ class _PlanEditPageState extends State<PlanEditPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override

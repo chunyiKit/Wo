@@ -40,20 +40,22 @@ design/
 └── ...                              # 原 Web 设计稿（jsx/html/css，浏览器可直接打开）
 ```
 
-## 设计系统（已锁定）
+## 日落影院设计系统
 
-| 项目 | 浅色 | 深色 |
+以落日海岸摄影、衬线标题和琥珀面板组成统一的 Android 视觉，设计与验收记录见 [日落影院](docs/design/sunset-cinema.md)。
+
+| 项目 | 暖纸浅色 | 影院深色 |
 |------|------|------|
-| 主色（暖橙 / 焦糖） | `#E8895A` | `#F09A6E` |
-| 背景 | `#FBF7F1`（米白） | `#15120F` |
-| 卡片 | `#FFFFFF` | `#221F1B` |
-| 主字色 | `#2A2722` | `#F2EDE5` |
-| 卡片圆角 | 22px | 22px |
-| FAB 圆角 | 18px | 18px |
-| 字体 | HarmonyOS Sans + Inter（数字）+ PingFang/Noto Sans SC 回退 | 同 |
+| 主操作色 | `#A85D2D` | `#F2B779` |
+| 背景 | `#F8F1E7` | `#160F0D` |
+| 面板 | 暖白纸色 | `#271C17` |
+| 卡片圆角 | 20px | 20px |
+| 标题字体 | 内置 Noto Serif SC | 内置 Noto Serif SC |
+| 正文 | Roboto / 系统中文回退 | 同 |
 
 所有 token 在 `lib/theme/wo_tokens.dart`，通过 `ThemeExtension<WoColors>` 注入；
-业务里 `context.wo.accent`、`context.wo.bg` 即可拿到。
+业务里 `context.wo.accent`、`context.wo.bg` 即可拿到。共享影院组件位于
+`lib/widgets/wo_cinema.dart`；动效遵循系统减少动画设置。
 
 ## 快速开始
 
@@ -139,26 +141,11 @@ navigator 栈和状态，切换不丢页面。
 待真实数据/业务实现：相机扫码（需集成 `mobile_scanner`）、各插件的具体业务、
 长按拖拽 reorder 抖动动画、撤销 snackbar。
 
-## 字体（可选）
+## 字体与摄影
 
-工程默认走 `HarmonyOS Sans` → `PingFang SC` → `Noto Sans SC` → 系统的回退链，
-没有捆绑字体文件时会自动使用系统中文字体。
-要捆绑 HarmonyOS Sans 或 Inter：
+标题字体 `assets/fonts/NotoSerifSC.ttf` 随包提供，许可为 SIL OFL 1.1，详见同目录的 `OFL-NotoSerifSC.txt`。正文采用系统回退，兼顾长列表可读性。
 
-1. 把 `.ttf` 放到 `assets/fonts/`
-2. 在 `pubspec.yaml` 的 `flutter:` 段下加：
-
-```yaml
-flutter:
-  fonts:
-    - family: HarmonyOS Sans
-      fonts:
-        - asset: assets/fonts/HarmonyOS_Sans_SC_Regular.ttf
-        - asset: assets/fonts/HarmonyOS_Sans_SC_Medium.ttf
-          weight: 500
-        - asset: assets/fonts/HarmonyOS_Sans_SC_Bold.ttf
-          weight: 700
-```
+摄影背景为根据用户选定方案生成的 `assets/images/sunset-cinema.png`，无远程依赖。资源来源与生成说明见设计记录。
 
 ## 设计稿浏览
 

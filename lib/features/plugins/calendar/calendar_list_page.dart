@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/api_client.dart';
@@ -558,7 +559,7 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('📅', style: TextStyle(fontSize: 48)),
+            const WoEmptyMark(icon: Icons.calendar_month_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有安排', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),

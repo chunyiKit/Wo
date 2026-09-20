@@ -1234,8 +1234,10 @@ class WoApi {
 
   // ---- 家历（calendar）----------------------------------------------------
 
-  Future<List<CalendarItem>> calendarItems(String familyId,
-      {bool? done}) async {
+  Future<List<CalendarItem>> calendarItems(
+    String familyId, {
+    bool? done,
+  }) async {
     final data = await _client.get(
       '/families/$familyId/plugins/calendar/items',
       query: done != null ? {'done': done} : null,
@@ -1360,8 +1362,10 @@ class WoApi {
 
   // ---- 订阅管家（subscription）-------------------------------------------
 
-  Future<List<Subscription>> subscriptions(String familyId,
-      {bool? active}) async {
+  Future<List<Subscription>> subscriptions(
+    String familyId, {
+    bool? active,
+  }) async {
     final data = await _client.get(
       '/families/$familyId/plugins/subscription/subscriptions',
       query: active != null ? {'active': active} : null,

@@ -70,10 +70,10 @@ class _AiIntegrationPageState extends State<AiIntegrationPage> {
   }
 
   String _errText(Object e) => switch (e) {
-    ApiException ex => ex.message,
-    NetworkException ex => ex.message,
-    _ => '操作失败，请稍后再试',
-  };
+        ApiException ex => ex.message,
+        NetworkException ex => ex.message,
+        _ => '操作失败，请稍后再试',
+      };
 
   Future<void> _edit(AiModelConfig m) async {
     final fid = _familyId;

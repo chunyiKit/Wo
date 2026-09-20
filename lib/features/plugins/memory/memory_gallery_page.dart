@@ -128,10 +128,9 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
                   fit: BoxFit.contain,
                   // 全屏图按屏幕物理分辨率解码即可,无需把 2400px 原图整张解进内存
                   // (那是撑爆 ImageCache、返回后缩略图全部重载的元凶之一)。
-                  memCacheWidth:
-                      (MediaQuery.of(context).size.width *
-                              MediaQuery.of(context).devicePixelRatio)
-                          .round(),
+                  memCacheWidth: (MediaQuery.of(context).size.width *
+                          MediaQuery.of(context).devicePixelRatio)
+                      .round(),
                   placeholder: (_, __) => const Center(
                     child: WoProgressIndicator(color: Colors.white24),
                   ),

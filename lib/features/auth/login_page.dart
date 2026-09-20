@@ -6,6 +6,7 @@ import '../../data/api_client.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
+import '../../widgets/wo_cinema.dart';
 
 /// 手机号登录 / 注册。
 ///
@@ -57,11 +58,13 @@ class _LoginPageState extends State<LoginPage> {
         setState(() => _busy = false);
         ScaffoldMessenger.of(context).showSnackBar(
           WoSnackBar(
-            content: Text(switch (e) {
-              ApiException a => a.message,
-              NetworkException a => a.message,
-              _ => '登录失败',
-            }),
+            content: Text(
+              switch (e) {
+                ApiException a => a.message,
+                NetworkException a => a.message,
+                _ => '登录失败',
+              },
+            ),
           ),
         );
       }
@@ -76,11 +79,16 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: wo.bg,
       appBar: WoAppBar(backgroundColor: Colors.transparent),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const WoCinemaMasthead(
+                title: '欢迎回到窝',
+                subtitle: '每一个平凡的今天，都值得收藏。',
+              ),
+              const SizedBox(height: 28),
               Text('手机号登录', style: t.displaySmall),
               const SizedBox(height: WoTokens.space2),
               Text(
@@ -91,7 +99,7 @@ class _LoginPageState extends State<LoginPage> {
               WoTextField(
                 controller: _phone,
                 keyboardType: TextInputType.phone,
-                autofocus: true,
+                autofocus: false,
                 maxLength: 11,
                 onChanged: (_) => setState(() {}),
                 inputFormatters: [

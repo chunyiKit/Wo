@@ -60,11 +60,11 @@ class _PetProfileEditPageState extends State<PetProfileEditPage> {
   }
 
   Future<DateTime?> _date(DateTime? initial) => showDatePicker(
-    context: context,
-    initialDate: initial ?? DateTime.now(),
-    firstDate: DateTime(1980),
-    lastDate: DateTime.now(),
-  );
+        context: context,
+        initialDate: initial ?? DateTime.now(),
+        firstDate: DateTime(1980),
+        lastDate: DateTime.now(),
+      );
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty || _saving) return;
@@ -169,9 +169,8 @@ class _PetProfileEditPageState extends State<PetProfileEditPage> {
             child: GestureDetector(
               key: const ValueKey('pet-photo-picker'),
               onTap: () async {
-                final bytes =
-                    await (widget.imagePicker?.call() ??
-                        pickAndCompressImage(maxEdge: 1024));
+                final bytes = await (widget.imagePicker?.call() ??
+                    pickAndCompressImage(maxEdge: 1024));
                 if (bytes != null && mounted) setState(() => _photo = bytes);
               },
               child: Stack(

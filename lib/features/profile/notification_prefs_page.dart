@@ -154,9 +154,8 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
                     title: Text(s.label),
                     // 总开关关掉时，各来源开关一并失效（变灰）。
                     value: prefs.pushEnabled && s.enabled,
-                    onChanged: prefs.pushEnabled
-                        ? (v) => _setSource(s, v)
-                        : null,
+                    onChanged:
+                        prefs.pushEnabled ? (v) => _setSource(s, v) : null,
                   ),
                 Padding(
                   padding: const EdgeInsets.all(WoTokens.space5),

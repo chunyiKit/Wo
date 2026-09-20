@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
@@ -93,7 +94,7 @@ class _PetListPageState extends State<PetListPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🐾', style: TextStyle(fontSize: 52)),
+            const WoEmptyMark(icon: Icons.pets_outlined),
             const SizedBox(height: WoTokens.space3),
             Text('先添加一位宠物家人', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: WoTokens.space2),
@@ -136,9 +137,8 @@ class _PetListPageState extends State<PetListPage> {
               emoji: pet.emoji,
               size: 68,
               placeholderColor: wo.pet,
-              url: pet.photoUrl == null
-                  ? null
-                  : '${api.baseUrl}${pet.photoUrl}',
+              url:
+                  pet.photoUrl == null ? null : '${api.baseUrl}${pet.photoUrl}',
               headers: api.imageHeaders,
             ),
             const SizedBox(width: WoTokens.space4),

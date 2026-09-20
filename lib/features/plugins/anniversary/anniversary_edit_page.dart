@@ -283,8 +283,11 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                         '日期',
                         style: t.bodyMedium?.copyWith(color: wo.fgMid),
                       ),
-                      const Spacer(),
-                      Text(dateText, style: t.titleMedium),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: Text(dateText,
+                              textAlign: TextAlign.right,
+                              style: t.titleMedium,),),
                       const SizedBox(width: WoTokens.space2),
                       Icon(Icons.chevron_right, color: wo.fgDim, size: 20),
                     ],
@@ -313,8 +316,8 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
                 subtitle: Text(
                   _notifyEnabled
                       ? (_notifyDaysBefore == 0
-                            ? '当天给全家发一条通知'
-                            : '提前 $_notifyDaysBefore 天给全家发一条通知')
+                          ? '当天给全家发一条通知'
+                          : '提前 $_notifyDaysBefore 天给全家发一条通知')
                       : '到日子时给全家发一条通知',
                   style: t.bodySmall?.copyWith(color: wo.fgMid),
                 ),

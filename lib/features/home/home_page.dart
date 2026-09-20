@@ -1,3 +1,4 @@
+import '../../widgets/wo_cinema.dart';
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,6 +14,7 @@ import '../../navigation/wo_routes.dart';
 import '../../theme/color_token.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
+import '../../theme/wo_typography.dart';
 import '../../widgets/wo_open_container.dart';
 import '../../widgets/wo_widget_grid.dart';
 import '../plugins/plugin_pages.dart';
@@ -136,10 +138,13 @@ class _HomePageState extends State<HomePage> {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
-    final positions = computeWoGridPlacements([
-      for (final p in ordered)
-        (cw: p.layout.cw.clamp(1, 4), ch: p.layout.ch.clamp(1, 4)),
-    ], 4);
+    final positions = computeWoGridPlacements(
+      [
+        for (final p in ordered)
+          (cw: p.layout.cw.clamp(1, 4), ch: p.layout.ch.clamp(1, 4)),
+      ],
+      4,
+    );
     final items = [
       for (var i = 0; i < ordered.length; i++)
         <String, dynamic>{
@@ -181,12 +186,12 @@ class _HomePageState extends State<HomePage> {
   /// 详情页、返回缩回卡片。没有注册详情页的插件回退成普通卡片（点击无形变）。
   Widget _buildPluginTile(InstalledPlugin ip) {
     Widget card(VoidCallback? onTap) => _WidgetCard(
-      installed: ip,
-      editing: false,
-      onTap: onTap,
-      onLongPress: () => setState(() => _editing = true),
-      onRemove: () => _remove(ip),
-    );
+          installed: ip,
+          editing: false,
+          onTap: onTap,
+          onLongPress: () => setState(() => _editing = true),
+          onRemove: () => _remove(ip),
+        );
 
     final page = pluginPageFor(ip);
     if (page == null) return card(null);
@@ -416,42 +421,6 @@ class _HomePageState extends State<HomePage> {
       onPopInvokedWithResult: _handleBack,
       child: WoScaffold(
         backgroundColor: wo.bg,
-        appBar: WoAppBar(
-          title: GestureDetector(
-            onTap: _openFamilySwitcher,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    family.name,
-                    style: t.titleLarge,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(Icons.expand_more, color: wo.fgMid, size: 20),
-              ],
-            ),
-          ),
-          actions: [
-            WoIconButton(
-              tooltip: '通知',
-              icon: Badge(
-                isLabelVisible: session.unreadCount > 0,
-                label: Text('${session.unreadCount}'),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              onPressed: () => context.go(WoRoutes.messages),
-            ),
-            if (plugins.isNotEmpty)
-              WoIconButton(
-                tooltip: _editing ? '完成编辑' : '编辑布局',
-                icon: Icon(_editing ? Icons.check : Icons.edit_outlined),
-                onPressed: () => setState(() => _editing = !_editing),
-              ),
-          ],
-        ),
         body: SafeArea(
           top: false,
           child: RefreshIndicator(
@@ -461,58 +430,209 @@ class _HomePageState extends State<HomePage> {
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                WoTokens.space4,
-                WoTokens.space2,
-                WoTokens.space4,
-                100,
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_shoppingSources.isNotEmpty && !_editing) ...[
-                    _ShoppingBanner(
-                      sources: _shoppingSources,
-                      onTap: _onShoppingBannerTap,
-                    ),
-                    const SizedBox(height: WoTokens.space3),
-                  ],
-                  plugins.isEmpty
-                      ? _EmptyGrid(onAdd: _openAddPluginSheet)
-                      : WoWidgetGrid(
-                          crossAxisCount: 4,
-                          gap: WoTokens.space3,
+                  WoCinemaEntrance(
+                    child: SizedBox(
+                      height: 410 + MediaQuery.paddingOf(context).top,
+                      child: WoCinemaBackdrop(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (var i = 0; i < plugins.length; i++)
-                              WoWidgetGridTile(
-                                tileKey: ValueKey(plugins[i].id),
-                                cw: plugins[i].layout.cw.clamp(1, 4),
-                                ch: plugins[i].layout.ch.clamp(1, 4),
-                                child: _editing
-                                    ? _DraggableTile(
-                                        index: i,
-                                        installed: plugins[i],
-                                        onRemove: () => _remove(plugins[i]),
-                                        onReorder: _reorder,
-                                        onResize: () =>
-                                            _openSizeSheet(plugins[i]),
-                                        onBind:
-                                            plugins[i].pluginId == 'anniversary'
-                                            ? () => _openBindSheet(plugins[i])
-                                            : null,
-                                      )
-                                    : _buildPluginTile(plugins[i]),
+                            SafeArea(
+                              bottom: false,
+                              child: SizedBox(
+                                height: 62,
+                                child: WoAppBar(
+                                  backgroundColor: Colors.transparent,
+                                  foregroundColor: const Color(0xFFFFEAD0),
+                                  systemOverlayStyle:
+                                      SystemUiOverlayStyle.light,
+                                  title: GestureDetector(
+                                    onTap: _openFamilySwitcher,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            family.name,
+                                            style: WoTypography.editorial(
+                                              const Color(0xFFFFEAD0),
+                                              size: 22,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          Icons.expand_more,
+                                          color: const Color(0xFFFFEAD0),
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  actions: [
+                                    WoIconButton(
+                                      tooltip: '添加插件',
+                                      icon:
+                                          const Icon(Icons.add_circle_outline),
+                                      onPressed: _openAddPluginSheet,
+                                    ),
+                                    if (plugins.isNotEmpty)
+                                      WoIconButton(
+                                        tooltip: _editing ? '完成编辑' : '编辑布局',
+                                        icon: Icon(
+                                          _editing
+                                              ? Icons.check
+                                              : Icons.edit_outlined,
+                                        ),
+                                        onPressed: () => setState(
+                                          () => _editing = !_editing,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(26, 28, 26, 24),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      '把日子',
+                                      style: TextStyle(
+                                        fontFamily:
+                                            WoTypography.editorialFamily,
+                                        fontSize: 42,
+                                        color: Color(0xFFFFEAD0),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                    const Text(
+                                      '过成电影',
+                                      style: TextStyle(
+                                        fontFamily:
+                                            WoTypography.editorialFamily,
+                                        fontSize: 42,
+                                        color: Color(0xFFFFEAD0),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    const Text(
+                                      '柴米油盐，都是我们的浪漫。',
+                                      style: TextStyle(
+                                        color: Color(0xFFF2D0A9),
+                                        fontSize: 12,
+                                        letterSpacing: 1.4,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.wb_twilight_outlined,
+                                          size: 18,
+                                          color: Color(0xFFF2B779),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${DateTime.now().month.toString().padLeft(2, '0')} / ${DateTime.now().day.toString().padLeft(2, '0')}  ·  ${family.memberCount} 位家人，共同生活',
+                                            style: const TextStyle(
+                                              color: Color(0xFFE9C9A7),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ],
                         ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 92),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        WoCinemaHeading(
+                          title: _editing ? '布置你的首页' : '小家的日常',
+                          subtitle: _editing
+                              ? '长按拖动 · 点击调整尺寸或绑定'
+                              : 'LIFE, FRAME BY FRAME',
+                          trailing: Text(
+                            '${plugins.length} 个插件',
+                            style: t.bodySmall?.copyWith(color: wo.fgMid),
+                          ),
+                        ),
+                        if (_shoppingSources.isNotEmpty && !_editing) ...[
+                          _ShoppingBanner(
+                            sources: _shoppingSources,
+                            onTap: _onShoppingBannerTap,
+                          ),
+                          const SizedBox(height: WoTokens.space3),
+                        ],
+                        plugins.isEmpty
+                            ? _EmptyGrid(onAdd: _openAddPluginSheet)
+                            : WoWidgetGrid(
+                                crossAxisCount: 4,
+                                cellAspectRatio: .92 /
+                                    MediaQuery.textScalerOf(context)
+                                        .scale(1)
+                                        .clamp(1.0, 1.6),
+                                gap: WoTokens.space3,
+                                children: [
+                                  for (var i = 0; i < plugins.length; i++)
+                                    WoWidgetGridTile(
+                                      tileKey: ValueKey(plugins[i].id),
+                                      cw: plugins[i].layout.cw.clamp(1, 4),
+                                      ch: plugins[i].layout.ch.clamp(1, 4),
+                                      child: _editing
+                                          ? _DraggableTile(
+                                              index: i,
+                                              installed: plugins[i],
+                                              onRemove: () =>
+                                                  _remove(plugins[i]),
+                                              onReorder: _reorder,
+                                              onResize: () =>
+                                                  _openSizeSheet(plugins[i]),
+                                              onBind: plugins[i].pluginId ==
+                                                      'anniversary'
+                                                  ? () => _openBindSheet(
+                                                        plugins[i],
+                                                      )
+                                                  : null,
+                                            )
+                                          : _buildPluginTile(plugins[i]),
+                                    ),
+                                ],
+                              ),
+                        const SizedBox(height: 22),
+                        Center(
+                          child: WoTextButton.icon(
+                            onPressed: _openAddPluginSheet,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('发现更多生活方式'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-        ),
-        floatingActionButton: WoFloatingActionButton(
-          onPressed: _openAddPluginSheet,
-          child: const Icon(Icons.add),
         ),
       ),
     );
@@ -561,12 +681,15 @@ class _WidgetCard extends StatelessWidget {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     final preview = installed.preview;
-    // 卡片主图标：优先用 preview 自带 emoji（如所选纪念日），回退插件 emoji。
-    final emoji = preview.emoji ?? installed.plugin.emoji;
-    final emphasized = wo.isEmphasizedToken(preview.colorToken);
-    final color = wo.colorForToken(preview.colorToken);
-    final fg = emphasized ? Colors.white : wo.fg;
-    final fgMid = emphasized ? Colors.white.withValues(alpha: 0.85) : wo.fgMid;
+    // 插件使用统一细线图标；成员身份与头像仍由各插件的真实数据展示。
+    final isMoney =
+        installed.pluginId == 'accounting' && preview.primary.startsWith('¥');
+    final color = Color.alphaBlend(
+      wo.colorForToken(preview.colorToken).withValues(alpha: .16),
+      wo.bgElev,
+    );
+    final fg = wo.fg;
+    final fgMid = wo.fgMid;
     // secondary 可带强调色（如预算见底），为空回退到 fgMid。
     final secondaryColor = wo.colorForTone(preview.secondaryTone) ?? fgMid;
     final isCompact = installed.layout.ch <= 1;
@@ -578,41 +701,46 @@ class _WidgetCard extends StatelessWidget {
     // 大卡的文字栏（emoji + 插件名 + primary + secondary）抽出来,大卡 + 带轮播
     // 时它放在 Row 左半 Expanded 里，否则就是整张卡的 Column。
     Widget buildBigTextColumn() => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 26)),
-        const Spacer(),
-        Text(
-          installed.plugin.name,
-          style: t.labelMedium?.copyWith(color: fgMid),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          preview.primary,
-          style: (emphasized ? t.headlineMedium : t.titleMedium)?.copyWith(
-            color: fg,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        if (preview.secondary != null) ...[
-          const SizedBox(height: 2),
-          Text(
-            preview.secondary!,
-            style: t.bodySmall?.copyWith(
-              color: secondaryColor,
-              fontWeight: preview.secondaryTone != null
-                  ? FontWeight.w700
-                  : null,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              woPluginIcon(installed.pluginId),
+              size: 25,
+              color: wo.accentDeep,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ],
-    );
+            const Spacer(),
+            Text(
+              installed.plugin.name,
+              style: t.labelMedium?.copyWith(color: fgMid),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              preview.primary,
+              style: (isMoney ? t.headlineLarge : t.titleMedium)?.copyWith(
+                color: fg,
+                fontFamily: WoTypography.editorialFamily,
+                fontWeight: FontWeight.w400,
+                fontSize: isMoney ? 30 : 18,
+                letterSpacing: -0.3,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (preview.secondary != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                preview.secondary!,
+                style: t.bodySmall?.copyWith(
+                  color: secondaryColor,
+                  fontWeight:
+                      preview.secondaryTone != null ? FontWeight.w700 : null,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
+        );
 
     return Stack(
       children: [
@@ -627,7 +755,11 @@ class _WidgetCard extends StatelessWidget {
             child: isCompact
                 ? Row(
                     children: [
-                      Text(emoji, style: const TextStyle(fontSize: 22)),
+                      Icon(
+                        woPluginIcon(installed.pluginId),
+                        size: 22,
+                        color: wo.accentDeep,
+                      ),
                       const SizedBox(width: WoTokens.space3),
                       Expanded(
                         child: Column(
@@ -660,23 +792,23 @@ class _WidgetCard extends StatelessWidget {
                     ],
                   )
                 : showImageCarousel
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: buildBigTextColumn()),
-                      const SizedBox(width: WoTokens.space3),
-                      Expanded(
-                        child: _MemoryCarousel(
-                          urls: [
-                            for (final p in preview.imageUrls)
-                              '${WoScope.api(context).baseUrl}$p',
-                          ],
-                          headers: WoScope.api(context).imageHeaders,
-                        ),
-                      ),
-                    ],
-                  )
-                : buildBigTextColumn(),
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: buildBigTextColumn()),
+                          const SizedBox(width: WoTokens.space3),
+                          Expanded(
+                            child: _MemoryCarousel(
+                              urls: [
+                                for (final p in preview.imageUrls)
+                                  '${WoScope.api(context).baseUrl}$p',
+                              ],
+                              headers: WoScope.api(context).imageHeaders,
+                            ),
+                          ),
+                        ],
+                      )
+                    : buildBigTextColumn(),
           ),
         ),
         if (editing && showRemove)
@@ -940,9 +1072,8 @@ class _SizeOption extends StatelessWidget {
                       label,
                       style: t.titleMedium?.copyWith(
                         color: selected ? wo.accentDeep : wo.fg,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
                       ),
                     ),
                     Text(hint, style: t.bodySmall?.copyWith(color: wo.fgMid)),
@@ -1121,7 +1252,7 @@ class _EmptyGrid extends StatelessWidget {
       padding: const EdgeInsets.only(top: 80),
       child: Column(
         children: [
-          const Text('🧩', style: TextStyle(fontSize: 48)),
+          const WoEmptyMark(icon: Icons.widgets_outlined),
           const SizedBox(height: WoTokens.space4),
           Text('还没有插件', style: t.titleMedium),
           const SizedBox(height: WoTokens.space2),
@@ -1153,7 +1284,7 @@ class _NoFamily extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🏡', style: TextStyle(fontSize: 56)),
+            const WoEmptyMark(icon: Icons.home_outlined),
             const SizedBox(height: WoTokens.space4),
             Text('还没有窝', style: t.titleLarge),
             const SizedBox(height: WoTokens.space2),
@@ -1230,23 +1361,22 @@ class _FamilySwitcherSheetState extends State<_FamilySwitcherSheet> {
                     f.name,
                     style: t.titleMedium?.copyWith(
                       color: f.id == currentId ? wo.accentDeep : wo.fg,
-                      fontWeight: f.id == currentId
-                          ? FontWeight.w600
-                          : FontWeight.w500,
+                      fontWeight:
+                          f.id == currentId ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
                   trailing: f.id == currentId
                       ? Icon(Icons.check_circle, color: wo.accent)
                       : (f.myUnreadCount > 0
-                            ? Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.redAccent,
-                                  shape: BoxShape.circle,
-                                ),
-                              )
-                            : null),
+                          ? Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Colors.redAccent,
+                                shape: BoxShape.circle,
+                              ),
+                            )
+                          : null),
                   onTap: f.id == currentId ? null : () => _switch(f.id),
                 ),
               ),
@@ -1418,7 +1548,7 @@ class _AddPluginSheetState extends State<_AddPluginSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(p.emoji, style: const TextStyle(fontSize: 28)),
+          Icon(woPluginIcon(p.id), size: 28, color: wo.accentDeep),
           const Spacer(),
           Text(
             p.name,
@@ -1582,8 +1712,8 @@ class _ShoppingBanner extends StatelessWidget {
     final detail = sources.length > 1
         // 多来源直接列出来:「食材 3 · 囤货 2」,顺便提示点开能展开。
         ? sources
-              .map((s) => '${s.label.replaceAll('采买', '')} ${s.count}')
-              .join(' · ')
+            .map((s) => '${s.label.replaceAll('采买', '')} ${s.count}')
+            .join(' · ')
         : '${sources.first.label} $total 项';
     return InkWell(
       key: _anchor,

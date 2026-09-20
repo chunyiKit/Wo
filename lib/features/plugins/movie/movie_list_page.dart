@@ -1,3 +1,4 @@
+import '../../../widgets/wo_cinema.dart';
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -358,9 +359,8 @@ class _MovieRow extends StatelessWidget {
                       style: t.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: movie.watched ? wo.fgMid : wo.fg,
-                        decoration: movie.watched
-                            ? TextDecoration.lineThrough
-                            : null,
+                        decoration:
+                            movie.watched ? TextDecoration.lineThrough : null,
                         decorationColor: wo.fgDim,
                       ),
                       maxLines: 1,
@@ -434,12 +434,12 @@ class _Poster extends StatelessWidget {
     final wo = context.wo;
     final radius = BorderRadius.circular(8);
     Widget placeholder({Widget? child}) => Container(
-      width: _w,
-      height: _h,
-      decoration: BoxDecoration(color: wo.bgTint, borderRadius: radius),
-      alignment: Alignment.center,
-      child: child ?? const Text('🎬', style: TextStyle(fontSize: 24)),
-    );
+          width: _w,
+          height: _h,
+          decoration: BoxDecoration(color: wo.bgTint, borderRadius: radius),
+          alignment: Alignment.center,
+          child: child ?? const Text('🎬', style: TextStyle(fontSize: 24)),
+        );
 
     if (movie.posterUrl != null && movie.posterUrl!.isNotEmpty) {
       final api = WoScope.api(context);
@@ -614,7 +614,7 @@ class _Empty extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🎬', style: TextStyle(fontSize: 48)),
+          const WoEmptyMark(icon: Icons.local_movies_outlined),
           const SizedBox(height: WoTokens.space2),
           Text(
             watched ? '还没看过任何一部' : '还没想看的',

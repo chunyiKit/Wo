@@ -90,7 +90,8 @@ class ApiClient {
     Map<String, dynamic>? query,
   }) async {
     final envelope = await _sendEnvelope(
-        () => _http.get(_uri(path, query), headers: _headers));
+      () => _http.get(_uri(path, query), headers: _headers),
+    );
     return (
       data: envelope['data'],
       meta: envelope['meta'] as Map<String, dynamic>?
@@ -110,8 +111,11 @@ class ApiClient {
         () => _http.put(_uri(path), headers: _headers, body: _encode(body)),
       );
 
-  Future<dynamic> delete(String path,
-          {Object? body, Map<String, dynamic>? query}) =>
+  Future<dynamic> delete(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) =>
       _send(
         () => _http.delete(
           _uri(path, query),
