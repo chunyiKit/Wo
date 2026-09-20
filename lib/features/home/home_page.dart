@@ -17,6 +17,8 @@ import '../../widgets/wo_card.dart';
 import '../../theme/wo_typography.dart';
 import '../../widgets/wo_open_container.dart';
 import '../../widgets/wo_widget_grid.dart';
+import 'family_home_background.dart';
+import 'home_background_page.dart';
 import '../plugins/plugin_pages.dart';
 import '../plugins/stock/stock_page.dart';
 
@@ -435,16 +437,20 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   WoCinemaEntrance(
                     child: SizedBox(
-                      height: 410 + MediaQuery.paddingOf(context).top,
+                      key: const ValueKey('home-hero'),
+                      height: 205 + MediaQuery.paddingOf(context).top,
                       child: WoCinemaBackdrop(
+                        background:
+                            FamilyHomeBackground(url: family.backgroundUrl),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             SafeArea(
                               bottom: false,
                               child: SizedBox(
-                                height: 62,
+                                height: 56,
                                 child: WoAppBar(
+                                  toolbarHeight: 56,
                                   backgroundColor: Colors.transparent,
                                   foregroundColor: const Color(0xFFFFEAD0),
                                   systemOverlayStyle:
@@ -476,8 +482,10 @@ class _HomePageState extends State<HomePage> {
                                   actions: [
                                     WoIconButton(
                                       tooltip: '添加插件',
-                                      icon:
-                                          const Icon(Icons.add_circle_outline),
+                                      icon: const Icon(
+                                        Icons.add_circle_outline,
+                                        color: Color(0xFFFFEAD0),
+                                      ),
                                       onPressed: _openAddPluginSheet,
                                     ),
                                     if (plugins.isNotEmpty)
@@ -487,6 +495,7 @@ class _HomePageState extends State<HomePage> {
                                           _editing
                                               ? Icons.check
                                               : Icons.edit_outlined,
+                                          color: const Color(0xFFFFEAD0),
                                         ),
                                         onPressed: () => setState(
                                           () => _editing = !_editing,
@@ -499,31 +508,25 @@ class _HomePageState extends State<HomePage> {
                             Expanded(
                               child: Padding(
                                 padding:
-                                    const EdgeInsets.fromLTRB(26, 28, 26, 24),
+                                    const EdgeInsets.fromLTRB(20, 8, 20, 12),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      '把日子',
-                                      style: TextStyle(
-                                        fontFamily:
-                                            WoTypography.editorialFamily,
-                                        fontSize: 42,
-                                        color: Color(0xFFFFEAD0),
-                                        height: 1.4,
+                                    const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        '把日子，过成电影',
+                                        style: TextStyle(
+                                          fontFamily:
+                                              WoTypography.editorialFamily,
+                                          fontSize: 28,
+                                          color: Color(0xFFFFEAD0),
+                                          height: 1.35,
+                                        ),
                                       ),
                                     ),
-                                    const Text(
-                                      '过成电影',
-                                      style: TextStyle(
-                                        fontFamily:
-                                            WoTypography.editorialFamily,
-                                        fontSize: 42,
-                                        color: Color(0xFFFFEAD0),
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
+                                    const SizedBox(height: 6),
                                     const Text(
                                       '柴米油盐，都是我们的浪漫。',
                                       style: TextStyle(
@@ -550,6 +553,26 @@ class _HomePageState extends State<HomePage> {
                                             ),
                                           ),
                                         ),
+                                        if (family.myRole == 'owner' ||
+                                            family.myRole == 'admin')
+                                          WoIconButton(
+                                            tooltip: '更换首页背景',
+                                            icon: const Icon(
+                                              Icons.wallpaper_outlined,
+                                              size: 20,
+                                              color: Color(0xFFFFEAD0),
+                                            ),
+                                            onPressed: () =>
+                                                Navigator.of(context)
+                                                    .push<void>(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    HomeBackgroundPage(
+                                                  family: family,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   ],

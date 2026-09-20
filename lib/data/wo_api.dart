@@ -244,6 +244,24 @@ class WoApi {
         await _client.get('/families/$familyId') as Map<String, dynamic>,
       );
 
+  Future<Family> uploadFamilyBackground(
+    String familyId, {
+    required List<int> bytes,
+  }) async {
+    final data = await _client.uploadFile(
+      '/families/$familyId/background',
+      bytes: bytes,
+      filename: 'background.jpg',
+    );
+    return Family.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Family> resetFamilyBackground(String familyId) async =>
+      Family.fromJson(
+        await _client.delete('/families/$familyId/background')
+            as Map<String, dynamic>,
+      );
+
   Future<Family> switchFamily(String familyId) async => Family.fromJson(
         await _client.post('/families/$familyId/switch')
             as Map<String, dynamic>,

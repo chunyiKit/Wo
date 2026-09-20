@@ -94,6 +94,7 @@ class Family {
     required this.id,
     required this.name,
     this.slogan,
+    this.backgroundUrl,
     required this.emoji,
     this.createdAt,
     required this.memberCount,
@@ -105,6 +106,7 @@ class Family {
   final String id;
   final String name;
   final String? slogan;
+  final String? backgroundUrl;
   final String emoji;
   final DateTime? createdAt;
   final int memberCount;
@@ -116,6 +118,7 @@ class Family {
         id: j['id'] as String,
         name: j['name'] as String? ?? '',
         slogan: j['slogan'] as String?,
+        backgroundUrl: j['background_url'] as String?,
         emoji: j['emoji'] as String? ?? '🏡',
         createdAt: _parseDate(j['created_at']),
         memberCount: (j['member_count'] as num?)?.toInt() ?? 0,

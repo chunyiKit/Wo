@@ -227,6 +227,23 @@ class WoSession extends ChangeNotifier {
   /// 重新拉取 bootstrap（创建/加入家庭、切换、装/卸插件后调用）。
   Future<void> refresh() => load();
 
+  /// 将已保存的家庭资料同步到首页，不依赖额外请求，也不清空插件列表。
+  void updateFamilySnapshot(Family family) {
+    final data = _bootstrap;
+    if (data == null) return;
+    _bootstrap = Bootstrap(
+      user: data.user,
+      currentFamily:
+          data.currentFamily?.id == family.id ? family : data.currentFamily,
+      families: [
+        for (final item in data.families) item.id == family.id ? family : item,
+      ],
+      installedPlugins: data.installedPlugins,
+      unreadCount: data.unreadCount,
+    );
+    notifyListeners();
+  }
+
   /// 切换当前家庭，然后刷新缓存。
   Future<void> switchFamily(String familyId) async {
     await api.switchFamily(familyId);

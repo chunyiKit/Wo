@@ -33,6 +33,9 @@ class Family(FamilyBase, table=True):
     __tablename__ = "families"
 
     id: UUID = Field(default_factory=new_uuid7, primary_key=True)
+    background_storage_key: str | None = Field(default=None, max_length=256)
+    background_content_type: str | None = Field(default=None, max_length=64)
+    background_version: int = Field(default=0)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -63,6 +66,7 @@ class FamilyRead(BaseModel):
     pet_count: int = 0
     my_role: Role
     my_unread_count: int = 0
+    background_url: str | None = None
 
     @classmethod
     def from_components(
@@ -84,4 +88,9 @@ class FamilyRead(BaseModel):
             pet_count=pet_count,
             my_role=membership.role,  # type: ignore[arg-type]
             my_unread_count=unread_count,
+            background_url=(
+                f"/api/v1/families/{family.id}/background?v={family.background_version}"
+                if family.background_storage_key
+                else None
+            ),
         )

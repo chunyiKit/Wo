@@ -9,22 +9,25 @@ class WoCinemaBackdrop extends StatelessWidget {
     super.key,
     required this.child,
     this.alignment = const Alignment(.35, -.25),
+    this.background,
   });
   final Widget child;
   final Alignment alignment;
+  final Widget? background;
   static const asset = 'assets/images/sunset-cinema.png';
 
   @override
   Widget build(BuildContext context) => Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            asset,
-            fit: BoxFit.cover,
-            alignment: alignment,
-            errorBuilder: (_, __, ___) =>
-                const ColoredBox(color: Color(0xFF533021)),
-          ),
+          background ??
+              Image.asset(
+                asset,
+                fit: BoxFit.cover,
+                alignment: alignment,
+                errorBuilder: (_, __, ___) =>
+                    const ColoredBox(color: Color(0xFF533021)),
+              ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
