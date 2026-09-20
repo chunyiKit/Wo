@@ -50,6 +50,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
   late String _category;
   late final TextEditingController _note;
   late final FocusNode _noteFocus;
+  late final FocusNode _amountFocus;
   bool _submitting = false;
   // 勾选后这笔仍计入「本月支出」，但不从月预算中扣除（预算外支出）。默认不勾选。
   bool _excludeFromBudget = false;
@@ -87,11 +88,12 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
     _note = TextEditingController(text: e?.note ?? d?.note ?? '');
     _excludeFromBudget = e?.excludeFromBudget ?? false;
     _noteFocus = FocusNode();
-    _noteFocus.addListener(_onNoteFocusChange);
+    _amountFocus = FocusNode(debugLabel: 'expense-amount');
+    _amountFocus.addListener(_onAmountFocusChange);
   }
 
   Future<void> _addCategory() async {
-    _noteFocus.unfocus();
+    FocusScope.of(context).unfocus();
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
@@ -112,7 +114,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
     }
   }
 
-  void _onNoteFocusChange() {
+  void _onAmountFocusChange() {
     if (mounted) setState(() {});
   }
 
@@ -124,8 +126,9 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
   @override
   void dispose() {
     _note.dispose();
-    _noteFocus.removeListener(_onNoteFocusChange);
     _noteFocus.dispose();
+    _amountFocus.removeListener(_onAmountFocusChange);
+    _amountFocus.dispose();
     super.dispose();
   }
 
@@ -184,8 +187,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
 
   void _press(String k) {
     HapticFeedback.selectionClick();
-    // 用户开始操作计算键盘时，主动收起备注的系统键盘，避免互相遮挡。
-    if (_noteFocus.hasFocus) _noteFocus.unfocus();
+    _amountFocus.requestFocus();
     setState(() {
       if (_calcError != null) {
         // 错误态下仅接受 AC / ⌫，用于清除错误后重新输入。
@@ -308,7 +310,7 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
   Future<void> _save() async {
     final amount = _finalAmount;
     if (amount == null || _submitting) return;
-    _noteFocus.unfocus();
+    FocusScope.of(context).unfocus();
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
@@ -358,6 +360,8 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
     final t = Theme.of(context).textTheme;
     final canSave = _finalAmount != null && !_submitting;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    // 等系统输入法完全收起后再展开，避免切换期间两套键盘挤占空间。
+    final showKeypad = _amountFocus.hasFocus && bottomInset == 0;
     final screenH = MediaQuery.of(context).size.height;
 
     return Padding(
@@ -397,10 +401,16 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                         ),
                       ),
                       const SizedBox(height: WoTokens.space5),
-                      _AmountDisplay(
-                        text: _displayText,
-                        isError: _calcError != null,
-                        onTap: () => _noteFocus.unfocus(),
+                      Focus(
+                        focusNode: _amountFocus,
+                        autofocus: true,
+                        child: _AmountDisplay(
+                          text: _displayText,
+                          isError: _calcError != null,
+                          focused: _amountFocus.hasFocus,
+                          onTap: _amountFocus.requestFocus,
+                          onHide: _amountFocus.unfocus,
+                        ),
                       ),
                       const SizedBox(height: WoTokens.space4),
                       Row(
@@ -434,6 +444,8 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                       WoTextField(
                         controller: _note,
                         focusNode: _noteFocus,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _noteFocus.unfocus(),
                         maxLength: 200,
                         decoration: const InputDecoration(
                           labelText: '备注（可选）',
@@ -452,12 +464,29 @@ class _ExpenseEntrySheetState extends State<_ExpenseEntrySheet> {
                   ),
                 ),
               ),
-              _CalcKeypad(
-                onKey: _press,
-                onSave: canSave ? _save : null,
-                saving: _submitting,
-                isEditing: _isEditing,
-              ),
+              if (showKeypad)
+                _CalcKeypad(
+                  onKey: _press,
+                  onSave: canSave ? _save : null,
+                  saving: _submitting,
+                  isEditing: _isEditing,
+                )
+              else
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: WoFilledButton(
+                        onPressed: canSave ? _save : null,
+                        child: Text(
+                          _submitting ? '保存中…' : (_isEditing ? '保存' : '完成'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -471,12 +500,16 @@ class _AmountDisplay extends StatelessWidget {
   const _AmountDisplay({
     required this.text,
     required this.isError,
+    required this.focused,
     required this.onTap,
+    required this.onHide,
   });
 
   final String text;
   final bool isError;
+  final bool focused;
   final VoidCallback onTap;
+  final VoidCallback onHide;
 
   @override
   Widget build(BuildContext context) {
@@ -488,7 +521,12 @@ class _AmountDisplay extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: WoTokens.space3),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: wo.hairline, width: 1)),
+          border: Border(
+            bottom: BorderSide(
+              color: focused ? wo.accent : wo.hairline,
+              width: focused ? 2 : 1,
+            ),
+          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -515,6 +553,12 @@ class _AmountDisplay extends StatelessWidget {
                 ),
               ),
             ),
+            if (focused)
+              WoIconButton(
+                tooltip: '收起数字键盘',
+                onPressed: onHide,
+                icon: const Icon(Icons.keyboard_hide_outlined),
+              ),
           ],
         ),
       ),
