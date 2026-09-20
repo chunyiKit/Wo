@@ -28,7 +28,9 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.models.notification import Notification
 from app.models.push_outbox import STATUS_FAILED, STATUS_PENDING, STATUS_SENT, PushOutbox
+from app.models.user import User
 from app.services import device_token as device_service
+from app.services.notification_prefs import notification_allowed
 from app.services.push import JPushClient, PushMessage, PushSender
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,16 @@ async def dispatch_pending(
         # Notification gone (e.g. user deleted) or recipient has no device: nothing
         # to deliver — settle the row so the dispatcher won't keep reprocessing it.
         if notif is None:
+            _mark_sent(row)
+            session.add(row)
+            continue
+        # 通知可能在关闭开关前已入队；实际发送时再次核对最新偏好。
+        prefs = (
+            await session.execute(
+                select(User.notification_prefs).where(User.id == notif.user_id)
+            )
+        ).scalar_one_or_none()
+        if prefs is None or not notification_allowed(prefs, notif.type):
             _mark_sent(row)
             session.add(row)
             continue

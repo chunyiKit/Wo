@@ -912,7 +912,7 @@ class NotificationSource {
       );
 }
 
-/// 通知偏好：总推送开关 + 各来源开关。仅影响是否推送到手机系统通知栏。
+/// 通知偏好：总开关 + 各来源开关。同时控制 App 内新消息和系统推送。
 class NotificationPreferences {
   const NotificationPreferences({
     required this.pushEnabled,

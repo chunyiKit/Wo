@@ -54,10 +54,10 @@ class User(UserBase, table=True):
         ondelete="SET NULL",
         nullable=True,
     )
-    # 通知偏好（系统推送层面）。形如：
+    # 通知偏好（站内新消息与系统推送）。形如：
     #   {"push_enabled": bool, "sources": {"<source_key>": bool, ...}}
     # 缺省键视为开启（opt-out），所以老用户在显式关闭前照常收到全部推送。
-    # 仅影响是否推送到手机系统通知栏；站内消息中心始终记录。
+    # 关闭后不再生成对应通知，已有历史消息保留。
     notification_prefs: dict = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default="{}"),

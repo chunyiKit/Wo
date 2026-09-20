@@ -28,7 +28,7 @@ from app.plugins.chat.models import (
     ChatPushOutbox,
 )
 from app.services import device_token as device_service
-from app.services.notification_prefs import push_allowed
+from app.services.notification_prefs import notification_allowed
 from app.services.push import JPushClient, PushMessage, PushSender
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ async def stage_chat_pushes(session: AsyncSession, message: ChatMessage) -> None
         excluding_user_id=message.sender_id,
     )
     for uid in recipients:
-        if push_allowed(await _prefs_for(session, uid), "chat_message"):
+        if notification_allowed(await _prefs_for(session, uid), "chat_message"):
             session.add(ChatPushOutbox(message_id=message.id, user_id=uid))
 
 

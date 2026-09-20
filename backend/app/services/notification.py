@@ -21,7 +21,7 @@ from app.models.membership import Membership
 from app.models.notification import Notification
 from app.models.push_outbox import PushOutbox
 from app.models.user import User
-from app.services.notification_prefs import push_allowed
+from app.services.notification_prefs import notification_allowed
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
@@ -140,12 +140,12 @@ async def notify_family(
     icon_emoji: str = "🔔",
     deeplink: str | None = None,
 ) -> int:
-    """Stage a notification for every active member of a family. Returns the
-    recipient count. Like the other notifiers it does NOT commit — the caller's
+    """Stage notifications for active members whose preferences allow them.
+    Returns the staged count. Like the other notifiers it does NOT commit — the caller's
     transaction does, keeping the notification atomic with its trigger.
     """
     recipients = await _active_member_ids(session, family_id)
-    await _add_for_recipients(
+    return await _add_for_recipients(
         session,
         recipients=recipients,
         notification_type=notification_type,
@@ -155,7 +155,6 @@ async def notify_family(
         icon_emoji=icon_emoji,
         deeplink=deeplink,
     )
-    return len(recipients)
 
 
 async def notify_users(
@@ -169,12 +168,12 @@ async def notify_users(
     icon_emoji: str = "🔔",
     deeplink: str | None = None,
 ) -> int:
-    """Stage a notification for an explicit set of recipients. Returns the
-    count. Like the other notifiers it does NOT commit — the caller's
+    """Stage notifications for explicit recipients whose preferences allow them.
+    Returns the staged count. Like the other notifiers it does NOT commit — the caller's
     transaction does. Lets plugins emit notifications (e.g. a chore reminder to
     its assignee) without each duplicating the push-outbox staging logic.
     """
-    await _add_for_recipients(
+    return await _add_for_recipients(
         session,
         recipients=recipients,
         notification_type=notification_type,
@@ -184,7 +183,6 @@ async def notify_users(
         icon_emoji=icon_emoji,
         deeplink=deeplink,
     )
-    return len(recipients)
 
 
 async def notify_member_joined(
@@ -300,28 +298,23 @@ async def _add_for_recipients(
     body: str,
     icon_emoji: str = "🔔",
     deeplink: str | None = None,
-) -> None:
-    # Decide per-recipient whether to *push* (vs. just record in-app). Each
-    # recipient's notification_prefs gate the system push for this source; the
-    # in-app Notification row is always written. Only relevant when push is on
-    # globally — otherwise no outbox rows are created at all.
-    push_targets: set[UUID] = set()
-    if settings.push_enabled and recipients:
-        rows = (
-            await session.execute(
-                select(User.id, User.notification_prefs).where(
-                    User.id.in_(list(recipients))
-                )
-            )
-        ).all()
-        prefs_by_id = {uid: prefs for uid, prefs in rows}
-        push_targets = {
-            uid
-            for uid in recipients
-            if push_allowed(prefs_by_id.get(uid), notification_type)
-        }
+) -> int:
+    # 用户偏好同时控制站内新消息与系统推送，独立于服务器的推送功能开关。
+    if not recipients:
+        return 0
+    rows = (
+        await session.execute(
+            select(User.id, User.notification_prefs).where(User.id.in_(list(recipients)))
+        )
+    ).all()
+    allowed_targets = {
+        uid for uid, prefs in rows if notification_allowed(prefs, notification_type)
+    }
 
+    count = 0
     for uid in recipients:
+        if uid not in allowed_targets:
+            continue
         notif = Notification(
             user_id=uid,
             type=notification_type,
@@ -332,10 +325,12 @@ async def _add_for_recipients(
             deeplink=deeplink,
         )
         session.add(notif)
+        count += 1
         # Stage the push intent in the *same* transaction (id is available now
         # via the UUIDv7 default_factory). The caller's commit makes notification
         # + outbox atomic; the dispatcher drains it after commit, so a rolled-back
-        # transaction never produces a ghost push. Gated on the recipient's prefs
-        # so a user who muted this source (or all push) gets no system push.
-        if uid in push_targets:
+        # transaction never produces a ghost push. Muted recipients were already
+        # filtered before creating either the notification or its push intent.
+        if settings.push_enabled:
             session.add(PushOutbox(notification_id=notif.id))
+    return count

@@ -5,9 +5,9 @@ import '../../data/models.dart';
 import '../../data/wo_session.dart';
 import '../../theme/wo_tokens.dart';
 
-/// 通知偏好：总推送开关 + 各来源（家庭动态 / 有通知机制的插件）单独开关。
+/// 通知偏好：通知总开关 + 各来源（家庭动态 / 有通知机制的插件）单独开关。
 ///
-/// 这些开关只控制「是否推送到手机系统通知栏」；站内「消息」中心始终记录全部通知。
+/// 同时控制 App 内新消息和系统推送，已有历史消息保留。
 class NotificationPrefsPage extends StatefulWidget {
   const NotificationPrefsPage({super.key});
 
@@ -127,8 +127,8 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
                 const SizedBox(height: WoTokens.space2),
                 WoSwitchListTile(
                   secondary: const Icon(Icons.notifications_active_outlined),
-                  title: const Text('推送到手机通知'),
-                  subtitle: const Text('关闭后将不再收到系统通知栏推送'),
+                  title: const Text('接收通知'),
+                  subtitle: const Text('同时控制 App 内新消息和手机系统推送'),
                   value: prefs.pushEnabled,
                   onChanged: _setPushEnabled,
                 ),
@@ -161,7 +161,7 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
                 Padding(
                   padding: const EdgeInsets.all(WoTokens.space5),
                   child: Text(
-                    '关闭某项后，相关通知仍会出现在「消息」里，只是不再推送到系统通知栏。',
+                    '关闭某项后，将不再收到该来源的 App 内新消息和手机系统推送。已有历史消息保留。',
                     style: t.bodySmall?.copyWith(color: wo.fgMid),
                   ),
                 ),

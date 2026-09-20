@@ -167,7 +167,7 @@ class NotificationSourceRead(BaseModel):
 
 
 class NotificationPreferencesRead(BaseModel):
-    # 总开关：是否把通知推送到手机系统通知栏。
+    # 通知总开关：同时控制站内新消息与系统推送，字段名兼容旧客户端。
     push_enabled: bool
     # 各来源（家庭动态 + 有通知机制的已安装插件）的单独开关。
     sources: list[NotificationSourceRead]
@@ -207,7 +207,7 @@ async def get_notification_preferences(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[NotificationPreferencesRead]:
-    """当前用户的通知偏好：总推送开关 + 各来源开关（含其可选列表）。"""
+    """当前用户的通知偏好：通知总开关 + 各来源开关（含其可选列表）。"""
     return ok(await _build_prefs_read(session, current_user))
 
 
@@ -220,7 +220,7 @@ async def update_notification_preferences(
     session: SessionDep,
     current_user: CurrentUserDep,
 ) -> ApiResponse[NotificationPreferencesRead]:
-    """部分更新通知偏好。仅影响系统推送，站内消息中心仍记录所有通知。"""
+    """部分更新通知偏好。同时控制站内新消息与系统推送，保留历史消息。"""
     current_user.notification_prefs = notification_prefs_service.merge_prefs(
         current_user.notification_prefs,
         push_enabled=payload.push_enabled,

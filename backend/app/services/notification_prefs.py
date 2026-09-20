@@ -1,4 +1,4 @@
-"""User notification preferences — master push switch + per-source toggles.
+"""用户通知偏好：总开关与各来源开关同时控制站内新消息和系统推送。
 
 Stored as a JSON blob on `users.notification_prefs`:
 
@@ -7,9 +7,9 @@ Stored as a JSON blob on `users.notification_prefs`:
 Absent keys default to **enabled** (opt-out model), so existing users keep
 getting everything until they explicitly turn something off.
 
-These preferences gate **system push only** — whether a notification reaches the
-phone's notification shade (i.e. whether a `PushOutbox` row is staged). The
-in-app message center always records the notification regardless.
+关闭后不再生成对应的 Notification 或 PushOutbox，已有历史消息保留。
+push_enabled 字段名保持兼容旧客户端，其含义为用户的通知总开关。
+服务器 settings.push_enabled 则仍仅控制系统推送功能。
 
 A notification's *source key* groups it for the toggles:
 - platform / family events (member_joined, role_changed, ...) → ``"family"``
@@ -52,10 +52,10 @@ def source_key_for_type(notification_type: str) -> str:
     return notification_type.split("_", 1)[0]
 
 
-def push_allowed(prefs: dict | None, notification_type: str) -> bool:
-    """Whether the user's prefs permit a *system push* for this notification.
+def notification_allowed(prefs: dict | None, notification_type: str) -> bool:
+    """Whether the user's prefs permit this notification (in-app and system push).
 
-    Master switch off → never push. Otherwise the per-source toggle decides,
+    Master switch off → no new notifications. Otherwise the per-source toggle decides,
     defaulting to enabled when unset.
     """
     prefs = prefs or {}
