@@ -19,6 +19,7 @@ import '../../widgets/wo_open_container.dart';
 import '../../widgets/wo_widget_grid.dart';
 import 'family_home_background.dart';
 import 'home_background_page.dart';
+import 'home_tagline.dart';
 import '../plugins/plugin_pages.dart';
 import '../plugins/stock/stock_page.dart';
 
@@ -512,20 +513,7 @@ class _HomePageState extends State<HomePage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        '把日子，过成电影',
-                                        style: TextStyle(
-                                          fontFamily:
-                                              WoTypography.editorialFamily,
-                                          fontSize: 28,
-                                          color: Color(0xFFFFEAD0),
-                                          height: 1.35,
-                                        ),
-                                      ),
-                                    ),
+                                    const HomeTagline(),
                                     const SizedBox(height: 6),
                                     const Text(
                                       '柴米油盐，都是我们的浪漫。',

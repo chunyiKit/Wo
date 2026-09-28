@@ -364,6 +364,7 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
+      useRootNavigator: false,
       initialDate: _expireOn,
       firstDate: DateTime(now.year - 5),
       lastDate: DateTime(now.year + 30),

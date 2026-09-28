@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -10,10 +11,13 @@ import 'package:wo/data/wo_api.dart';
 import 'package:wo/data/wo_session.dart';
 import 'package:wo/features/family/family_manage_page.dart';
 import 'package:wo/features/family/pet_profile_edit_page.dart';
+import 'package:wo/features/home/home_page.dart';
 import 'package:wo/features/plugins/pet/pet_list_page.dart';
 import 'package:wo/features/plugins/pet/pet_detail_page.dart';
 import 'package:wo/features/plugins/pet/pet_record_edit_page.dart';
 import 'package:wo/features/plugins/pet/pet_settings_page.dart';
+import 'package:wo/navigation/wo_router.dart';
+import 'package:wo/navigation/wo_routes.dart';
 import 'package:wo/theme/wo_theme.dart';
 import 'package:wo/theme/wo_tokens.dart';
 import 'package:wo/widgets/pet_avatar.dart';
@@ -119,6 +123,104 @@ Widget _app(WoSession session, Widget home) => WoScope(
     );
 
 void main() {
+  testWidgets('宠物记录日历优先响应系统返回，保留未保存内容', (tester) async {
+    final session = await _session((request) {
+      final path = request.url.path;
+      if (path.endsWith('/me/bootstrap')) {
+        return {
+          'user': {
+            'id': 'u1',
+            'username': 'owner',
+            'display_name': '主理人',
+            'avatar_emoji': '👤',
+          },
+          'current_family': _family(),
+          'families': [_family()],
+          'installed_plugins': [],
+          'unread_count': 0,
+        };
+      }
+      if (path.endsWith('/plugins/pet/record-types')) return [_type()];
+      throw StateError('unexpected ${request.url}');
+    });
+    final router = buildRouter()..go(WoRoutes.home);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      WoScope(
+        session: session,
+        child: MaterialApp.router(
+          theme: WoTheme.light(),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byType(HomePage))).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const PetRecordEditPage(petId: 'p1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(WoTextField).first, '未保存的驱虫记录');
+    // 收起输入法，让系统返回直接进入路由分发。
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final originalDate = tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.widgetWithText(WoListTile, '发生日期'),
+                matching: find.byType(Text),
+              )
+              .last,
+        )
+        .data;
+    await tester.tap(find.text('发生日期'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text(originalDate!.endsWith('-01') ? '2' : '1'));
+    await tester.pumpAndSettle();
+    // Android 预测式返回通过 backgesture 通道分发。
+    for (final call in [
+      const MethodCall('startBackGesture', {
+        'touchOffset': [5.0, 300.0],
+        'progress': 0.0,
+        'swipeEdge': 0,
+      }),
+      const MethodCall('commitBackGesture'),
+    ]) {
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        'flutter/backgesture',
+        const StandardMethodCodec().encodeMethodCall(call),
+        (_) {},
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsNothing);
+    expect(find.byType(PetRecordEditPage), findsOneWidget);
+    expect(find.text('未保存的驱虫记录'), findsOneWidget);
+    expect(find.text(originalDate), findsOneWidget);
+
+    // 取消下次日期时不启用计划，也不能退出记录表单。
+    await tester.ensureVisible(find.byType(Switch).first);
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsNothing);
+    expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
+    expect(find.text('未保存的驱虫记录'), findsOneWidget);
+
+    // 日历关闭后，系统返回恢复为退出记录表单。
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(PetRecordEditPage), findsNothing);
+    expect(find.byType(HomePage), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('PetAvatar without photo renders emoji fallback', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

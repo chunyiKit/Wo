@@ -68,6 +68,8 @@ class _PetRecordEditPageState extends State<PetRecordEditPage> {
 
   Future<DateTime?> _pick(DateTime initial) => showDatePicker(
         context: context,
+        // 和记录页共用导航栈，让 Android 预测式返回优先取消日历。
+        useRootNavigator: false,
         initialDate: initial,
         firstDate: DateTime(1980),
         lastDate: DateTime(2100),

@@ -67,6 +67,7 @@ class _PlanEditPageState extends State<PlanEditPage> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
+      useRootNavigator: false,
       initialDate: _retireDate ?? DateTime(now.year + 10, now.month, now.day),
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 70),

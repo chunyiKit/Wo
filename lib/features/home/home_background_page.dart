@@ -7,9 +7,9 @@ import '../../data/image_pick.dart';
 import '../../data/models.dart';
 import '../../data/wo_session.dart';
 import '../../theme/wo_tokens.dart';
-import '../../theme/wo_typography.dart';
 import '../../widgets/wo_cinema.dart';
 import 'family_home_background.dart';
+import 'home_tagline.dart';
 
 class HomeBackgroundPage extends StatefulWidget {
   const HomeBackgroundPage({super.key, required this.family, this.pickImage});
@@ -105,16 +105,7 @@ class _HomeBackgroundPageState extends State<HomeBackgroundPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '把日子，过成电影',
-                              style: WoTypography.editorial(
-                                const Color(0xFFFFEAD0),
-                                size: 28,
-                              ),
-                            ),
-                          ),
+                          const HomeTagline(),
                           const SizedBox(height: 8),
                           const Text(
                             '柴米油盐，都是我们的浪漫。',

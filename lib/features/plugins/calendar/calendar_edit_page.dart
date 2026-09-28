@@ -131,6 +131,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
+      useRootNavigator: false,
       initialDate: _date ?? now,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 5),
@@ -143,6 +144,7 @@ class _CalendarEditPageState extends State<CalendarEditPage> {
   Future<void> _pickTime() async {
     final picked = await showTimePicker(
       context: context,
+      useRootNavigator: false,
       initialTime: _time ?? const TimeOfDay(hour: 9, minute: 0),
     );
     if (picked != null) setState(() => _time = picked);

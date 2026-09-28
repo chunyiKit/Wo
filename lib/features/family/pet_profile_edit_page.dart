@@ -61,6 +61,7 @@ class _PetProfileEditPageState extends State<PetProfileEditPage> {
 
   Future<DateTime?> _date(DateTime? initial) => showDatePicker(
         context: context,
+        useRootNavigator: false,
         initialDate: initial ?? DateTime.now(),
         firstDate: DateTime(1980),
         lastDate: DateTime.now(),

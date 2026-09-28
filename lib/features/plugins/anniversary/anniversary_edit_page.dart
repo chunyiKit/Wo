@@ -72,6 +72,7 @@ class _AnniversaryEditPageState extends State<AnniversaryEditPage> {
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
+      useRootNavigator: false,
       initialDate: _date,
       firstDate: DateTime(1900),
       lastDate: DateTime(2100),

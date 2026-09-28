@@ -8,6 +8,7 @@ import '../../data/api_client.dart';
 import '../../data/memory_cache.dart';
 import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
+import '../../theme/wo_taglines.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_cinema.dart';
 
@@ -27,25 +28,6 @@ class SplashPage extends StatefulWidget {
   State<SplashPage> createState() => _SplashPageState();
 }
 
-/// 启动页标语池：每次启动随机挑一条展示。文案直接内置在 app 中。
-const _taglines = <String>[
-  '记录我们的生活',
-  '把日子收进窝里',
-  '一家人的小账本',
-  '慢慢记，好好过',
-  '有你在就是家',
-  '我们的小窝',
-  '回家就很好',
-  '一起把家过好',
-  '今天，我们吃了什么',
-  '柴米油盐，都是浪漫',
-  '今天也要好好吃饭',
-  '平常日子，认真过',
-  '在一起，刚刚好',
-  '我们的每一天',
-  '窝，是我们的',
-];
-
 class _SplashPageState extends State<SplashPage> {
   // 启动页最短停留时长：即使数据秒回也至少展示这么久，避免一闪而过。
   static const _minDisplay = Duration(milliseconds: 1500);
@@ -53,7 +35,7 @@ class _SplashPageState extends State<SplashPage> {
   static const _fadeDuration = Duration(milliseconds: 400);
 
   // 本次启动随机选定的标语，只在进入时挑一次（rebuild/重试不会变）。
-  final String _tagline = _taglines[Random().nextInt(_taglines.length)];
+  final String _tagline = woTaglines[Random().nextInt(woTaglines.length)];
 
   Object? _error;
   double _opacity = 1;

@@ -454,6 +454,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
+      useRootNavigator: false,
       initialDate: _nextDue,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 5),

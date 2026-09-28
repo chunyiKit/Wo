@@ -168,6 +168,8 @@ class _PetSettingsPageState extends State<PetSettingsPage> {
     var active = plan?.active ?? true;
     final saved = await showWoDialog<bool>(
       context: context,
+      // 编辑弹窗和其中的日历都留在当前导航栈，返回时逐层关闭。
+      useRootNavigator: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => WoAlertDialog(
           title: Text(plan == null ? '新建照护计划' : '编辑照护计划'),
@@ -244,6 +246,7 @@ class _PetSettingsPageState extends State<PetSettingsPage> {
                   onTap: () async {
                     final value = await showDatePicker(
                       context: context,
+                      useRootNavigator: false,
                       initialDate: due,
                       firstDate: DateTime(2000),
                       lastDate: DateTime(2100),

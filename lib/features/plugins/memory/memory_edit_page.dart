@@ -141,6 +141,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
+      useRootNavigator: false,
       initialDate: _eventDate,
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 1)),
