@@ -14,6 +14,7 @@ import '../../navigation/wo_routes.dart';
 import '../../theme/color_token.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_card_emoji.dart';
 import '../../widgets/wo_card_trend.dart';
 import '../../theme/wo_typography.dart';
 import '../../widgets/wo_open_container.dart';
@@ -705,6 +706,8 @@ class _WidgetCard extends StatelessWidget {
     // secondary 可带强调色（如预算见底），为空回退到 fgMid。
     final secondaryColor = wo.colorForTone(preview.secondaryTone) ?? fgMid;
     final isCompact = installed.layout.ch <= 1;
+    final anniversaryEmoji =
+        installed.pluginId == 'anniversary' ? preview.emoji?.trim() : null;
     // 4×2 大卡且 preview 带了缩略图（目前只有回忆插件返回）时，右半边塞一个
     // 淡入淡出的轮播；其它 4×2 卡（如纪念日）仍走纯文字 Column 布局。
     final showImageCarousel =
@@ -759,9 +762,11 @@ class _WidgetCard extends StatelessWidget {
         Positioned.fill(
           child: WoCard(
             color: color,
-            background: preview.backgroundTrend == null
-                ? null
-                : WoCardTrend(trend: preview.backgroundTrend!),
+            background: anniversaryEmoji != null && anniversaryEmoji.isNotEmpty
+                ? WoCardEmoji(emoji: anniversaryEmoji, compact: isCompact)
+                : preview.backgroundTrend == null
+                    ? null
+                    : WoCardTrend(trend: preview.backgroundTrend!),
             onTap: editing ? null : onTap,
             onLongPress: onLongPress,
             padding: EdgeInsets.all(
