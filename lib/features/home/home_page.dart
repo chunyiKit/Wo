@@ -14,6 +14,7 @@ import '../../navigation/wo_routes.dart';
 import '../../theme/color_token.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
+import '../../widgets/wo_card_trend.dart';
 import '../../theme/wo_typography.dart';
 import '../../widgets/wo_open_container.dart';
 import '../../widgets/wo_widget_grid.dart';
@@ -758,6 +759,9 @@ class _WidgetCard extends StatelessWidget {
         Positioned.fill(
           child: WoCard(
             color: color,
+            background: preview.backgroundTrend == null
+                ? null
+                : WoCardTrend(trend: preview.backgroundTrend!),
             onTap: editing ? null : onTap,
             onLongPress: onLongPress,
             padding: EdgeInsets.all(

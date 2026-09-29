@@ -13,6 +13,7 @@ class WoCard extends StatefulWidget {
     this.onLongPress,
     this.radius = WoTokens.cardRadius,
     this.showShadow = true,
+    this.background,
   });
 
   final Widget child;
@@ -22,6 +23,9 @@ class WoCard extends StatefulWidget {
   final VoidCallback? onLongPress;
   final double radius;
   final bool showShadow;
+
+  /// 裁剪在圆角内的背景层，不参与布局、不拦截卡片手势。
+  final Widget? background;
 
   @override
   State<WoCard> createState() => _WoCardState();
@@ -58,15 +62,27 @@ class _WoCardState extends State<WoCard> {
         ),
         child: Material(
           type: MaterialType.transparency,
-          child: InkWell(
-            borderRadius: shape,
-            onHighlightChanged:
-                widget.onTap == null && widget.onLongPress == null
-                    ? null
-                    : (value) => setState(() => _pressed = value),
-            onTap: widget.onTap,
-            onLongPress: widget.onLongPress,
-            child: Padding(padding: widget.padding, child: widget.child),
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              if (widget.background != null)
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: shape,
+                    child: IgnorePointer(child: widget.background!),
+                  ),
+                ),
+              InkWell(
+                borderRadius: shape,
+                onHighlightChanged:
+                    widget.onTap == null && widget.onLongPress == null
+                        ? null
+                        : (value) => setState(() => _pressed = value),
+                onTap: widget.onTap,
+                onLongPress: widget.onLongPress,
+                child: Padding(padding: widget.padding, child: widget.child),
+              ),
+            ],
           ),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:http/testing.dart';
 import 'package:wo/data/api_client.dart';
 import 'package:wo/data/wo_api.dart';
 import 'package:wo/data/wo_session.dart';
+import 'package:wo/features/plugins/accounting/expense_categories.dart';
 
 /// 仅测试和本地视觉预览使用，不进入 lib/main.dart 的 release 依赖图。
 const cinemaPlugins = <String, (String, String, String)>{
@@ -127,8 +128,19 @@ Object? cinemaResponse(http.Request request) {
   if (path.endsWith('/plugins')) {
     return cinemaPlugins.keys.map(cinemaInstalled).toList();
   }
-  if (RegExp(r'/plugins/[^/]+$').hasMatch(path) && !path.contains('/families/')) {
+  if (RegExp(r'/plugins/[^/]+$').hasMatch(path) &&
+      !path.contains('/families/')) {
     return cinemaPlugin(path.split('/').last);
+  }
+  if (path.endsWith('/accounting/categories')) {
+    return [
+      for (final category in expenseCategories)
+        {
+          'code': category.code,
+          'label': category.label,
+          'emoji': category.emoji,
+        },
+    ];
   }
   if (path.endsWith('/summary')) {
     return {
@@ -227,7 +239,8 @@ Future<WoSession> cinemaSession() async {
     ),
   );
   final session = WoSession(
-      api: WoApi(ApiClient(httpClient: client, baseUrl: 'http://cinema.test')),);
+    api: WoApi(ApiClient(httpClient: client, baseUrl: 'http://cinema.test')),
+  );
   await session.load();
   return session;
 }

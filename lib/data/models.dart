@@ -262,6 +262,40 @@ class PluginLayout {
       );
 }
 
+class TrendPoint {
+  const TrendPoint({required this.date, required this.value});
+
+  /// 服务端确定的自然日，保留 YYYY-MM-DD，不按设备时区转换。
+  final String date;
+  final double value;
+
+  factory TrendPoint.fromJson(Map<String, dynamic> j) => TrendPoint(
+        date: j['date'] as String,
+        value: _parseNum(j['value']),
+      );
+}
+
+class BackgroundTrend {
+  const BackgroundTrend({
+    required this.label,
+    required this.unit,
+    required this.points,
+  });
+
+  final String label;
+  final String unit;
+  final List<TrendPoint> points;
+
+  factory BackgroundTrend.fromJson(Map<String, dynamic> j) => BackgroundTrend(
+        label: j['label'] as String? ?? '',
+        unit: j['unit'] as String? ?? '',
+        points: [
+          for (final point in (j['points'] as List? ?? const []))
+            TrendPoint.fromJson(point as Map<String, dynamic>),
+        ],
+      );
+}
+
 class PluginPreview {
   const PluginPreview({
     required this.primary,
@@ -271,6 +305,7 @@ class PluginPreview {
     this.emoji,
     this.secondaryTone,
     this.imageUrls = const [],
+    this.backgroundTrend,
   });
 
   final String primary;
@@ -290,6 +325,9 @@ class PluginPreview {
   /// 4×2 大卡才会用上；为空表示不展示轮播。
   final List<String> imageUrls;
 
+  /// 可选的卡片背景趋势；旧服务端未返回时保持原卡片外观。
+  final BackgroundTrend? backgroundTrend;
+
   factory PluginPreview.fromJson(Map<String, dynamic> j) => PluginPreview(
         primary: j['primary'] as String? ?? '',
         secondary: j['secondary'] as String?,
@@ -297,6 +335,11 @@ class PluginPreview {
         colorToken: j['color_token'] as String? ?? 'accent',
         emoji: j['emoji'] as String?,
         secondaryTone: j['secondary_tone'] as String?,
+        backgroundTrend: j['background_trend'] == null
+            ? null
+            : BackgroundTrend.fromJson(
+                j['background_trend'] as Map<String, dynamic>,
+              ),
         imageUrls: (j['image_urls'] as List<dynamic>?)
                 ?.map((e) => e as String)
                 .toList() ??

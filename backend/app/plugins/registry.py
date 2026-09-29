@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -87,6 +89,17 @@ class PluginManifest:
     notification_types: tuple[str, ...] = ()
 
 
+class TrendPoint(BaseModel):
+    date: date
+    value: Decimal
+
+
+class BackgroundTrend(BaseModel):
+    label: str
+    unit: str
+    points: list[TrendPoint]
+
+
 class PluginPreview(BaseModel):
     """Home-card preview data each plugin renders. Returned by the preview hook."""
 
@@ -106,6 +119,8 @@ class PluginPreview(BaseModel):
     # prepends baseUrl and uses image auth headers). Empty / None = no
     # carousel; plugins that don't surface imagery just leave this unset.
     image_urls: list[str] | None = None
+    # Optional time series painted behind the home-card content.
+    background_trend: BackgroundTrend | None = None
 
 
 # A preview hook receives the session, the installed-plugin row (so it can read

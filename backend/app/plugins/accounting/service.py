@@ -1,22 +1,53 @@
 """Accounting business logic — month aggregation, budget, and the home preview."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import func
+from sqlalchemy import Date, cast, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.models.plugin import InstalledPlugin
 from app.plugins.accounting.models import Budget, Transaction, TransactionRead
-from app.plugins.registry import PluginPreview
+from app.plugins.registry import BackgroundTrend, PluginPreview, TrendPoint
 from app.services.membership import MemberInfo, author_avatar_url
 
 # Below this fraction of budget remaining the card warns; below the second it
 # alarms. Matches the product spec: <40% yellow, <10% red.
 _WARNING_RATIO = 0.4
 _DANGER_RATIO = 0.1
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+async def recent_daily_expenses(
+    session: AsyncSession, family_id: UUID, *, now: datetime | None = None
+) -> BackgroundTrend:
+    """Seven Beijing calendar days including today; missing days remain zero."""
+    today = (now or datetime.now(UTC)).astimezone(_SHANGHAI).date()
+    first = today - timedelta(days=6)
+    start = datetime.combine(first, time.min, _SHANGHAI).astimezone(UTC)
+    end = datetime.combine(today + timedelta(days=1), time.min, _SHANGHAI).astimezone(UTC)
+    day = cast(func.timezone("Asia/Shanghai", Transaction.created_at), Date)
+    stmt = (
+        select(day, func.sum(Transaction.amount))
+        .where(
+            Transaction.family_id == family_id,
+            Transaction.created_at >= start,
+            Transaction.created_at < end,
+        )
+        .group_by(day)
+    )
+    totals = dict((await session.execute(stmt)).all())
+    return BackgroundTrend(
+        label="近7天每日支出",
+        unit="元",
+        points=[
+            TrendPoint(date=day, value=totals.get(day, Decimal(0)))
+            for day in (first + timedelta(days=i) for i in range(7))
+        ],
+    )
 
 
 def month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
@@ -111,6 +142,7 @@ async def preview_hook(
     red below 10% of budget.
     """
     total = await month_total(session, ip.family_id)
+    trend = await recent_daily_expenses(session, ip.family_id)
 
     if ip.ch <= 1:
         return PluginPreview(
@@ -118,6 +150,7 @@ async def preview_hook(
             secondary="本月支出",
             color_token="money",
             emoji="💰",
+            background_trend=trend,
         )
 
     budget = await get_budget(session, ip.family_id)
@@ -127,6 +160,7 @@ async def preview_hook(
             secondary="未设预算",
             color_token="money",
             emoji="💰",
+            background_trend=trend,
         )
 
     # 预算只扣预算内支出；预算外（exclude_from_budget）不参与扣减。
@@ -146,4 +180,5 @@ async def preview_hook(
         secondary_tone=tone,
         color_token="money",
         emoji="💰",
+        background_trend=trend,
     )

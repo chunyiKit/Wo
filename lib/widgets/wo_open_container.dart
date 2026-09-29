@@ -39,6 +39,21 @@ class WoOpenContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // OpenContainer 的零时长回程会在恢复卡片后再次写入占位尺寸。
+    // 减少动画时直接切换路由，避免返回后原卡片一直留白。
+    if (MediaQuery.disableAnimationsOf(context)) {
+      return closedBuilder(context, () async {
+        final result = await Navigator.of(context).push<Object?>(
+          PageRouteBuilder<Object?>(
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                openBuilder(context),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ),
+        );
+        if (context.mounted) onClosed?.call(result);
+      });
+    }
     final wo = context.wo;
     return OpenContainer<Object?>(
       tappable: false,
@@ -50,9 +65,7 @@ class WoOpenContainer extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
       ),
       transitionType: ContainerTransitionType.fadeThrough,
-      transitionDuration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : transitionDuration,
+      transitionDuration: transitionDuration,
       closedBuilder: (context, open) => closedBuilder(context, open),
       openBuilder: (context, _) => openBuilder(context),
       onClosed: onClosed,
