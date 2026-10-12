@@ -25,7 +25,9 @@ from app.services.session import resolve_user_id
 
 
 def _unauthorized(message: str = "未登录或登录已过期，请重新登录") -> AppError:
-    return AppError(ErrorCode.UNAUTHORIZED, message, status_code=401)
+    return AppError(
+        ErrorCode.UNAUTHORIZED, message, status_code=401, details={"session_invalid": True}
+    )
 
 
 def parse_bearer(authorization: str | None) -> str | None:

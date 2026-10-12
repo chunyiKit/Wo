@@ -7,11 +7,9 @@ import '../../data/wo_session.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_cinema.dart';
+import 'recovery_page.dart';
 
-/// 手机号登录 / 注册。
-///
-/// 暂无短信验证码：输入手机号点继续，后端查到就登录、查不到就注册。验证码步骤
-/// 等接口就绪后再补在这一步之后。
+/// 手机号与密码登录 / 注册。
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -92,7 +90,7 @@ class _LoginPageState extends State<LoginPage> {
               Text('手机号登录', style: t.displaySmall),
               const SizedBox(height: WoTokens.space2),
               Text(
-                '没注册过的号码会直接创建账号；首次登录请设置一个登录密码。',
+                '新号码会创建账号；已有账号需原密码。手机号仅为登录标识，尚未验证归属。',
                 style: t.bodyMedium?.copyWith(color: wo.fgMid),
               ),
               const SizedBox(height: WoTokens.space8),
@@ -146,6 +144,15 @@ class _LoginPageState extends State<LoginPage> {
                         )
                       : const Text('继续'),
                 ),
+              ),
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                              builder: (_) => const RecoveryPage(),),
+                        ),
+                child: const Text('忘记密码 / 旧账号迁移'),
               ),
               const SizedBox(height: WoTokens.space4),
               Center(

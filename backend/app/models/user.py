@@ -45,9 +45,14 @@ class User(UserBase, table=True):
     # two users can share one. Not exposed in UserRead (kept off public reads).
     phone: str | None = Field(default=None, max_length=20, unique=True, index=True)
     # scrypt password hash (see app.core.password). Nullable: rows created before
-    # passwords landed have None until the owner's next login sets one. Never
+    # passwords landed remain locked until a trusted recovery factor exists. Never
     # exposed in UserRead — passwords (even hashed) stay off public reads.
     password_hash: str | None = Field(default=None, max_length=255)
+    # Generated only after password reauthentication; raw code is shown once.
+    recovery_code_hash: str | None = Field(default=None, max_length=64)
+    recovery_expires_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     current_family_id: UUID | None = Field(
         default=None,
         foreign_key="families.id",

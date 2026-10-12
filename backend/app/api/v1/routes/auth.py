@@ -1,15 +1,9 @@
-"""Auth endpoints — phone-number login / register.
-
-`POST /auth/login` takes a phone number and returns the user plus a `token`.
-There is no SMS code step yet (P5): an unknown phone is registered on the
-spot, a known phone logs in. The `token` is the user id — the dev auth shim
-(`app.core.auth`) reads it from the `X-User-Id` header on later requests.
-"""
+"""Opaque bearer authentication, credential recovery and session revocation."""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Header, Request, Response
+from pydantic import BaseModel, Field
 
 from app.api.deps import SessionDep
 from app.core.auth import CurrentUserDep, parse_bearer
@@ -45,8 +39,8 @@ def _too_many() -> AppError:
 
 
 class LoginRequest(BaseModel):
-    phone: str
-    password: str
+    phone: str = Field(max_length=32)
+    password: str = Field(max_length=64)
 
 
 class AuthResponse(BaseModel):
@@ -56,15 +50,13 @@ class AuthResponse(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    # Empty allowed only for an account that has no password yet (shouldn't
-    # happen post-login, but kept lenient so a first set never dead-ends).
-    old_password: str = ""
-    new_password: str
+    old_password: str = Field(default="", max_length=64)
+    new_password: str = Field(max_length=64)
 
 
 @router.post("/auth/login", response_model=ApiResponse[AuthResponse])
 async def login(
-    payload: LoginRequest, session: SessionDep, request: Request
+    payload: LoginRequest, session: SessionDep, request: Request, response: Response
 ) -> ApiResponse[AuthResponse]:
     if not _login_ip_limiter.check(client_ip(request)):
         raise _too_many()
@@ -75,8 +67,10 @@ async def login(
         raise _too_many()
     user, is_new = await auth_service.login_or_register(session, phone, payload.password)
     token = await session_service.issue_session(
-        session, user.id, ttl_days=settings.session_ttl_days
+        session, user.id, ttl_days=settings.session_ttl_days, commit=False
     )
+    await session.commit()
+    response.headers["Cache-Control"] = "no-store"
     return ok(
         AuthResponse(
             user=UserRead.from_user(user),
@@ -102,12 +96,82 @@ async def logout(
 @router.post("/auth/change-password", response_model=ApiResponse[dict])
 async def change_password(
     payload: ChangePasswordRequest,
+    request: Request,
     session: SessionDep,
     current_user: CurrentUserDep,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> ApiResponse[dict]:
-    """Change the signed-in user's password. Verifies the old password when one
-    is set."""
+    """Require current password and revoke every existing session atomically."""
+    if not _login_ip_limiter.check(client_ip(request)):
+        raise _too_many()
+    if not _login_phone_limiter.check(str(current_user.id)):
+        raise _too_many()
+    current_user = await auth_service.locked_user(
+        session, current_user.id, require_bearer(authorization)
+    )
     await auth_service.change_password(
         session, current_user, payload.old_password, payload.new_password
     )
     return ok({"changed": True})
+
+
+class RecoveryCodeRequest(BaseModel):
+    password: str = Field(max_length=64)
+
+
+class ResetPasswordRequest(BaseModel):
+    phone: str = Field(max_length=32)
+    recovery_code: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(max_length=64)
+
+
+def require_bearer(authorization: str | None) -> str:
+    token = parse_bearer(authorization)
+    if not token:
+        raise AppError(ErrorCode.UNAUTHORIZED, "请使用有效登录会话", status_code=401)
+    return token
+
+
+@router.post("/auth/recovery-code", response_model=ApiResponse[dict])
+async def recovery_code(
+    payload: RecoveryCodeRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    request: Request,
+    response: Response,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> ApiResponse[dict]:
+    if not _login_ip_limiter.check(client_ip(request)):
+        raise _too_many()
+    user = await auth_service.locked_user(session, current_user.id, require_bearer(authorization))
+    if not _login_phone_limiter.check(str(user.id)):
+        raise _too_many()
+    response.headers["Cache-Control"] = "no-store"
+    return ok(await auth_service.create_recovery_code(session, user, payload.password))
+
+
+@router.post("/auth/reset-password", response_model=ApiResponse[dict])
+async def reset_password(
+    payload: ResetPasswordRequest,
+    session: SessionDep,
+    request: Request,
+) -> ApiResponse[dict]:
+    if not _login_ip_limiter.check(client_ip(request)):
+        raise _too_many()
+    phone = auth_service.normalize_phone(payload.phone)
+    if not _login_phone_limiter.check(phone):
+        raise _too_many()
+    await auth_service.reset_password(session, phone, payload.recovery_code, payload.new_password)
+    return ok({"changed": True, "logged_out": True})
+
+
+@router.post("/auth/logout-all", response_model=ApiResponse[dict])
+async def logout_all(
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> ApiResponse[dict]:
+    user = await auth_service.locked_user(session, current_user.id, require_bearer(authorization))
+    await auth_service.revoke_all(session, user.id)
+    await session.commit()
+    return ok({"logged_out": True})

@@ -48,6 +48,8 @@ class ApiClient {
   /// 登录签发的会话令牌（Bearer）。登录后设置，登出清空。
   String authToken;
 
+  Future<void> Function()? onSessionInvalid;
+
   /// 仅 dev：无会话令牌时回退用的 X-User-Id 身份（生产后端已关闭该通道）。
   String userId;
 
@@ -182,6 +184,7 @@ class ApiClient {
     Future<http.Response> Function() run, {
     Duration? timeout,
   }) async {
+    final requestToken = authToken;
     final http.Response res;
     try {
       res = await run().timeout(timeout ?? _timeout);
@@ -201,6 +204,12 @@ class ApiClient {
     final success = envelope['success'] == true;
     if (!success) {
       final err = envelope['error'] as Map<String, dynamic>?;
+      if (res.statusCode == 401 &&
+          err?['details']?['session_invalid'] == true &&
+          requestToken.isNotEmpty &&
+          authToken == requestToken) {
+        await onSessionInvalid?.call();
+      }
       throw ApiException(
         (err?['code'] as String?) ?? 'UNKNOWN',
         (err?['message'] as String?) ?? '请求失败',

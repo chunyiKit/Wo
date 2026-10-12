@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/wo_session.dart';
+import '../auth/recovery_page.dart';
 import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 
@@ -20,6 +21,13 @@ class SettingsPage extends StatelessWidget {
             const WoListTile(
               title: Text('账号与安全'),
               trailing: Icon(Icons.chevron_right),
+            ),
+            WoListTile(
+              title: const Text('恢复码与会话撤销'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => const RecoveryPage(enroll: true),
+              ),),
             ),
             WoListTile(
               title: const Text('修改密码'),

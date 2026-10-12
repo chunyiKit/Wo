@@ -28,3 +28,11 @@ async def client() -> AsyncIterator[AsyncClient]:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
+
+
+@pytest.fixture(autouse=True)
+def _enable_test_dev_shim(monkeypatch):
+    # Existing plugin tests use the explicit dev channel; app defaults remain secure.
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "auth_dev_shim_enabled", True)

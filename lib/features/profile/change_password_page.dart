@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
 import '../../data/wo_session.dart';
+import '../../navigation/wo_routes.dart';
 import '../../theme/wo_tokens.dart';
 
 /// 修改登录密码。需输入原密码 + 新密码（两次）。
@@ -50,12 +51,10 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     final nav = GoRouter.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await session.api.changePassword(
-        oldPassword: _old.text,
-        newPassword: _new.text,
-      );
-      messenger.showSnackBar(WoSnackBar(content: Text('密码已修改')));
-      nav.pop();
+      await session.changePassword(_old.text, _new.text);
+      if (!mounted) return;
+      messenger.showSnackBar(WoSnackBar(content: Text('密码已修改，所有会话已退出，请重新登录')));
+      nav.go(WoRoutes.login);
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);

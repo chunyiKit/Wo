@@ -61,7 +61,7 @@ class AuthResult {
   });
 
   final WoUser user;
-  final String token; // 当前即 user.id，后端接真实 JWT 后只换值不换契约
+  final String token; // 服务端签发的高熵、可撤销 Bearer 会话令牌
   final bool isNew; // true = 该手机号首次注册
 
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(

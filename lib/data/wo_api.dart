@@ -27,8 +27,7 @@ class WoApi {
   }
 
   // ── 认证 ────────────────────────────────────────────────────
-  /// 手机号 + 密码登录/注册。新号码注册并设此密码；老号码校验密码；老号码若从未
-  /// 设过密码，则本次登录把此密码设为其登录密码。
+  /// 新号码注册；已有账号必须校验密码，无密码旧账号安全拒绝。
   Future<AuthResult> login(String phone, String password) async =>
       AuthResult.fromJson(
         await _client.post(
@@ -49,6 +48,35 @@ class WoApi {
         '/auth/change-password',
         body: {'old_password': oldPassword, 'new_password': newPassword},
       );
+
+  set onSessionInvalid(Future<void> Function()? callback) =>
+      _client.onSessionInvalid = callback;
+
+  Future<void> logoutAll() => _client.post('/auth/logout-all');
+
+  Future<Map<String, dynamic>> createRecoveryCode(String password) async =>
+      await _client.post('/auth/recovery-code', body: {'password': password})
+          as Map<String, dynamic>;
+
+  Future<void> resetPassword(
+          {required String phone,
+          required String recoveryCode,
+          required String newPassword,}) =>
+      _client.post('/auth/reset-password', body: {
+        'phone': phone,
+        'recovery_code': recoveryCode,
+        'new_password': newPassword,
+      },);
+
+  /// 已中断登录的响应可能稍后到达；仅撤销它签发的令牌。
+  Future<void> discardLoginToken(String token) async {
+    final client = ApiClient(baseUrl: baseUrl, authToken: token, userId: '');
+    try {
+      await client.post('/auth/logout');
+    } finally {
+      client.close();
+    }
+  }
 
   // ── 启动 / 我 ────────────────────────────────────────────────
   Future<Bootstrap> bootstrap() async => Bootstrap.fromJson(

@@ -97,17 +97,22 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = exc.errors()
+        if request.url.path.startswith("/api/v1/auth/"):
+            # Pydantic includes submitted input (possibly the entire body) in errors.
+            # Never echo or log passwords, tokens or recovery codes on malformed input.
+            errors = [{"type": error["type"], "loc": error["loc"]} for error in errors]
         logger.warning(
             "validation 422: %s %s errors=%s",
             request.method,
             request.url.path,
-            exc.errors(),
+            errors,
         )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=_error_body(
                 ErrorCode.VALIDATION_ERROR,
                 "请求参数错误",
-                {"errors": exc.errors()},
+                {"errors": errors},
             ),
         )

@@ -15,6 +15,7 @@ import 'data/wo_http_overrides.dart';
 import 'data/wo_session.dart';
 import 'navigation/notification_nav.dart';
 import 'navigation/wo_router.dart';
+import 'navigation/wo_routes.dart';
 import 'theme/wo_theme.dart';
 import 'widgets/app_update_dialog.dart';
 import 'widgets/wo_material_controls.dart';
@@ -87,16 +88,32 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
 
   Future<void>? _launchUpdateCheck;
   bool _startupReadyHandled = false;
+  bool _wasLoggedIn = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _wasLoggedIn = widget.session.isLoggedIn;
+    widget.session.addListener(_onSessionChanged);
     widget.session.push?.onOpenNotification = _openPushTarget;
     // APK 应用内更新仅适用于 Android。检查与启动数据并行，不阻塞 Splash；
     // 弹窗会等 Splash 完成导航后再显示，避免被路由替换带走。
     if (Platform.isAndroid) {
       _launchUpdateCheck = widget.session.appUpdate.check();
+    }
+  }
+
+  void _onSessionChanged() {
+    final loggedIn = widget.session.isLoggedIn;
+    final lostSession = _wasLoggedIn && !loggedIn;
+    _wasLoggedIn = loggedIn;
+    if (lostSession) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || widget.session.isLoggedIn) return;
+        _rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+        _router.go(WoRoutes.login);
+      });
     }
   }
 
@@ -183,6 +200,7 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.push?.onOpenNotification = null;
+    widget.session.removeListener(_onSessionChanged);
     widget.session.dispose();
     super.dispose();
   }

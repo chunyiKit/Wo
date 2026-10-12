@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.models.auth_session import AuthSession
+from app.models.user import User
 
 _TOKEN_BYTES = 32
 
@@ -27,7 +28,7 @@ def _hash_token(raw_token: str) -> str:
 
 
 async def issue_session(
-    session: AsyncSession, user_id: UUID, *, ttl_days: int
+    session: AsyncSession, user_id: UUID, *, ttl_days: int, commit: bool = True
 ) -> str:
     """Create a session for `user_id` and return the raw token (shown once)."""
     raw_token = secrets.token_urlsafe(_TOKEN_BYTES)
@@ -37,7 +38,10 @@ async def issue_session(
         expires_at=datetime.now(UTC) + timedelta(days=ttl_days),
     )
     session.add(row)
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return raw_token
 
 
@@ -47,7 +51,13 @@ async def resolve_user_id(session: AsyncSession, raw_token: str) -> UUID | None:
         return None
     row = (
         await session.execute(
-            select(AuthSession).where(AuthSession.token_hash == _hash_token(raw_token))
+            select(AuthSession)
+            .join(User, User.id == AuthSession.user_id)
+            .where(
+                AuthSession.token_hash == _hash_token(raw_token),
+                User.password_hash.is_not(None),
+                User.password_hash != "",
+            )
         )
     ).scalar_one_or_none()
     if row is None:
@@ -65,9 +75,18 @@ async def revoke_session(session: AsyncSession, raw_token: str) -> None:
     """Delete the session for this token (idempotent — no error if absent)."""
     if not raw_token:
         return
-    await session.execute(
-        delete(AuthSession).where(AuthSession.token_hash == _hash_token(raw_token))
-    )
+    user_id = (
+        await session.execute(
+            select(AuthSession.user_id).where(AuthSession.token_hash == _hash_token(raw_token))
+        )
+    ).scalar_one_or_none()
+    if user_id is not None:
+        # Same lock as issuance/recovery/all-session revocation. Waiting auth
+        # mutations will recheck this token only after the deletion commits.
+        await session.execute(select(User.id).where(User.id == user_id).with_for_update())
+        await session.execute(
+            delete(AuthSession).where(AuthSession.token_hash == _hash_token(raw_token))
+        )
     await session.commit()
 
 
