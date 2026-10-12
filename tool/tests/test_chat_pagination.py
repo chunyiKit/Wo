@@ -33,12 +33,12 @@ class ChatPaginationTest(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    def seed(self, count, owner='u1', family='f1', same_time=False):
+    def seed(self, count, owner='u1', family='f1', same_time=False, prefix='c'):
         for i in range(count):
             self.db.execute('''INSERT INTO chat_messages
                 (client_id,owner_user_id,family_id,sender_name,sender_emoji,
                  kind,status,created_at) VALUES (?,?,?,?,?,?,?,?)''',
-                (f'c{i}', owner, family, '用户', '👤', 'text', 'sent',
+                (f'{prefix}{i}', owner, family, '用户', '👤', 'text', 'sent',
                  '2026-06-25T10:00:00.000Z' if same_time else f'{i:010d}'))
 
     def page(self, kind='latest', cursor=None, limit=500, owner='u1', family='f1'):
@@ -51,6 +51,67 @@ class ChatPaginationTest(unittest.TestCase):
             sql += ' LIMIT ?'
             args.append(limit)
         return list(reversed(self.db.execute(sql, args).fetchall()))
+
+    def refresh(self, previous, owner='u1', family='f1'):
+        first = min(previous, key=lambda row: (row[1], row[0]))
+        result = subprocess.run(
+            [os.environ.get('DART_BIN', 'dart'),
+             str(ROOT / 'tool/tests/chat_message_query_test.dart'),
+             json.dumps(dict(owner=owner, family=family, time=first[1],
+                             id=first[0], retained=[r[0] for r in previous]))],
+            check=True, capture_output=True, text=True, cwd=ROOT)
+        query = json.loads(result.stdout)
+        return list(reversed(self.db.execute(
+            'SELECT local_id, created_at FROM chat_messages WHERE '
+            + query['where'] + ' ORDER BY ' + self.query['order'],
+            query['args']).fetchall()))
+
+    def test_ack_moves_loaded_message_before_old_boundary(self):
+        self.seed(501)
+        previous = self.page()
+        self.db.execute("UPDATE chat_messages SET created_at = '-000000001' WHERE local_id = 501")
+        rows = self.refresh(previous)
+        self.assertEqual(rows[0][0], 501)
+        self.assertEqual(len(rows), 501)
+        self.assertEqual(len({r[0] for r in rows}), 501)
+
+    def test_first_message_ack_moves_earlier(self):
+        self.seed(1)
+        previous = self.page()
+        self.db.execute("UPDATE chat_messages SET created_at = '-000000001' WHERE local_id = 1")
+        self.assertEqual(self.refresh(previous), [(1, '-000000001')])
+
+    def test_first_sync_backfills_older_history(self):
+        self.seed(1)
+        self.db.execute("UPDATE chat_messages SET created_at = '9999999999'")
+        previous = self.page()
+        self.seed(700, same_time=True, prefix='backfill')
+        rows = self.refresh(previous)
+        self.assertEqual(rows, previous)
+        self.assertEqual(len(self.page('older', rows[0], limit=1)), 1)
+        self.assertEqual(len(self.page('older', rows[0], limit=501)), 501)
+
+    def test_forward_reorder_keeps_old_boundary_and_ties(self):
+        self.seed(1000, same_time=True)
+        previous = self.page()
+        self.db.execute("UPDATE chat_messages SET created_at = '9999999999' WHERE local_id = 501")
+        rows = self.refresh(previous)
+        self.assertEqual(rows[-1][0], 501)
+        self.assertEqual({r[0] for r in rows}, {r[0] for r in previous})
+
+    def test_retained_ids_cannot_leak_another_scope(self):
+        self.seed(501)
+        self.seed(1, owner='u2')
+        previous = self.page()
+        rows = self.refresh(previous + [(502, '9999999999')])
+        self.assertEqual(rows, previous)
+
+    def test_large_retained_set_with_new_insert_and_backfill(self):
+        self.seed(5000, same_time=True)
+        previous = self.page(limit=4000)
+        self.seed(700, same_time=True, prefix='backfill')
+        rows = self.refresh(previous)
+        self.assertEqual([r[0] for r in rows], list(range(1001, 5701)))
 
     def test_501_newest_window(self):
         self.seed(501)

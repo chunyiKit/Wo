@@ -3,7 +3,19 @@ import 'dart:convert';
 import 'dart:io';
 import '../../lib/data/chat_message_query.dart';
 
-void main() {
+void main(List<String> args) {
+  if (args.isNotEmpty) {
+    final input = jsonDecode(args.single) as Map<String, dynamic>;
+    final query = ChatMessageQuery(
+      ownerUserId: input['owner'],
+      familyId: input['family'],
+      from: ChatMessageCursor(input['time'], input['id']),
+      retainedLocalIds: (input['retained'] as List).cast<int>(),
+      limit: null,
+    );
+    stdout.writeln(jsonEncode({'where': query.where, 'args': query.whereArgs}));
+    return;
+  }
   final cursor = ChatMessageCursor('2026-06-25T10:00:00.000Z', 501);
   final latest = ChatMessageQuery(ownerUserId: 'u1', familyId: 'f1');
   final older = ChatMessageQuery(

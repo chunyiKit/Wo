@@ -220,12 +220,14 @@ CREATE TABLE chat_sync_state (
     int? limit = 500,
     ChatMessageCursor? before,
     ChatMessageCursor? from,
+    List<int> retainedLocalIds = const [],
   }) async {
     final query = ChatMessageQuery(
       ownerUserId: ownerUserId,
       familyId: familyId,
       before: before,
       from: from,
+      retainedLocalIds: retainedLocalIds,
       limit: limit,
     );
     final db = await _database;

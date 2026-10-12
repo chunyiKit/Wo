@@ -13,6 +13,7 @@ class ChatMessageQuery {
     ChatMessageCursor? before,
     ChatMessageCursor? from,
     this.limit = 500,
+    List<int> retainedLocalIds = const [],
   }) {
     if (limit != null && limit! <= 0) {
       throw ArgumentError.value(limit, 'limit', '必须大于 0');
@@ -26,8 +27,19 @@ class ChatMessageQuery {
       whereArgs.addAll([before.createdAt, before.createdAt, before.localId]);
     }
     if (from != null) {
-      where += windowPredicate;
+      where += ' AND (${windowPredicate.substring(5)}';
       whereArgs.addAll([from.createdAt, from.createdAt, from.localId]);
+      if (retainedLocalIds.isNotEmpty) {
+        // localId 不随服务端确认改变。重新读取已加载消息的最早位置，
+        // 避免 created_at 回拨后掉出窗口，并纳入其间的消息。
+        // ID 是内部 int；直接生成整数列表，避免展开历史后超过绑定参数上限。
+        where += ' OR (created_at, local_id) >= '
+            '(SELECT created_at, local_id FROM chat_messages WHERE '
+            '$scopePredicate AND local_id IN (${retainedLocalIds.join(',')}) '
+            'ORDER BY created_at ASC, local_id ASC LIMIT 1)';
+        whereArgs.addAll([ownerUserId, familyId]);
+      }
+      where += ')';
     }
   }
 

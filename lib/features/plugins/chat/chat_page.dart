@@ -16,6 +16,7 @@ import '../../../theme/wo_tokens.dart';
 import '../../../widgets/member_avatar.dart';
 import '../../../widgets/placeholder_screen.dart';
 import 'chat_history_list.dart';
+import 'chat_history_refresh.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -55,6 +56,13 @@ class _ChatPageState extends State<ChatPage> {
   ChatMessageCursor _cursor(ChatLocalMessage message) => ChatMessageCursor(
         message.createdAt.toUtc().toIso8601String(),
         message.localId!,
+      );
+
+  ChatMessageCursor _oldestCursor(List<ChatLocalMessage> messages) => _cursor(
+        messages.reduce((a, b) {
+          final order = a.createdAt.compareTo(b.createdAt);
+          return order < 0 || (order == 0 && a.localId! < b.localId!) ? a : b;
+        }),
       );
 
   String? _ownerUserId;
@@ -168,29 +176,41 @@ class _ChatPageState extends State<ChatPage> {
     final request = ++_loadRequest;
     final previous = _items;
     final from = previous != null && previous.isNotEmpty
-        ? _cursor(previous.first)
+        ? _oldestCursor(previous)
         : null;
     final rows = await _store.listMessages(
       ownerUserId: ownerUserId,
       familyId: familyId,
       from: from,
+      retainedLocalIds: previous?.map((m) => m.localId!).toList() ?? const [],
       // 后续只刷新已经展开的时间范围，避免新消息挤掉已加载的历史。
       limit: from == null ? _pageSize + 1 : null,
     );
     if (!_isScope(ownerUserId, familyId, generation) || request != _loadRequest)
       return;
-    if (!scroll && !_atBottom && previous != null && previous.isNotEmpty) {
-      // 阅读历史时不移动列表；由用户点按提示返回最新消息。
-      setState(
-        () => _hasNewMessages =
-            rows.isNotEmpty && rows.last.localId != previous.last.localId,
-      );
+    final readingHistory =
+        !scroll && !_atBottom && previous != null && previous.isNotEmpty;
+    final refresh = ChatHistoryRefresh<ChatLocalMessage>(
+      previous: previous ?? const [],
+      fresh: from == null && rows.length > _pageSize ? rows.sublist(1) : rows,
+      id: (message) => message.localId!,
+      readingHistory: readingHistory,
+    );
+    // 每次都重新探测：首次同步可能回填到原窗口之前，旧的 false 会过期。
+    final older = refresh.items.isEmpty
+        ? <ChatLocalMessage>[]
+        : await _store.listMessages(
+            ownerUserId: ownerUserId,
+            familyId: familyId,
+            before: _oldestCursor(refresh.items),
+            limit: 1,
+          );
+    if (!_isScope(ownerUserId, familyId, generation) || request != _loadRequest)
       return;
-    }
     setState(() {
-      if (from == null) _hasOlder = rows.length > _pageSize;
-      _items = from == null && rows.length > _pageSize ? rows.sublist(1) : rows;
-      _hasNewMessages = false;
+      _hasOlder = older.isNotEmpty;
+      _items = refresh.items;
+      _hasNewMessages = refresh.hasNewMessages;
     });
     if (scroll || _atBottom) _scrollToBottom();
   }
@@ -212,7 +232,7 @@ class _ChatPageState extends State<ChatPage> {
       final older = await _store.listMessages(
         ownerUserId: owner,
         familyId: family,
-        before: _cursor(items.first),
+        before: _oldestCursor(items),
         limit: _pageSize + 1,
       );
       if (!_isScope(owner, family, generation)) return;
