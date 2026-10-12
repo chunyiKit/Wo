@@ -1078,6 +1078,7 @@ class WoApi {
   Future<Memory> createMemory(
     String familyId, {
     required String title,
+    String? clientId,
     String? body,
     String? mood,
     String? location,
@@ -1088,6 +1089,7 @@ class WoApi {
       '/families/$familyId/plugins/memory/memories',
       body: {
         'title': title,
+        if (clientId != null) 'client_id': clientId,
         if (body != null && body.isNotEmpty) 'body': body,
         if (mood != null && mood.isNotEmpty) 'mood': mood,
         if (location != null && location.isNotEmpty) 'location': location,
@@ -1134,12 +1136,16 @@ class WoApi {
     required List<int> bytes,
     required String filename,
     int? durationMs,
+    String? clientId,
   }) async {
     final data = await _client.uploadFile(
       '/families/$familyId/plugins/memory/memories/$memoryId/media',
       bytes: bytes,
       filename: filename,
-      fields: durationMs != null ? {'duration_ms': '$durationMs'} : null,
+      fields: {
+        if (durationMs != null) 'duration_ms': '$durationMs',
+        if (clientId != null) 'client_id': clientId,
+      },
     );
     return MemoryMedia.fromJson(data as Map<String, dynamic>);
   }

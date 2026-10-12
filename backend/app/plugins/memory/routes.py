@@ -15,7 +15,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Query, UploadFile
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlmodel import select
 from starlette.responses import RedirectResponse, Response
 
@@ -64,6 +64,17 @@ TIMELINE_PAGE_MAX = 50
 
 
 # ---- Loaders / guards -----------------------------------------------------
+
+
+async def _lock_client_id(session: SessionDep, client_id: UUID) -> None:
+    # A transaction-scoped, cross-process lock protects the lookup AND blob write.
+    # Truncation can only serialize unrelated UUIDs, never weaken correctness.
+    lock_key = int.from_bytes(client_id.bytes[:8], "big", signed=True)
+    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+
+
+def _client_id_conflict() -> AppError:
+    return AppError(ErrorCode.VALIDATION_ERROR, "client_id 已用于其他资源", status_code=409)
 
 
 async def _load_memory(session: SessionDep, family_id: UUID, memory_id: UUID) -> Memory:
@@ -200,11 +211,22 @@ async def create_memory(
     current_user: CurrentUserDep,
 ) -> ApiResponse[MemoryRead]:
     await require_membership(session, current_user.id, family_id)
+    if payload.client_id is not None:
+        await _lock_client_id(session, payload.client_id)
+        existing = await session.get(Memory, payload.client_id)
+        if existing is not None:
+            if existing.family_id != family_id or existing.created_by != current_user.id:
+                raise _client_id_conflict()
+            members = await member_map(session, family_id)
+            media = await _media_for(session, existing.id)
+            count = await _comment_count(session, existing.id)
+            return ok(build_read(existing, media, members, comment_count=count))
     title = payload.title.strip()
     if not title:
         raise AppError(ErrorCode.VALIDATION_ERROR, "标题不能为空", status_code=400)
 
     row = Memory(
+        id=payload.client_id or new_uuid7(),
         title=title,
         body=payload.body,
         mood=payload.mood,
@@ -331,11 +353,23 @@ async def upload_media(
     current_user: CurrentUserDep,
     file: Annotated[UploadFile, File(...)],
     duration_ms: Annotated[int | None, Form()] = None,
+    client_id: Annotated[UUID | None, Form()] = None,
 ) -> ApiResponse[MemoryMediaRead]:
     """Attach a photo or video. Kind is detected from the bytes, not trusted
     from the client. Appended to the end of the memory's media order."""
     await require_membership(session, current_user.id, family_id)
     memory = await _load_memory(session, family_id, memory_id)
+    if client_id is not None:
+        await _lock_client_id(session, client_id)
+        existing = await session.get(MemoryMedia, client_id)
+        if existing is not None:
+            if (
+                existing.family_id != family_id
+                or existing.memory_id != memory_id
+                or existing.created_by != current_user.id
+            ):
+                raise _client_id_conflict()
+            return ok(to_media_read(existing))
 
     # Read up to the video cap (the larger of the two limits) so we can size-check
     # by kind once we know what it is.
@@ -364,10 +398,10 @@ async def upload_media(
         )
     ).scalar_one()
 
-    media_id = new_uuid7()
+    media_id = client_id or new_uuid7()
     storage_key = build_storage_key(family_id, memory_id, media_id, ext)
 
-    # Write the blob first; if the DB write fails we delete it so nothing leaks.
+    # Write the blob before the row. Replays return above without writing it again.
     await storage.put(storage_key, content, content_type)
     try:
         media = MemoryMedia(
@@ -388,12 +422,21 @@ async def upload_media(
         # Touch the parent so its updated_at reflects the new attachment.
         memory.updated_at = datetime.now(UTC)
         session.add(memory)
-        await session.commit()
-        await session.refresh(media)
+        await session.flush()
     except Exception:
-        await storage.delete(storage_key)
+        # A failed DB transaction may already have released the advisory lock.
+        # For deterministic retry keys, cleanup could delete a succeeding retry's
+        # blob. Preserve it; a retry can safely overwrite an uncommitted upload.
+        if client_id is None:
+            with contextlib.suppress(Exception):
+                await storage.delete(storage_key)
         raise
 
+    # Once commit starts its outcome can be ambiguous (e.g. a lost connection).
+    # Never delete the blob on commit/refresh failure: a retry can recover the
+    # committed row. An orphan on an unsuccessful commit is safer than data loss.
+    await session.commit()
+    await session.refresh(media)
     return ok(to_media_read(media))
 
 
