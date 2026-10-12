@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,6 +85,21 @@ Future<void> _openPage(WidgetTester tester, Widget page) async {
     MaterialPageRoute(builder: (_) => page),
   );
   await tester.pumpAndSettle();
+  if (page is MemoryEditPage) {
+    final blocker = find.descendant(
+      of: find.byType(MemoryEditPage),
+      matching: find.byType(AbsorbPointer),
+    );
+    for (var attempt = 0;
+        attempt < 100 && tester.widget<AbsorbPointer>(blocker).absorbing;
+        attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(tester.widget<AbsorbPointer>(blocker).absorbing, isFalse);
+  }
 }
 
 Future<void> _back(WidgetTester tester, {required bool predictive}) async {
@@ -124,6 +140,24 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  setUp(() async {
+    final directory =
+        await Directory.systemTemp.createTemp('wo-memory-date-test-');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => directory.path,
+    );
+    addTearDown(() async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        null,
+      );
+      await directory.delete(recursive: true);
+    });
+  });
+
   final cases = <(String, Widget, String)>[
     ('宠物生日', const PetProfileEditPage(), '生日'),
     ('宠物到家日期', const PetProfileEditPage(), '到家日期'),

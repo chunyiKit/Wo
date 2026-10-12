@@ -10,7 +10,7 @@ import 'package:wo/features/plugins/memory/memory_save_draft.dart';
 
 class _Api extends WoApi {
   _Api() : super(ApiClient());
-  final Map<String, Memory> memories = {};
+  final Map<String, Memory> savedMemories = {};
   final Map<String, MemoryMedia> media = {};
   final List<String> attempts = [];
   bool loseCreateResponse = false;
@@ -31,7 +31,7 @@ class _Api extends WoApi {
     required DateTime eventDate,
   }) async {
     if (blockCreate != null) await blockCreate!.future;
-    final result = memories.putIfAbsent(
+    final result = savedMemories.putIfAbsent(
       clientId!,
       () => Memory.fromJson({
         'id': clientId,
@@ -58,7 +58,7 @@ class _Api extends WoApi {
     required String visibility,
     required DateTime eventDate,
   }) async =>
-      memories[id] ??
+      savedMemories[id] ??
       Memory.fromJson({
         'id': id,
         'family_id': familyId,
@@ -150,7 +150,7 @@ void main() {
     expect(restored.clientId, draft.clientId);
     expect(restored.memoryId, isNull);
     expect(await restored.save(api, 'family', store), isTrue);
-    expect(api.memories, hasLength(1));
+    expect(api.savedMemories, hasLength(1));
     expect(api.media, hasLength(2));
     expect(await store.read(), isNull);
   });
@@ -184,7 +184,7 @@ void main() {
     );
     await (await store.read())!.save(api, 'family', store);
     expect(api.media, hasLength(2));
-    expect(api.memories, hasLength(1));
+    expect(api.savedMemories, hasLength(1));
   });
 
   test('移除响应丢失的附件后重试会删除其服务端副本', () async {
@@ -220,7 +220,7 @@ void main() {
     draft.removedMediaIds.add('already-deleted');
     final api = _Api();
     await draft.save(api, 'family', store);
-    expect(api.memories, isEmpty);
+    expect(api.savedMemories, isEmpty);
     expect(api.media.values.every((m) => m.memoryId == 'existing'), isTrue);
   });
 
