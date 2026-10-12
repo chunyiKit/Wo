@@ -404,3 +404,173 @@ async def test_preview_empty_state(client: AsyncClient) -> None:
     async with async_session_maker() as session:
         preview = await preview_hook(session, ip, uuid.UUID(LAOCHEN))
     assert preview.primary == "还没有回忆"
+
+
+@pytest.mark.parametrize("concurrent", [False, True])
+async def test_create_memory_client_id_replay(client: AsyncClient, concurrent: bool) -> None:
+    import asyncio
+
+    fid = await _create_family(client)
+    cid = str(uuid.uuid4())
+    url = MEM_BASE.format(fid=fid)
+
+    async def create():
+        return await client.post(url, json={"title": "重试", "client_id": cid})
+
+    responses = (
+        await asyncio.gather(create(), create()) if concurrent else [await create(), await create()]
+    )
+    assert [r.status_code for r in responses] == [201, 201]
+    assert all(r.json()["data"]["id"] == cid for r in responses)
+    assert (await client.get(url)).json()["meta"]["total"] == 1
+
+
+async def test_create_memory_client_id_scope_conflict(client: AsyncClient) -> None:
+    fid = await _family_with_xiaolin(client)
+    cid = str(uuid.uuid4())
+    payload = {"title": "原回忆", "client_id": cid}
+    assert (await client.post(MEM_BASE.format(fid=fid), json=payload)).status_code == 201
+    for target, headers in [(fid, XIAOLIN), (await _create_family(client), {})]:
+        conflict = await client.post(MEM_BASE.format(fid=target), json=payload, headers=headers)
+        assert conflict.status_code == 409, conflict.text
+    replay = await client.post(MEM_BASE.format(fid=fid), json={**payload, "title": "不得覆盖"})
+    assert replay.json()["data"]["title"] == "原回忆"
+
+
+@pytest.mark.parametrize("concurrent", [False, True])
+async def test_upload_client_id_replay(
+    client: AsyncClient, png_bytes: bytes, monkeypatch, concurrent: bool
+) -> None:
+    import asyncio
+
+    from app.plugins.memory import routes
+
+    fid = await _create_family(client)
+    base = MEM_BASE.format(fid=fid)
+    mid = (await client.post(base, json={"title": "照片重试"})).json()["data"]["id"]
+    cid = str(uuid.uuid4())
+    puts = []
+    original_put = routes.storage.put
+
+    async def put(*args):
+        puts.append(args[0])
+        await asyncio.sleep(0.03)
+        await original_put(*args)
+
+    monkeypatch.setattr(routes.storage, "put", put)
+
+    async def upload():
+        return await client.post(
+            f"{base}/{mid}/media",
+            data={"client_id": cid},
+            files={"file": ("a.png", png_bytes, "image/png")},
+        )
+
+    responses = (
+        await asyncio.gather(upload(), upload()) if concurrent else [await upload(), await upload()]
+    )
+    assert [r.status_code for r in responses] == [201, 201]
+    assert responses[0].json()["data"] == responses[1].json()["data"]
+    assert responses[0].json()["data"]["id"] == cid
+    assert len(puts) == 1
+    assert len((await client.get(f"{base}/{mid}")).json()["data"]["media"]) == 1
+    assert (await client.get(responses[0].json()["data"]["url"])).content == png_bytes
+
+
+async def test_upload_client_id_scope_conflict(client: AsyncClient, png_bytes: bytes) -> None:
+    fid = await _family_with_xiaolin(client)
+    base = MEM_BASE.format(fid=fid)
+    mid = (await client.post(base, json={"title": "原回忆"})).json()["data"]["id"]
+    other_mid = (await client.post(base, json={"title": "另一回忆"})).json()["data"]["id"]
+    other_base = MEM_BASE.format(fid=await _create_family(client))
+    other_family_mid = (await client.post(other_base, json={"title": "另一家庭"})).json()["data"][
+        "id"
+    ]
+    cid = str(uuid.uuid4())
+
+    async def upload(target_base, target_mid, headers=None):
+        return await client.post(
+            f"{target_base}/{target_mid}/media",
+            headers=headers,
+            data={"client_id": cid},
+            files={"file": ("a.png", png_bytes, "image/png")},
+        )
+
+    original = await upload(base, mid)
+    assert original.status_code == 201
+    for target_base, target_mid, headers in [
+        (base, mid, XIAOLIN),
+        (base, other_mid, None),
+        (other_base, other_family_mid, None),
+    ]:
+        response = await upload(target_base, target_mid, headers)
+        assert response.status_code == 409, response.text
+    assert (await client.get(original.json()["data"]["url"])).content == png_bytes
+
+
+@pytest.mark.parametrize("failure", ["put", "flush", "refresh", "commit_after_success"])
+async def test_upload_retry_after_failure(
+    client: AsyncClient, png_bytes: bytes, monkeypatch, failure: str
+) -> None:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.plugins.memory import routes
+    from app.plugins.memory.models import MemoryMedia
+
+    fid = await _create_family(client)
+    base = MEM_BASE.format(fid=fid)
+    mid = (await client.post(base, json={"title": "故障重试"})).json()["data"]["id"]
+    cid = str(uuid.uuid4())
+    target = f"{base}/{mid}/media"
+    files = {"file": ("a.png", png_bytes, "image/png")}
+    deletes = []
+    original_delete = routes.storage.delete
+
+    async def delete(key):
+        deletes.append(key)
+        await original_delete(key)
+
+    monkeypatch.setattr(routes.storage, "delete", delete)
+    with monkeypatch.context() as patch:
+        if failure == "put":
+
+            async def fail_put(*args):
+                raise RuntimeError("storage unavailable")
+
+            patch.setattr(routes.storage, "put", fail_put)
+        elif failure == "flush":
+            original_flush = AsyncSession.flush
+
+            async def fail_flush(self, *args, **kwargs):
+                if any(isinstance(row, MemoryMedia) for row in self.new):
+                    await self.rollback()
+                    raise RuntimeError("transaction aborted")
+                return await original_flush(self, *args, **kwargs)
+
+            patch.setattr(AsyncSession, "flush", fail_flush)
+        elif failure == "refresh":
+            original_refresh = AsyncSession.refresh
+
+            async def fail_refresh(self, instance, *args, **kwargs):
+                if isinstance(instance, MemoryMedia):
+                    raise RuntimeError("response lost")
+                return await original_refresh(self, instance, *args, **kwargs)
+
+            patch.setattr(AsyncSession, "refresh", fail_refresh)
+        else:
+            original_commit = AsyncSession.commit
+
+            async def fail_commit(self):
+                await original_commit(self)
+                raise RuntimeError("commit acknowledgement lost")
+
+            patch.setattr(AsyncSession, "commit", fail_commit)
+        with pytest.raises(RuntimeError):
+            await client.post(target, data={"client_id": cid}, files=files)
+
+    replay = await client.post(target, data={"client_id": cid}, files=files)
+    assert replay.status_code == 201, replay.text
+    assert replay.json()["data"]["id"] == cid
+    assert not deletes
+    assert len((await client.get(f"{base}/{mid}")).json()["data"]["media"]) == 1
+    assert (await client.get(replay.json()["data"]["url"])).content == png_bytes

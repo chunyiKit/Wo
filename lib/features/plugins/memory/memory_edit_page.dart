@@ -1,4 +1,7 @@
 import 'dart:typed_data';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 
@@ -8,6 +11,7 @@ import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import 'memory_media.dart';
 import 'memory_media_pick.dart';
+import 'memory_save_draft.dart';
 
 /// 回忆新增 / 编辑页。
 ///
@@ -46,6 +50,13 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
   final List<Uint8List> _pendingPhotos = [];
   final List<PickedVideo> _pendingVideos = [];
 
+  late MemorySaveDraft _draft;
+  MemoryDraftStore? _draftStore;
+  final Map<Uint8List, MemoryDraftAttachment> _attachments = {};
+  bool _restoring = true;
+  bool _restoreStarted = false;
+  bool Function()? _isScopeCurrent;
+
   bool _picking = false;
   bool _submitting = false;
 
@@ -63,6 +74,7 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
   void initState() {
     super.initState();
     final m = widget.existing;
+    _draft = MemorySaveDraft(memoryId: m?.id);
     _title = TextEditingController(text: m?.title ?? '');
     _body = TextEditingController(text: m?.body ?? '');
     _location = TextEditingController(text: m?.location ?? '');
@@ -70,6 +82,81 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
     _visibility = m?.visibility ?? 'family';
     _eventDate = m?.eventDate ?? DateTime.now();
     _existingMedia = List.of(m?.media ?? const <MemoryMedia>[]);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_restoreStarted) return;
+    _restoreStarted = true;
+    _restoreDraft();
+  }
+
+  Future<void> _restoreDraft() async {
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    final userId = session.user?.id;
+    if (familyId == null || userId == null) return;
+    final server = session.api.baseUrl;
+    final token = session.api.authToken;
+    final devUser = session.api.userId;
+    _isScopeCurrent = () =>
+        session.currentFamilyId == familyId &&
+        session.user?.id == userId &&
+        session.api.baseUrl == server &&
+        session.api.authToken == token &&
+        session.api.userId == devUser;
+    try {
+      final root = await getApplicationSupportDirectory();
+      final scope = MemoryDraftStore.scope(
+        session.api.baseUrl,
+        userId,
+        familyId,
+        widget.existing?.id,
+      );
+      final store = MemoryDraftStore(
+        Directory('${root.path}/memory_drafts/$scope'),
+      );
+      final restored = await store.read();
+      if (!mounted) return;
+      if (!_isScopeCurrent!()) {
+        _toastMsg('登录身份或家庭已改变，请返回后重试');
+        return;
+      }
+      setState(() {
+        _draftStore = store;
+        if (restored != null) {
+          _draft = restored;
+          _title.text = restored.fields['title'] as String;
+          _body.text = restored.fields['body'] as String? ?? '';
+          _location.text = restored.fields['location'] as String? ?? '';
+          _mood = restored.fields['mood'] as String? ?? '';
+          _visibility = restored.fields['visibility'] as String;
+          _eventDate = DateTime.parse(restored.fields['event_date'] as String);
+          _eventDateManuallySet = true;
+          _existingMedia = List.of(restored.existingMedia);
+          _removedMediaIds.addAll(restored.removedMediaIds);
+          for (final a in restored.attachments) {
+            _attachments[a.bytes] = a;
+            if (a.filename == 'photo.jpg') {
+              _pendingPhotos.add(a.bytes);
+            } else {
+              _pendingVideos.add(
+                PickedVideo(
+                  bytes: a.bytes,
+                  filename: a.filename,
+                  durationMs: a.durationMs,
+                ),
+              );
+            }
+          }
+        }
+        _restoring = false;
+      });
+      if (restored != null) _toastMsg('已恢复未完成的保存，可继续重试');
+    } catch (e) {
+      if (mounted) _toastMsg('无法恢复保存草稿，请返回后重试');
+    }
   }
 
   @override
@@ -156,62 +243,61 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
 
   Future<void> _save() async {
     final title = _title.text.trim();
-    if (title.isEmpty || _submitting) return;
+    if (title.isEmpty || _submitting || _picking || _restoring) return;
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    if (familyId == null) return;
+    final store = _draftStore;
+    if (familyId == null || store == null) return;
+    if (!(_isScopeCurrent?.call() ?? false)) {
+      _toastMsg('登录身份或家庭已改变，请返回后重试');
+      return;
+    }
 
     setState(() => _submitting = true);
     final nav = Navigator.of(context);
     try {
-      final Memory saved;
-      if (_isEditing) {
-        saved = await session.api.updateMemory(
-          familyId,
-          widget.existing!.id,
-          title: title,
-          body: _body.text.trim(),
-          mood: _mood,
-          location: _location.text.trim(),
-          visibility: _visibility,
-          eventDate: _eventDate,
-        );
-        // 删除被移除的旧媒体。
-        for (final id in _removedMediaIds) {
-          await session.api.deleteMemoryMedia(familyId, saved.id, id);
-        }
-      } else {
-        saved = await session.api.createMemory(
-          familyId,
-          title: title,
-          body: _body.text.trim(),
-          mood: _mood,
-          location: _location.text.trim(),
-          visibility: _visibility,
-          eventDate: _eventDate,
-        );
+      _draft.fields = {
+        'title': title,
+        'body': _body.text.trim(),
+        'mood': _mood,
+        'location': _location.text.trim(),
+        'visibility': _visibility,
+        'event_date': _eventDate.toIso8601String(),
+      };
+      _draft.existingMedia = List.of(_existingMedia);
+      _draft.removedMediaIds.addAll(_removedMediaIds);
+      final selected = [
+        for (final bytes in _pendingPhotos)
+          _attachments.putIfAbsent(
+            bytes,
+            () => MemoryDraftAttachment(bytes: bytes, filename: 'photo.jpg'),
+          ),
+        for (final v in _pendingVideos)
+          _attachments.putIfAbsent(
+            v.bytes,
+            () => MemoryDraftAttachment(
+              bytes: v.bytes,
+              filename: v.filename,
+              durationMs: v.durationMs,
+            ),
+          ),
+      ];
+      // 已尝试过的附件即使响应丢失，也必须在用户移除后删除服务端副本。
+      for (final old in _draft.attachments) {
+        if (!selected.contains(old)) _draft.removedMediaIds.add(old.id);
       }
-
-      // 上传新选的照片与视频。
-      for (final bytes in _pendingPhotos) {
-        await session.api.uploadMemoryMedia(
-          familyId,
-          saved.id,
-          bytes: bytes,
-          filename: 'photo.jpg',
-        );
+      _draft.attachments
+        ..clear()
+        ..addAll(selected);
+      if (await _draft.save(
+            session.api,
+            familyId,
+            store,
+            isScopeCurrent: _isScopeCurrent,
+          ) &&
+          mounted) {
+        nav.pop(true);
       }
-      for (final v in _pendingVideos) {
-        await session.api.uploadMemoryMedia(
-          familyId,
-          saved.id,
-          bytes: v.bytes,
-          filename: v.filename,
-          durationMs: v.durationMs,
-        );
-      }
-
-      if (mounted) nav.pop(true);
     } catch (e) {
       if (mounted) {
         setState(() => _submitting = false);
@@ -237,124 +323,142 @@ class _MemoryEditPageState extends State<MemoryEditPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
-    final canSave = _title.text.trim().isNotEmpty && !_submitting;
+    final canSave =
+        _title.text.trim().isNotEmpty &&
+        !_submitting &&
+        !_restoring &&
+        !_picking;
 
-    return WoScaffold(
-      backgroundColor: wo.bg,
-      appBar: WoAppBar(
-        title: Text(_isEditing ? '编辑回忆' : '新的回忆'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: WoTokens.space2),
-            child: WoTextButton(
-              onPressed: canSave ? _save : null,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: WoProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('保存'),
-            ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(WoTokens.space4),
-          children: [
-            _MediaPicker(
-              existing: _existingMedia,
-              pendingPhotos: _pendingPhotos,
-              pendingVideos: _pendingVideos,
-              busy: _picking,
-              count: _mediaCount,
-              max: _maxMedia,
-              onAdd: _addMedia,
-              onRemoveExisting: (m) => setState(() {
-                _existingMedia.remove(m);
-                _removedMediaIds.add(m.id);
-              }),
-              onRemovePhoto: (i) => setState(() => _pendingPhotos.removeAt(i)),
-              onRemoveVideo: (i) => setState(() => _pendingVideos.removeAt(i)),
-            ),
-            const SizedBox(height: WoTokens.space4),
-            WoTextField(
-              controller: _title,
-              maxLength: 80,
-              onChanged: (_) => setState(() {}),
-              style: t.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
-                hintText: '给这一刻起个标题',
-                counterText: '',
-                border: InputBorder.none,
+    return PopScope(
+      canPop: !_submitting,
+      child: WoScaffold(
+        backgroundColor: wo.bg,
+        appBar: WoAppBar(
+          title: Text(_isEditing ? '编辑回忆' : '新的回忆'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: WoTokens.space2),
+              child: WoTextButton(
+                onPressed: canSave ? _save : null,
+                child: _submitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: WoProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('保存'),
               ),
-            ),
-            Divider(color: wo.hairline, height: 1),
-            const SizedBox(height: WoTokens.space3),
-            WoTextField(
-              controller: _body,
-              maxLength: 2000,
-              minLines: 3,
-              maxLines: 8,
-              decoration: const InputDecoration(
-                hintText: '今天发生了什么？',
-                counterText: '',
-                border: InputBorder.none,
-              ),
-            ),
-            const SizedBox(height: WoTokens.space4),
-            _MetaRow(
-              icon: Icons.calendar_today_outlined,
-              label: '日期',
-              value: '${memoryDateLabel(_eventDate)} · '
-                  '${_eventDate.year}-${_eventDate.month}-${_eventDate.day}',
-              onTap: _pickDate,
-            ),
-            const SizedBox(height: WoTokens.space2),
-            _LocationRow(controller: _location),
-            const SizedBox(height: WoTokens.space4),
-            Text('心情', style: t.titleSmall),
-            const SizedBox(height: WoTokens.space2),
-            Wrap(
-              spacing: WoTokens.space2,
-              children: [
-                for (final mood in _moods)
-                  GestureDetector(
-                    onTap: () =>
-                        setState(() => _mood = _mood == mood ? '' : mood),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _mood == mood ? wo.accentSoft : wo.bgTint,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _mood == mood ? wo.accent : Colors.transparent,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Text(mood, style: const TextStyle(fontSize: 22)),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: WoTokens.space4),
-            Text('谁能看到', style: t.titleSmall),
-            const SizedBox(height: WoTokens.space2),
-            Wrap(
-              spacing: WoTokens.space2,
-              children: [
-                for (final (value, label) in _visibilities)
-                  WoChoiceChip(
-                    label: Text(label),
-                    selected: _visibility == value,
-                    onSelected: (_) => setState(() => _visibility = value),
-                  ),
-              ],
             ),
           ],
+        ),
+        body: SafeArea(
+          child: AbsorbPointer(
+            absorbing: _submitting || _restoring,
+            child: ListView(
+              padding: const EdgeInsets.all(WoTokens.space4),
+              children: [
+                _MediaPicker(
+                  existing: _existingMedia,
+                  pendingPhotos: _pendingPhotos,
+                  pendingVideos: _pendingVideos,
+                  busy: _picking,
+                  count: _mediaCount,
+                  max: _maxMedia,
+                  onAdd: _addMedia,
+                  onRemoveExisting: (m) => setState(() {
+                    _existingMedia.remove(m);
+                    _removedMediaIds.add(m.id);
+                  }),
+                  onRemovePhoto: (i) =>
+                      setState(() => _pendingPhotos.removeAt(i)),
+                  onRemoveVideo: (i) =>
+                      setState(() => _pendingVideos.removeAt(i)),
+                ),
+                const SizedBox(height: WoTokens.space4),
+                WoTextField(
+                  controller: _title,
+                  maxLength: 80,
+                  onChanged: (_) => setState(() {}),
+                  style: t.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                  decoration: const InputDecoration(
+                    hintText: '给这一刻起个标题',
+                    counterText: '',
+                    border: InputBorder.none,
+                  ),
+                ),
+                Divider(color: wo.hairline, height: 1),
+                const SizedBox(height: WoTokens.space3),
+                WoTextField(
+                  controller: _body,
+                  maxLength: 2000,
+                  minLines: 3,
+                  maxLines: 8,
+                  decoration: const InputDecoration(
+                    hintText: '今天发生了什么？',
+                    counterText: '',
+                    border: InputBorder.none,
+                  ),
+                ),
+                const SizedBox(height: WoTokens.space4),
+                _MetaRow(
+                  icon: Icons.calendar_today_outlined,
+                  label: '日期',
+                  value:
+                      '${memoryDateLabel(_eventDate)} · '
+                      '${_eventDate.year}-${_eventDate.month}-${_eventDate.day}',
+                  onTap: _pickDate,
+                ),
+                const SizedBox(height: WoTokens.space2),
+                _LocationRow(controller: _location),
+                const SizedBox(height: WoTokens.space4),
+                Text('心情', style: t.titleSmall),
+                const SizedBox(height: WoTokens.space2),
+                Wrap(
+                  spacing: WoTokens.space2,
+                  children: [
+                    for (final mood in _moods)
+                      GestureDetector(
+                        onTap: () =>
+                            setState(() => _mood = _mood == mood ? '' : mood),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _mood == mood ? wo.accentSoft : wo.bgTint,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: _mood == mood
+                                  ? wo.accent
+                                  : Colors.transparent,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            mood,
+                            style: const TextStyle(fontSize: 22),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: WoTokens.space4),
+                Text('谁能看到', style: t.titleSmall),
+                const SizedBox(height: WoTokens.space2),
+                Wrap(
+                  spacing: WoTokens.space2,
+                  children: [
+                    for (final (value, label) in _visibilities)
+                      WoChoiceChip(
+                        label: Text(label),
+                        selected: _visibility == value,
+                        onSelected: (_) => setState(() => _visibility = value),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

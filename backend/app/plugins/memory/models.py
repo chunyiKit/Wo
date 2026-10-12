@@ -86,6 +86,8 @@ class MemoryCreate(MemoryBase):
     """POST request body. `event_date` defaults to today when omitted."""
 
     event_date: date | None = None
+    # Stable across retries; reused as the resource UUID (no extra DB column).
+    client_id: UUID | None = None
 
 
 class MemoryUpdate(SQLModel):
