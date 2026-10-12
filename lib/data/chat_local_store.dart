@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'chat_message_query.dart';
 import 'models.dart';
 
 const chatStatusSending = 'sending';
@@ -216,17 +217,29 @@ CREATE TABLE chat_sync_state (
   Future<List<ChatLocalMessage>> listMessages({
     required String ownerUserId,
     required String familyId,
-    int limit = 500,
+    int? limit = 500,
+    ChatMessageCursor? before,
+    ChatMessageCursor? from,
+    List<int> retainedLocalIds = const [],
   }) async {
+    final query = ChatMessageQuery(
+      ownerUserId: ownerUserId,
+      familyId: familyId,
+      before: before,
+      from: from,
+      retainedLocalIds: retainedLocalIds,
+      limit: limit,
+    );
     final db = await _database;
     final rows = await db.query(
       'chat_messages',
-      where: 'owner_user_id = ? AND family_id = ?',
-      whereArgs: [ownerUserId, familyId],
-      orderBy: 'created_at ASC, local_id ASC',
-      limit: limit,
+      where: query.where,
+      whereArgs: query.whereArgs,
+      orderBy: ChatMessageQuery.orderBy,
+      limit: query.limit,
     );
-    return rows.map(ChatLocalMessage.fromDb).toList();
+    // SQL 先截取最新窗口，展示仍保持从旧到新。
+    return rows.reversed.map(ChatLocalMessage.fromDb).toList();
   }
 
   Future<ChatLocalMessage?> byClientId({

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/api_client.dart';
 import '../../../data/chat_local_store.dart';
+import '../../../data/chat_message_query.dart';
 import '../../../data/chat_sync_service.dart';
 import '../../../data/image_pick.dart';
 import '../../../data/models.dart';
@@ -14,6 +15,8 @@ import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/member_avatar.dart';
 import '../../../widgets/placeholder_screen.dart';
+import 'chat_history_list.dart';
+import 'chat_history_refresh.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -34,6 +37,33 @@ class _ChatPageState extends State<ChatPage> {
   WoSession? _session;
   bool _syncing = false;
   bool _sendingImage = false;
+  static const _pageSize = 500;
+  int _scopeGeneration = 0;
+  int _loadRequest = 0;
+  bool _hasOlder = false;
+  bool _loadingOlder = false;
+  bool _hasNewMessages = false;
+
+  bool _isScope(String owner, String family, int generation) =>
+      mounted &&
+      generation == _scopeGeneration &&
+      owner == _ownerUserId &&
+      family == _familyId;
+
+  bool get _atBottom =>
+      !_scrollController.hasClients || _scrollController.position.pixels < 80;
+
+  ChatMessageCursor _cursor(ChatLocalMessage message) => ChatMessageCursor(
+        message.createdAt.toUtc().toIso8601String(),
+        message.localId!,
+      );
+
+  ChatMessageCursor _oldestCursor(List<ChatLocalMessage> messages) => _cursor(
+        messages.reduce((a, b) {
+          final order = a.createdAt.compareTo(b.createdAt);
+          return order < 0 || (order == 0 && a.localId! < b.localId!) ? a : b;
+        }),
+      );
 
   String? _ownerUserId;
   String? _familyId;
@@ -45,8 +75,8 @@ class _ChatPageState extends State<ChatPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final session = WoScope.of(context);
-    _syncService ??= ChatSyncService(api: session.api, store: _store);
     if (!identical(_session, session)) {
+      _syncService = ChatSyncService(api: session.api, store: _store);
       _session?.chatRefreshSignal.removeListener(_onExternalRefresh);
       _session = session;
       session.chatRefreshSignal.addListener(_onExternalRefresh);
@@ -55,14 +85,24 @@ class _ChatPageState extends State<ChatPage> {
     final owner = session.user?.id;
     final family = session.currentFamilyId;
     final nextKey = '$owner|$family';
-    if (owner != null && family != null && nextKey != _scopeKey) {
+    if (nextKey != _scopeKey) {
+      _scopeGeneration++;
+      _loadRequest++;
+      _poller?.cancel();
+      _items = null;
+      _hasOlder = false;
+      _loadingOlder = false;
+      _hasNewMessages = false;
+      _syncing = false;
       _scopeKey = nextKey;
       _ownerUserId = owner;
       _familyId = family;
       _myName = session.user?.displayName ?? '';
       _myEmoji = session.user?.avatarEmoji ?? '👤';
       _myAvatarUrl = session.user?.avatarUrl;
-      _start(ownerUserId: owner, familyId: family);
+      if (owner != null && family != null) {
+        _start(ownerUserId: owner, familyId: family);
+      }
     }
   }
 
@@ -76,20 +116,23 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onExternalRefresh() {
-    unawaited(_syncSilently(scroll: true));
+    unawaited(_syncSilently());
   }
 
   Future<void> _start({
     required String ownerUserId,
     required String familyId,
   }) async {
+    final generation = _scopeGeneration;
     _poller?.cancel();
     setState(() => _items = null);
     await Future.wait([
       _loadLocal(ownerUserId: ownerUserId, familyId: familyId, scroll: true),
       _loadMyMember(familyId),
     ]);
-    await _syncSilently(scroll: true);
+    if (!_isScope(ownerUserId, familyId, generation)) return;
+    await _syncSilently();
+    if (!_isScope(ownerUserId, familyId, generation)) return;
     _poller = Timer.periodic(
       const Duration(seconds: 3),
       (_) => unawaited(_syncSilently()),
@@ -98,6 +141,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadMyMember(String familyId) async {
     final owner = _ownerUserId;
+    final generation = _scopeGeneration;
     if (owner == null) return;
     try {
       final members = await WoScope.api(context).members(familyId);
@@ -109,7 +153,7 @@ class _ChatPageState extends State<ChatPage> {
         }
       }
       final currentMember = mine;
-      if (currentMember != null && mounted) {
+      if (currentMember != null && _isScope(owner, familyId, generation)) {
         setState(() {
           _myName = currentMember.displayName;
           _myEmoji = currentMember.avatarEmoji;
@@ -126,13 +170,88 @@ class _ChatPageState extends State<ChatPage> {
     required String familyId,
     bool scroll = false,
   }) async {
+    if (ownerUserId != _ownerUserId || familyId != _familyId || _loadingOlder)
+      return;
+    final generation = _scopeGeneration;
+    final request = ++_loadRequest;
+    final previous = _items;
+    final from = previous != null && previous.isNotEmpty
+        ? _oldestCursor(previous)
+        : null;
     final rows = await _store.listMessages(
       ownerUserId: ownerUserId,
       familyId: familyId,
+      from: from,
+      retainedLocalIds: previous?.map((m) => m.localId!).toList() ?? const [],
+      // 后续只刷新已经展开的时间范围，避免新消息挤掉已加载的历史。
+      limit: from == null ? _pageSize + 1 : null,
     );
-    if (!mounted) return;
-    setState(() => _items = rows);
-    if (scroll) _scrollToBottom();
+    if (!_isScope(ownerUserId, familyId, generation) || request != _loadRequest)
+      return;
+    final readingHistory =
+        !scroll && !_atBottom && previous != null && previous.isNotEmpty;
+    final refresh = ChatHistoryRefresh<ChatLocalMessage>(
+      previous: previous ?? const [],
+      fresh: from == null && rows.length > _pageSize ? rows.sublist(1) : rows,
+      id: (message) => message.localId!,
+      readingHistory: readingHistory,
+    );
+    // 每次都重新探测：首次同步可能回填到原窗口之前，旧的 false 会过期。
+    final older = refresh.items.isEmpty
+        ? <ChatLocalMessage>[]
+        : await _store.listMessages(
+            ownerUserId: ownerUserId,
+            familyId: familyId,
+            before: _oldestCursor(refresh.items),
+            limit: 1,
+          );
+    if (!_isScope(ownerUserId, familyId, generation) || request != _loadRequest)
+      return;
+    setState(() {
+      _hasOlder = older.isNotEmpty;
+      _items = refresh.items;
+      _hasNewMessages = refresh.hasNewMessages;
+    });
+    if (scroll || _atBottom) _scrollToBottom();
+  }
+
+  Future<void> _loadOlder() async {
+    final owner = _ownerUserId;
+    final family = _familyId;
+    final items = _items;
+    if (_loadingOlder ||
+        !_hasOlder ||
+        owner == null ||
+        family == null ||
+        items == null ||
+        items.isEmpty) return;
+    final generation = _scopeGeneration;
+    ++_loadRequest;
+    setState(() => _loadingOlder = true);
+    try {
+      final older = await _store.listMessages(
+        ownerUserId: owner,
+        familyId: family,
+        before: _oldestCursor(items),
+        limit: _pageSize + 1,
+      );
+      if (!_isScope(owner, family, generation)) return;
+      setState(() {
+        _hasOlder = older.length > _pageSize;
+        final page = _hasOlder ? older.sublist(1) : older;
+        final seen = items.map((m) => m.localId).toSet();
+        _items = [...page.where((m) => seen.add(m.localId)), ...items];
+      });
+    } catch (_) {
+      if (_isScope(owner, family, generation)) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const WoSnackBar(content: Text('加载历史失败，请重试')));
+      }
+    } finally {
+      if (_isScope(owner, family, generation)) {
+        setState(() => _loadingOlder = false);
+      }
+    }
   }
 
   Future<void> _syncSilently({bool scroll = false}) async {
@@ -141,14 +260,16 @@ class _ChatPageState extends State<ChatPage> {
     final family = _familyId;
     final service = _syncService;
     if (owner == null || family == null || service == null) return;
+    final generation = _scopeGeneration;
     _syncing = true;
     try {
       await service.sync(ownerUserId: owner, familyId: family);
+      if (!_isScope(owner, family, generation)) return;
       await _loadLocal(ownerUserId: owner, familyId: family, scroll: scroll);
     } catch (_) {
       // 保留本地历史，不用网络错误打断聊天。
     } finally {
-      _syncing = false;
+      if (_isScope(owner, family, generation)) _syncing = false;
     }
   }
 
@@ -236,10 +357,13 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _scrollToBottom() {
+    final generation = _scopeGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (!mounted ||
+          generation != _scopeGeneration ||
+          !_scrollController.hasClients) return;
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
       );
@@ -263,7 +387,29 @@ class _ChatPageState extends State<ChatPage> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(child: _body()),
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _body()),
+                  if (_hasNewMessages)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 8,
+                      child: Center(
+                        child: FilledButton(
+                          onPressed: () => _loadLocal(
+                            ownerUserId: _ownerUserId!,
+                            familyId: _familyId!,
+                            scroll: true,
+                          ),
+                          child: const Text('查看最新消息'),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             _composer(),
           ],
         ),
@@ -286,7 +432,7 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (items.isEmpty) {
       return RefreshIndicator(
-        onRefresh: () => _syncSilently(scroll: true),
+        onRefresh: () => _syncSilently(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
@@ -301,17 +447,21 @@ class _ChatPageState extends State<ChatPage> {
       );
     }
     return RefreshIndicator(
-      onRefresh: () => _syncSilently(scroll: true),
-      child: ListView.builder(
+      onRefresh: () => _syncSilently(),
+      child: ChatHistoryList<ChatLocalMessage>(
+        items: items,
         controller: _scrollController,
+        hasOlder: _hasOlder,
+        loadingOlder: _loadingOlder,
+        onLoadOlder: _loadOlder,
+        itemKey: (message) => ValueKey(message.localId),
+        itemBuilder: (message) => _messageTile(message, owner),
         padding: const EdgeInsets.fromLTRB(
           WoTokens.space4,
           WoTokens.space4,
           WoTokens.space4,
           WoTokens.space6,
         ),
-        itemCount: items.length,
-        itemBuilder: (_, index) => _messageTile(items[index], owner),
       ),
     );
   }
