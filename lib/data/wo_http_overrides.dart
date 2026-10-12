@@ -11,7 +11,7 @@ import 'package:flutter/services.dart' show rootBundle;
 /// 客户端,跟着重定向到 COS 时 TLS 握手会失败,新上传的图无法浏览。
 ///
 /// 改成 `withTrustedRoots: true` 同时把自签 CA 装进去后,两边都覆盖:
-/// - 后端 `122.51.81.235` 的自签证书 → 走 pin 的 CA 链验证
+/// - 配置的后端地址所用的自签证书 → 走 pin 的 CA 链验证
 /// - COS 等公共 CA 签发的证书 → 走系统根验证
 ///
 /// 安全 trade-off:之前 pin-only 能挡住「公共 CA 给我们的 IP 误签证书后 MITM」

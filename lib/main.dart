@@ -32,6 +32,7 @@ Future<void> _applyHighRefreshRate() async {
 }
 
 Future<void> main() async {
+  ApiConfig.validate();
   WidgetsFlutterBinding.ensureInitialized();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(

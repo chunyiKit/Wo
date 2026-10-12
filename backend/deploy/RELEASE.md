@@ -7,6 +7,30 @@
 
 ---
 
+## 本地连接配置
+
+仓库只保存示例，实际后台地址存放在被 Git 忽略的本地文件中：
+
+```bash
+cp config/app.example.json config/app.local.json
+cp backend/deploy/env/deploy.env.example backend/deploy/env/deploy.env
+```
+
+- `config/app.local.json`：填写 App 的 `WO_API_BASE_URL`，构建时通过
+  `--dart-define-from-file` 注入。不要在这里放密钥。
+- `backend/deploy/env/deploy.env`：填写 SSH 主机、API 地址、邀请链接根地址
+  `WEB_BASE_URL` 和证书 SAN 所用的 `WO_SERVER_IP`。API 地址与 App 配置保持一致。
+  这是可信的 shell 配置文件，部署、发布、版本查询和证书脚本会自动读取。
+- 可用 `WO_APP_CONFIG_FILE` / `WO_DEPLOY_CONFIG_FILE` 指定其他配置文件的绝对路径。
+  部署参数仍可通过对应环境变量覆盖；缺少必要配置会在执行操作前报错。
+- `setup-server.sh` 在服务器上运行，需要在服务器的同目录准备部署配置，或用
+  `WO_DEPLOY_CONFIG_FILE` 指定配置路径。新建 `/etc/wo/app.env` 时写入配置的
+  `WEB_BASE_URL`；已有服务器仍以 `/etc/wo/app.env` 为准，不会自动覆盖。
+
+本地部署配置不会通过 `deploy.sh` 的 rsync 上传。回环地址和监听地址属于本机
+通信配置，保留在代码中。App 的连接目标仍可从安装包或网络连接获知；本次调整
+避免把生产地址提交到仓库，不会清除已有 Git 历史中的地址。
+
 ## 一次性准备（每台服务器只做一次）
 
 1. 在服务器生成发布密钥并写入 `/etc/wo/app.env`：
@@ -57,7 +81,7 @@
 1. 在 `pubspec.yaml` 递增 `version`（如 `0.2.0+2`，`+N` 必须递增）。
 2. 在 [`CHANGELOG.md`](../../CHANGELOG.md) 顶部加一个同版本号的条目，列出本次更新（每条一句话）。
    每完成一个需求就往最新条目里加一行。
-3. 用同一签名 key 构建：`flutter build apk --release`。
+3. 用同一签名 key 构建：`bash tool/flutter.sh build apk --release`。
 4. 发布：
 
    ```bash
@@ -86,7 +110,7 @@ version: 0.2.0+2     # 0.2.0 是展示版本名；+2 是 versionCode（必须递
 保留登录态，不需要用户重新登录）：
 
 ```bash
-flutter build apk --release
+bash tool/flutter.sh build apk --release
 # 产物：build/app/outputs/flutter-apk/app-release.apk
 ```
 
@@ -106,7 +130,7 @@ bash backend/deploy/publish-apk.sh \
 ### 3. 验证
 
 ```bash
-curl -k https://122.51.81.235/api/v1/app/version
+bash backend/deploy/check-version.sh
 ```
 
 `data.version_code` 应等于本次的 `--code`。然后在一台旧版本手机上进
@@ -130,7 +154,7 @@ curl -k https://122.51.81.235/api/v1/app/version
 | 变量 | 必填 | 默认 | 说明 |
 |------|------|------|------|
 | `WO_RELEASE_TOKEN` | 是 | — | 必须与服务器 `APP_RELEASE_TOKEN` 一致 |
-| `WO_API_BASE_URL`  | 否 | `https://122.51.81.235` | 后端地址 |
+| `WO_API_BASE_URL`  | 是 | 本地部署配置 | 后端地址，可用同名环境变量覆盖 |
 | `WO_CA_CERT`       | 否 | — | 自签 CA 证书路径；不设则用 `curl -k` 跳过校验（仅发布通道，App 本身仍校验 CA） |
 
 ---

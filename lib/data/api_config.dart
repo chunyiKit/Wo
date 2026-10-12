@@ -1,16 +1,37 @@
 /// 后端接入配置。
 ///
-/// 默认指向已部署的服务器；可在构建期用 --dart-define 覆盖，例如：
-///   flutter run --dart-define=WO_API_BASE_URL=http://10.0.2.2:8000
+/// 地址由本地配置文件在构建期注入，例如：
+///   bash tool/flutter.sh run
+///   flutter run --dart-define-from-file=config/app.local.json
 ///   flutter run --dart-define=WO_USER_ID=019000a0-1100-7000-8000-000000000002
 class ApiConfig {
   ApiConfig._();
 
-  /// API 根地址（不含 /api/v1 前缀）。
-  static const baseUrl = String.fromEnvironment(
+  static const _configuredBaseUrl = String.fromEnvironment(
     'WO_API_BASE_URL',
-    defaultValue: 'https://122.51.81.235',
   );
+
+  /// API 根地址（不含 /api/v1 前缀），统一去掉末尾斜杠。
+  static String get baseUrl =>
+      _configuredBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+
+  /// 启动时检查配置，避免漏传地址后发出无效请求。
+  static void validate() {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        (uri.scheme != 'https' && uri.scheme != 'http') ||
+        uri.userInfo.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw StateError(
+        '请在 config/app.local.json 中配置有效的 WO_API_BASE_URL，'
+        '并使用 bash tool/flutter.sh run/build 注入配置。',
+      );
+    }
+  }
 
   /// 开发期强制身份覆盖：后端用 X-User-Id 头识别当前用户（P5 接真实 JWT 前的
   /// 临时方案）。默认空 = 走手机号登录拿身份；用 `--dart-define=WO_USER_ID=<uuid>`

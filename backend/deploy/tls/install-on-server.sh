@@ -4,15 +4,16 @@
 # machine — only the leaf cert + its key go to the server.
 #
 # Config (same env vars as deploy.sh):
-#   WO_SSH_HOST  default 122.51.81.235
+#   WO_SSH_HOST  从 ../env/deploy.env 读取
 #   WO_SSH_USER  default ubuntu
 
 set -euo pipefail
 
-WO_SSH_HOST="${WO_SSH_HOST:-122.51.81.235}"
-WO_SSH_USER="${WO_SSH_USER:-ubuntu}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../config.sh"
+wo_load_config
+wo_require_config WO_SSH_HOST WO_API_BASE_URL
+WO_SSH_USER="${WO_SSH_USER:-ubuntu}"
 OUT_DIR="$SCRIPT_DIR/out"
 
 if [[ ! -f "$OUT_DIR/server.crt" || ! -f "$OUT_DIR/server.key" ]]; then
@@ -48,4 +49,4 @@ sudo systemctl reload nginx
 REMOTE
 
 log "Done. Test from your laptop:"
-echo "  curl --cacert $OUT_DIR/ca.crt https://$WO_SSH_HOST/api/v1/health"
+echo "  curl --cacert $OUT_DIR/ca.crt ${WO_API_BASE_URL%/}/api/v1/health"

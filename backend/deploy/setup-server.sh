@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time server bootstrap. Run as root on 122.51.81.235.
+# One-time server bootstrap. Run as root on the configured server.
 #
 # Idempotent: every step checks for an existing state before changing things,
 # so re-running is safe (and is the recovery path if a step fails).
@@ -22,6 +22,11 @@
 # — open BOTH 80 and 443 there.
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+wo_load_config
+wo_require_config WEB_BASE_URL WO_SERVER_IP
 
 APP_USER=wo
 APP_DIR=/opt/wo-backend
@@ -131,7 +136,7 @@ if [[ ! -f "$APP_ENV_FILE" ]]; then
 # Generated $(date -u +%FT%TZ) by setup-server.sh — edit and 'systemctl restart wo-backend' after changes.
 DEBUG=false
 STORAGE_ROOT=$STORAGE_DIR
-WEB_BASE_URL=https://122.51.81.235
+WEB_BASE_URL=$WEB_BASE_URL
 MAX_UPLOAD_BYTES=20971520
 EOF
     chown root:$APP_USER "$APP_ENV_FILE"
@@ -161,7 +166,7 @@ if [[ ! -f /etc/wo/tls/server.crt ]]; then
     log "Writing placeholder TLS cert (replaced by install-on-server.sh)"
     openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
         -subj "/CN=wo-placeholder" \
-        -addext "subjectAltName=IP:122.51.81.235" \
+        -addext "subjectAltName=IP:$WO_SERVER_IP" \
         -keyout /etc/wo/tls/server.key \
         -out /etc/wo/tls/server.crt >/dev/null 2>&1
     chmod 0644 /etc/wo/tls/server.crt
@@ -169,8 +174,6 @@ if [[ ! -f /etc/wo/tls/server.crt ]]; then
 fi
 
 # ---- 7. systemd unit + nginx site ------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 log "Installing systemd unit"
 install -m 0644 "$SCRIPT_DIR/systemd/wo-backend.service" \
     /etc/systemd/system/wo-backend.service
@@ -202,7 +205,7 @@ echo
 echo "Next steps:"
 echo "  1. From your local machine, run: bash backend/deploy/deploy.sh"
 echo "  2. Upload the real TLS cert: bash backend/deploy/tls/install-on-server.sh"
-echo "  3. Curl https://122.51.81.235/api/v1/health -k to verify."
+echo "  3. curl -k ${WEB_BASE_URL%/}/api/v1/health"
 echo
 echo "Env files (review for secrets):"
 echo "  $DB_ENV_FILE"

@@ -66,12 +66,13 @@
 1. **对齐版本号**：确认 `pubspec.yaml` 的 `version` 与 `CHANGELOG.md` 顶部条目
    版本号一致；若本次要发新版，先递增二者的版本号（`+N` 必须递增），并确保
    `CHANGELOG.md` 顶部条目已收录本次所有更新。
-2. **构建 APK**：`flutter build apk --release`（必须用同一签名 key，保证覆盖安装
+2. **构建 APK**：`bash tool/flutter.sh build apk --release`（从 `config/app.local.json`
+   注入地址；必须用同一签名 key，保证覆盖安装
    不丢登录态）。
 3. **发布**：`bash backend/deploy/release.sh`（先 `--dry-run` 预览版本与说明再正式发布）。
    该脚本会从 `CHANGELOG.md` 读版本与更新说明、校验与 pubspec 一致、读取发布密钥
    （`/Users/chunyi/wo_release_token.txt`），再调用 `backend/deploy/publish-apk.sh`。
-4. **验证**：`curl -sk https://122.51.81.235/api/v1/app/version` 确认 `version_code`
+4. **验证**：`bash backend/deploy/check-version.sh`（从部署配置读取地址）确认 `version_code`
    等于本次发布的 `+N`。
 5. 发布脚本与流程细节见 `backend/deploy/RELEASE.md`。
 

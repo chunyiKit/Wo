@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publish a freshly built APK as the app's "latest release".
 #
-# Run on your laptop after `flutter build apk --release`. Uploads the APK to the
+# Run on your laptop after `bash tool/flutter.sh build apk --release`. Uploads the APK to the
 # backend's POST /app/release, which stores exactly one latest release. The app
 # then sees it via 关于「窝」 → 检查更新.
 #
@@ -15,12 +15,15 @@
 #
 # Env:
 #   WO_RELEASE_TOKEN  required — must equal backend `APP_RELEASE_TOKEN`
-#   WO_API_BASE_URL   default https://122.51.81.235
+#   WO_API_BASE_URL   从 env/deploy.env 读取
 #   WO_CA_CERT        optional CA cert path for curl (else uses -k)
 
 set -euo pipefail
 
-WO_API_BASE_URL="${WO_API_BASE_URL:-https://122.51.81.235}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+wo_load_config
+wo_require_config WO_API_BASE_URL
 APK="" NAME="" CODE="" NOTES=""
 
 while [[ $# -gt 0 ]]; do
@@ -57,6 +60,6 @@ curl -fsS "${TLS[@]}" \
     --form-string "version_name=${NAME}" \
     --form-string "version_code=${CODE}" \
     --form-string "notes=${NOTES}" \
-    "$WO_API_BASE_URL/api/v1/app/release"
+    "${WO_API_BASE_URL%/}/api/v1/app/release"
 echo
 echo "==> Done."

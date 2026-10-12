@@ -40,3 +40,6 @@ backend/deploy/tls/out/
 # Misc
 .DS_Store
 *.log
+# 本机连接配置（示例文件入库，真实地址不入库）
+config/*.local.json
+backend/deploy/env/deploy.env

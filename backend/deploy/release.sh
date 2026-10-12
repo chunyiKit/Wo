@@ -15,7 +15,7 @@
 #   bash backend/deploy/release.sh --apk path.apk  # 指定 APK 路径
 #
 # 可选环境变量（透传给 publish-apk.sh）：
-#   WO_API_BASE_URL  后端地址（默认 https://122.51.81.235）
+#   WO_API_BASE_URL  后端地址（从 env/deploy.env 读取）
 #   WO_CA_CERT       自签 CA 证书路径
 #   WO_RELEASE_TOKEN_FILE  发布密钥文件路径（默认见下方 TOKEN_FILE）
 
@@ -23,6 +23,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/config.sh"
+wo_load_config
+wo_require_config WO_API_BASE_URL
 
 CHANGELOG="$REPO_ROOT/CHANGELOG.md"
 PUBSPEC="$REPO_ROOT/pubspec.yaml"
@@ -84,14 +87,14 @@ TOKEN="$(tr -d ' \t\r\n' < "$TOKEN_FILE")"
 # ---- 4. 检查 APK 并拼接发布命令 --------------------------------------------
 if [[ ! -f "$APK" && "$DRY_RUN" == "false" ]]; then
     die "找不到 APK：$APK
-   请先执行：flutter build apk --release（或用 --apk 指定路径）"
+   请先执行：bash tool/flutter.sh build apk --release（或用 --apk 指定路径）"
 fi
 
 echo "==> 准备发布"
 echo "    版本名 (name) : $NAME"
 echo "    版本号 (code) : $CODE"
 echo "    APK           : $APK"
-echo "    后端          : ${WO_API_BASE_URL:-https://122.51.81.235}"
+echo "    后端          : $WO_API_BASE_URL"
 echo "    更新说明："
 echo "$NOTES" | sed 's/^/      /'
 

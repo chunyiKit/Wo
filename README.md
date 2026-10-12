@@ -84,17 +84,26 @@ flutter pub get
 
 ### 3. 运行
 
+先复制 `config/app.example.json` 为 `config/app.local.json`，填写实际的
+`WO_API_BASE_URL`（API 根地址，不含 `/api/v1`）。真实配置已被 Git 忽略。
+构建时注入地址，修改配置后需要重新运行或构建。
+
 ```bash
 # 选择设备
 flutter devices
 
 # Android
-flutter run -d <emulator-id>
+bash tool/flutter.sh run -d <emulator-id>
 
 # 调试 / Release
-flutter run --debug
-flutter build apk --release
+bash tool/flutter.sh run --debug
+bash tool/flutter.sh build apk --release
 ```
+
+可用 `WO_APP_CONFIG_FILE=/absolute/path/app.local.json` 选择其他环境。
+直接使用 Flutter 时，需传 `--dart-define-from-file=config/app.local.json`；
+未配置地址时 App 会在启动时明确报错。配置文件中只放可随安装包分发的 App 参数。
+部署和发布配置见 [发布说明](backend/deploy/RELEASE.md)。
 
 ### 4. 静态检查
 

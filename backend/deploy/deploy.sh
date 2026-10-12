@@ -8,7 +8,7 @@
 #   4. Healthcheck via curl.
 #
 # Configurable via env vars:
-#   WO_SSH_HOST   default 122.51.81.235
+#   WO_SSH_HOST / WO_API_BASE_URL 从 env/deploy.env 读取
 #   WO_SSH_USER   default ubuntu
 #   WO_APP_DIR    default /opt/wo-backend
 #   UV_MIRROR     default https://mirrors.cloud.tencent.com/pypi/simple/
@@ -18,7 +18,10 @@
 
 set -euo pipefail
 
-WO_SSH_HOST="${WO_SSH_HOST:-122.51.81.235}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+wo_load_config
+wo_require_config WO_SSH_HOST WO_API_BASE_URL
 WO_SSH_USER="${WO_SSH_USER:-ubuntu}"
 WO_APP_DIR="${WO_APP_DIR:-/opt/wo-backend}"
 # The server lives on Tencent Cloud, so its PyPI mirror is same-vendor (often
@@ -33,7 +36,6 @@ for arg in "$@"; do
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -59,6 +61,7 @@ rsync -avz --delete \
     --exclude 'storage' \
     --exclude '.env' \
     --exclude '.env.example' \
+    --exclude 'deploy/env/deploy.env' \
     --exclude '*.pyc' \
     "$BACKEND_DIR/" "$WO_SSH_USER@$WO_SSH_HOST:$STAGING/"
 
@@ -108,12 +111,12 @@ sudo systemctl reload nginx
 REMOTE
 
 # ---- 4. Healthcheck ---------------------------------------------------------
-log "Healthcheck → https://$WO_SSH_HOST/api/v1/health"
+log "Healthcheck → ${WO_API_BASE_URL%/}/api/v1/health"
 # -k: this is just a liveness probe, not the app's security boundary. The cert
 # is our self-signed one; skipping verification here avoids depending on the
 # CA file being present on whoever runs the deploy. The app itself pins the CA.
 for i in 1 2 3 4 5; do
-    if curl -sfk "https://$WO_SSH_HOST/api/v1/health" \
+    if curl -sfk "${WO_API_BASE_URL%/}/api/v1/health" \
             | grep -q '"success":true'; then
         log "Deploy OK 🎉"
         exit 0

@@ -23,11 +23,12 @@
 
 set -euo pipefail
 
-# The IP (or, later, domain) the app connects to. Must match ApiConfig.baseUrl.
-SERVER_IP="${WO_SERVER_IP:-122.51.81.235}"
-DAYS="${WO_CERT_DAYS:-3650}"   # 10 years — self-managed PKI, no renewal pain.
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../config.sh"
+wo_load_config
+wo_require_config WO_SERVER_IP
+SERVER_IP="$WO_SERVER_IP"
+DAYS="${WO_CERT_DAYS:-3650}"
 OUT_DIR="$SCRIPT_DIR/out"
 # Flutter assets live at the repo root: <repo>/assets/certs/.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -80,4 +81,4 @@ echo "  server.key  (SECRET — upload to server: /etc/wo/tls/server.key)"
 echo
 echo "Next:"
 echo "  1. Upload the server cert + key (see backend/deploy/tls/install-on-server.sh)."
-echo "  2. Rebuild the app:  flutter build apk --release"
+echo "  2. Rebuild the app:  bash tool/flutter.sh build apk --release"
