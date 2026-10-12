@@ -21,6 +21,12 @@ const user = WoUser(
   avatarEmoji: '👤',
   level: 1,
 );
+const otherUser = WoUser(
+    id: 'other-user',
+    username: 'other',
+    displayName: '另一个测试用户',
+    avatarEmoji: '👤',
+    level: 1,);
 const securityBootstrap = Bootstrap(
   user: user,
   currentFamily: null,
@@ -44,6 +50,10 @@ class SecurityApi extends WoApi {
   Completer<void>? resetPending;
   Completer<Map<String, dynamic>>? enrollPending;
   bool failAll = false;
+  Completer<void>? changePending;
+  Completer<void>? logoutPending;
+  Completer<void>? logoutAllPending;
+  AuthResult loginResult = auth;
   int logins = 0;
   int resets = 0;
   int enrollments = 0;
@@ -52,24 +62,37 @@ class SecurityApi extends WoApi {
   @override
   Future<AuthResult> login(String phone, String password) {
     logins++;
-    return loginPending?.future ?? Future.value(auth);
+    return loginPending?.future ?? Future.value(loginResult);
   }
 
   @override
   Future<Bootstrap> bootstrap() =>
-      loadPending?.future ?? Future.value(securityBootstrap);
+      loadPending?.future ??
+      Future.value(Bootstrap(
+          user: loginResult.user,
+          currentFamily: null,
+          families: const [],
+          installedPlugins: const [],
+          unreadCount: 0,),);
   @override
-  Future<void> logout() async {}
+  Future<void> logout() async {
+    await logoutPending?.future;
+  }
+
   @override
   Future<void> logoutAll() async {
     if (failAll) throw NetworkException('请求超时，请重试');
+    await logoutAllPending?.future;
   }
 
   @override
   Future<void> changePassword({
     required String oldPassword,
     required String newPassword,
-  }) async {}
+  }) async {
+    await changePending?.future;
+  }
+
   @override
   Future<void> discardLoginToken(String token) async {
     discarded = token;
@@ -343,4 +366,82 @@ void main() {
     router.dispose();
     session.dispose();
   });
+
+  for (final operation in ['current', 'all', 'change']) {
+    test('$operation 的迟到成功响应不清理后来登录的账号', () async {
+      final api = SecurityApi();
+      final session = WoSession(api: api);
+      await session.login('13900000000', 'synthetic-password');
+      final pending = Completer<void>();
+      Future<void> operationFuture;
+      if (operation == 'change') {
+        api.changePending = pending;
+        operationFuture =
+            session.changePassword('old-password', 'new-password');
+      } else if (operation == 'all') {
+        api.logoutAllPending = pending;
+        operationFuture = session.logout(all: true);
+      } else {
+        api.logoutPending = pending;
+        operationFuture = session.logout();
+      }
+      api.loginResult = const AuthResult(
+        user: otherUser,
+        token: 'new-effective-token',
+        isNew: false,
+      );
+      await session.login('13900000001', 'new-password');
+      pending.complete();
+      await operationFuture;
+      expect(session.isLoggedIn, isTrue);
+      expect(api.authToken, 'new-effective-token');
+      expect(session.user?.id, otherUser.id);
+      expect(session.bootstrap, isNotNull);
+      expect(
+        (await SharedPreferences.getInstance()).getString('wo.token'),
+        'new-effective-token',
+      );
+      session.dispose();
+    });
+  }
+
+  for (final laterUser in [user, otherUser]) {
+    testWidgets('找回迟到响应不清理离页后重新登录的状态 ${laterUser.id}', (tester) async {
+      final api = SecurityApi()..resetPending = Completer<void>();
+      final session = WoSession(api: api);
+      final router = await showPage(tester, session);
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(0), '13900000000');
+      await tester.enterText(fields.at(1), 'synthetic-code');
+      await tester.enterText(fields.at(2), 'new-password');
+      await tester.enterText(fields.at(3), 'new-password');
+      await tester.pump();
+      await tester.ensureVisible(find.text('重置密码'));
+      await tester.tap(find.text('重置密码'));
+      await tester.pump();
+      expect(api.resets, 1);
+      router.go('/login');
+      await tester.pumpAndSettle();
+      api.loginResult = AuthResult(
+        user: laterUser,
+        token: 'new-effective-token',
+        isNew: false,
+      );
+      await session.login('13900000001', 'new-password');
+      api.resetPending!.complete();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(api.authToken, 'new-effective-token');
+      expect(session.user?.id, laterUser.id);
+      expect(session.isLoggedIn, isTrue);
+      expect(session.bootstrap, isNotNull);
+      expect(
+        (await SharedPreferences.getInstance()).getString('wo.token'),
+        'new-effective-token',
+      );
+      await tester.pumpWidget(const SizedBox());
+      router.dispose();
+      session.dispose();
+    });
+  }
 }

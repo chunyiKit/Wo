@@ -52,7 +52,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await session.changePassword(_old.text, _new.text);
-      if (!mounted) return;
+      if (!mounted || session.isLoggedIn) return;
       messenger.showSnackBar(WoSnackBar(content: Text('密码已修改，所有会话已退出，请重新登录')));
       nav.go(WoRoutes.login);
     } catch (e) {

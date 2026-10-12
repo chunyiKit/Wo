@@ -13,6 +13,7 @@ from sqlmodel import select
 from app.core.errors import AppError, ErrorCode
 from app.core.password import hash_password, verify_password
 from app.models.auth_session import AuthSession
+from app.models.device_token import DeviceToken
 from app.models.user import User
 from app.services.session import _hash_token, resolve_user_id
 
@@ -125,6 +126,7 @@ def require_password(user: User, password: str) -> None:
 
 async def revoke_all(session: AsyncSession, user_id: UUID) -> None:
     # Caller holds the user row lock; commit together with credential changes.
+    await session.execute(delete(DeviceToken).where(DeviceToken.user_id == user_id))
     await session.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
 
 

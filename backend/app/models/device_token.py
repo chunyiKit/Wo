@@ -24,6 +24,11 @@ class DeviceToken(SQLModel, table=True):
         ondelete="CASCADE",
         index=True,
     )
+    # Nullable only for pre-upgrade records: never eligible for push until
+    # re-registered with a verified bearer. Session deletion unbinds atomically.
+    session_id: UUID | None = Field(
+        default=None, foreign_key="auth_sessions.id", ondelete="CASCADE", index=True,
+    )
     # JPush registration id obtained on-device via the JPush SDK. One per install,
     # globally unique so a re-register can reassign the device to another user.
     registration_id: str = Field(max_length=64, unique=True, index=True)

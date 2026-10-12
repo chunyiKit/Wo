@@ -36,3 +36,33 @@ def _enable_test_dev_shim(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "auth_dev_shim_enabled", True)
+
+
+@pytest.fixture
+async def authenticated_account_factory(client):
+    """Create only isolated test accounts with genuine session credentials."""
+    import uuid
+
+    from app.core.database import async_session_maker
+    from app.core.password import hash_password
+    from app.models.user import User
+    from app.services.session import issue_session
+
+    async def create():
+        async with async_session_maker() as session:
+            user = User(
+                username=f"push-{uuid.uuid4().hex[:16]}",
+                display_name="推送测试",
+                password_hash=hash_password("synthetic-test-password"),
+            )
+            session.add(user)
+            await session.flush()
+            token = await issue_session(session, user.id, ttl_days=1)
+            return user.id, token
+
+    return create
+
+
+@pytest.fixture
+async def authenticated_account(authenticated_account_factory):
+    return await authenticated_account_factory()

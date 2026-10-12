@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.models.auth_session import AuthSession
+from app.models.device_token import DeviceToken
 from app.models.user import User
 
 _TOKEN_BYTES = 32
@@ -84,6 +85,13 @@ async def revoke_session(session: AsyncSession, raw_token: str) -> None:
         # Same lock as issuance/recovery/all-session revocation. Waiting auth
         # mutations will recheck this token only after the deletion commits.
         await session.execute(select(User.id).where(User.id == user_id).with_for_update())
+        # Unattributable old records are fail-closed; other bound sessions survive.
+        await session.execute(
+            delete(DeviceToken).where(
+                DeviceToken.user_id == user_id,
+                DeviceToken.session_id.is_(None),
+            )
+        )
         await session.execute(
             delete(AuthSession).where(AuthSession.token_hash == _hash_token(raw_token))
         )

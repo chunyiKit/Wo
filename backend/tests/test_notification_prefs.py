@@ -29,7 +29,10 @@ async def _register_user(client: AsyncClient) -> dict[str, str]:
         "/api/v1/auth/login",
         json={"phone": _random_phone(), "password": "secret123"},
     )
-    return {"X-User-Id": res.json()["data"]["user"]["id"]}
+    return {
+        "X-User-Id": res.json()["data"]["user"]["id"],
+        "Authorization": "Bearer " + res.json()["data"]["token"],
+    }
 
 
 async def _new_family(client: AsyncClient, headers: dict[str, str]) -> str:
@@ -359,6 +362,7 @@ async def test_mute_cancels_pending_push_but_keeps_history(
             user_id=uid,
             registration_id=f"reg-{uuid.uuid4().hex}",
             platform="android",
+            bearer_token=user["Authorization"].removeprefix("Bearer "),
         )
         await notification_service.notify_users(
             session,

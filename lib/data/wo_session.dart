@@ -11,6 +11,8 @@ import 'models.dart';
 import 'push_service.dart';
 import 'wo_api.dart';
 
+typedef AuthSnapshot = ({int generation, String? token});
+
 /// 持久化服务端可撤销的 Bearer 会话，并管理首屏数据。
 class WoSession extends ChangeNotifier {
   WoSession({WoApi? api, this.push}) : api = api ?? WoApi(ApiClient()) {
@@ -61,6 +63,14 @@ class WoSession extends ChangeNotifier {
 
   void requestChatRefresh() {
     chatRefreshSignal.value++;
+  }
+
+  AuthSnapshot get authSnapshot => (generation: _authGeneration, token: _token);
+  bool isCurrentAuth(AuthSnapshot snapshot) =>
+      !_disposed && snapshot == authSnapshot;
+
+  Future<void> clearAuthIfCurrent(AuthSnapshot snapshot) async {
+    if (isCurrentAuth(snapshot)) await clearAuth();
   }
 
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
@@ -173,23 +183,24 @@ class WoSession extends ChangeNotifier {
   /// 当前登出离线时仍清本地；全部撤销失败则保留状态，让用户重试。
   Future<void> logout({bool all = false}) async {
     _authGeneration++;
+    final snapshot = authSnapshot;
     if (all) {
       await api.logoutAll();
     } else {
-      await _clearPushRegistration();
       try {
         await api.logout();
       } catch (_) {/* 离线本地退出。 */}
     }
-    await clearAuth();
+    await clearAuthIfCurrent(snapshot);
   }
 
   Future<void> changePassword(String oldPassword, String newPassword) async {
+    final snapshot = authSnapshot;
     await api.changePassword(
       oldPassword: oldPassword,
       newPassword: newPassword,
     );
-    await clearAuth();
+    await clearAuthIfCurrent(snapshot);
   }
 
   /// 会话撤销、过期和改密共用同一清理路径；先清内存，阻止继续发送旧令牌。
@@ -227,20 +238,6 @@ class WoSession extends ChangeNotifier {
     }
   }
 
-  /// 登出时注销本机 token。拿不到 id 或网络失败都安全忽略。
-  Future<void> _clearPushRegistration() async {
-    final p = push;
-    if (p == null) return;
-    try {
-      final rid = await p.currentRegistrationId(retries: 1);
-      if (rid != null && rid.isNotEmpty) {
-        await api.unregisterDevice(rid);
-      }
-    } catch (_) {
-      // 忽略。
-    }
-  }
-
   /// 拉取首屏聚合数据。
   Future<void> load() async {
     final generation = _authGeneration;
@@ -257,6 +254,7 @@ class WoSession extends ChangeNotifier {
       if (e is ApiException &&
           (e.statusCode == 401 || e.code == 'UNAUTHORIZED')) {
         await clearAuth();
+        return;
       }
       _error = e;
     } finally {

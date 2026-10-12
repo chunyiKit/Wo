@@ -55,42 +55,56 @@ async def dispatch_pending(
     batch_size = batch_size if batch_size is not None else settings.push_batch_size
     max_attempts = max_attempts if max_attempts is not None else settings.push_max_attempts
 
-    # FOR UPDATE SKIP LOCKED makes this a safe work queue: the prod service runs
-    # multiple uvicorn workers, each with its own dispatcher loop. Locking the
-    # claimed rows (and skipping rows another worker already holds) ensures each
-    # pending row is delivered by exactly one worker — no duplicate pushes. Locks
-    # release on the commit at the end of this pass.
+    # Read candidates without locking; claim each only AFTER recipient/device
+    # locks, matching auth/preferences mutations. Commit each intent so a batch
+    # cannot accumulate user locks in conflicting orders across dispatchers.
     stmt = (
         select(PushOutbox)
         .where(PushOutbox.status == STATUS_PENDING)
         .order_by(PushOutbox.created_at)
         .limit(batch_size)
-        .with_for_update(skip_locked=True)
     )
     rows = list((await session.execute(stmt)).scalars().all())
 
-    for row in rows:
-        notif = await session.get(Notification, row.notification_id)
+    processed = 0
+    for candidate in rows:
+        notif = await session.get(Notification, candidate.notification_id)
+        tokens = await device_service.tokens_for_user(session, notif.user_id) if notif else []
+        row = (
+            await session.execute(
+                select(PushOutbox)
+                .where(
+                    PushOutbox.id == candidate.id,
+                    PushOutbox.status == STATUS_PENDING,
+                )
+                .with_for_update(skip_locked=True)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            await session.commit()
+            continue
+        processed += 1
         # Notification gone (e.g. user deleted) or recipient has no device: nothing
         # to deliver — settle the row so the dispatcher won't keep reprocessing it.
         if notif is None:
             _mark_sent(row)
             session.add(row)
+            await session.commit()
             continue
         # 通知可能在关闭开关前已入队；实际发送时再次核对最新偏好。
         prefs = (
-            await session.execute(
-                select(User.notification_prefs).where(User.id == notif.user_id)
-            )
+            await session.execute(select(User.notification_prefs).where(User.id == notif.user_id))
         ).scalar_one_or_none()
         if prefs is None or not notification_allowed(prefs, notif.type):
             _mark_sent(row)
             session.add(row)
+            await session.commit()
             continue
-        tokens = await device_service.tokens_for_user(session, notif.user_id)
         if not tokens:
             _mark_sent(row)
             session.add(row)
+            await session.commit()
             continue
 
         message = PushMessage(
@@ -110,9 +124,9 @@ async def dispatch_pending(
         else:
             _mark_sent(row)
         session.add(row)
+        await session.commit()
 
-    await session.commit()
-    return len(rows)
+    return processed
 
 
 def _mark_sent(row: PushOutbox) -> None:
