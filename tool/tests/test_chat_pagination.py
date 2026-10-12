@@ -4,6 +4,7 @@ DART_BIN=/path/to/dart python3 -m unittest discover -s tool/tests -p 'test_chat_
 """
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -65,6 +66,23 @@ class ChatPaginationTest(unittest.TestCase):
             'SELECT local_id, created_at FROM chat_messages WHERE '
             + query['where'] + ' ORDER BY ' + self.query['order'],
             query['args']).fetchall()))
+
+    def test_ack_status_guard_preserves_history_and_other_scope(self):
+        self.seed(501)
+        self.seed(1, owner='u2', prefix='other')
+        previous = self.page()
+        source = (ROOT / 'lib/data/chat_local_store.dart').read_text()
+        method = source.split('Future<void> markStatus(')[1].split('Future<void> upsertRemote(')[0]
+        predicate = ''.join(re.findall(r"'([^']*)'", method.split('where:')[1].split('whereArgs:')[0]))
+        self.db.execute("UPDATE chat_messages SET status='sending' WHERE local_id IN (501,502)")
+        self.db.execute("UPDATE chat_messages SET server_id='ack',status='sent',created_at='-000000001' WHERE local_id=501")
+        self.db.execute('UPDATE chat_messages SET status=? WHERE '+predicate,
+                        ['failed', 'u1', 'f1', 'c500', 'sent'])
+        self.assertEqual(self.db.execute('SELECT status FROM chat_messages WHERE local_id=501').fetchone(), ('sent',))
+        self.assertEqual(self.db.execute('SELECT status FROM chat_messages WHERE local_id=502').fetchone(), ('sending',))
+        refreshed = self.refresh(previous)
+        self.assertEqual(refreshed[0][0], 501)
+        self.assertEqual(len(refreshed), 501)
 
     def test_ack_moves_loaded_message_before_old_boundary(self):
         self.seed(501)

@@ -155,8 +155,18 @@ class ChatLocalMessage {
       );
 }
 
+class ChatAttachmentRetry {
+  const ChatAttachmentRetry({required this.message, required this.attempts});
+
+  final ChatLocalMessage message;
+  final int attempts;
+}
+
 class ChatLocalStore {
   ChatLocalStore._();
+
+  /// 使用调用方提供的数据库，便于离线验证迁移和持久化行为。
+  ChatLocalStore.withDatabase(Database database) : _db = database;
 
   static final ChatLocalStore instance = ChatLocalStore._();
 
@@ -168,12 +178,46 @@ class ChatLocalStore {
     final dbPath = await getDatabasesPath();
     final db = await openDatabase(
       path.join(dbPath, 'wo_chat.db'),
-      version: 1,
+      version: 2,
+      onUpgrade: (db, oldVersion, _) async {
+        if (oldVersion < 2) {
+          // sqflite 在升级事务内执行；保留 local_id、消息及同步游标。
+          // SQLite 无法直接删除旧的 server_id 全局 UNIQUE，重建为账号/家庭约束。
+          await db.execute(
+            'ALTER TABLE chat_messages RENAME TO chat_messages_v1',
+          );
+          await db.execute('DROP INDEX ix_chat_messages_owner_family_created');
+          await _createMessagesTable(db);
+          await db.execute(
+            '''INSERT INTO chat_messages (local_id, server_id, client_id, owner_user_id, family_id, sender_id, sender_name, sender_emoji, sender_avatar_url, kind, body, status, created_at, image_local_path, image_remote_url, image_content_type, image_size_bytes, image_width, image_height)
+SELECT local_id, server_id, client_id, owner_user_id, family_id, sender_id, sender_name, sender_emoji, sender_avatar_url, kind, body, status, created_at, image_local_path, image_remote_url, image_content_type, image_size_bytes, image_width, image_height FROM chat_messages_v1''',
+          );
+          await db.execute('DROP TABLE chat_messages_v1');
+        }
+      },
       onCreate: (db, _) async {
+        await _createMessagesTable(db);
         await db.execute('''
+CREATE TABLE chat_sync_state (
+  owner_user_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  after_created_at TEXT,
+  after_id TEXT,
+  last_opened_at TEXT,
+  PRIMARY KEY(owner_user_id, family_id)
+)
+''');
+      },
+    );
+    _db = db;
+    return db;
+  }
+
+  static Future<void> _createMessagesTable(DatabaseExecutor db) async {
+    await db.execute('''
 CREATE TABLE chat_messages (
   local_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  server_id TEXT UNIQUE,
+  server_id TEXT,
   client_id TEXT NOT NULL,
   owner_user_id TEXT NOT NULL,
   family_id TEXT NOT NULL,
@@ -191,27 +235,73 @@ CREATE TABLE chat_messages (
   image_size_bytes INTEGER,
   image_width INTEGER,
   image_height INTEGER,
+  image_retry_attempts INTEGER NOT NULL DEFAULT 0,
+  image_retry_at INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(owner_user_id, family_id, server_id),
   UNIQUE(owner_user_id, family_id, client_id)
 )
 ''');
-        await db.execute('''
+    await db.execute('''
 CREATE INDEX ix_chat_messages_owner_family_created
 ON chat_messages(owner_user_id, family_id, created_at, local_id)
 ''');
-        await db.execute('''
-CREATE TABLE chat_sync_state (
-  owner_user_id TEXT NOT NULL,
-  family_id TEXT NOT NULL,
-  after_created_at TEXT,
-  after_id TEXT,
-  last_opened_at TEXT,
-  PRIMARY KEY(owner_user_id, family_id)
-)
-''');
-      },
+  }
+
+  /// 缺失附件本身就是持久队列；升级前已越过游标的失败图片也会被补齐。
+  Future<List<ChatAttachmentRetry>> pendingAttachments({
+    required String ownerUserId,
+    required String familyId,
+    required DateTime now,
+    int limit = 8,
+  }) async {
+    final db = await _database;
+    final rows = await db.query(
+      'chat_messages',
+      where:
+          'owner_user_id = ? AND family_id = ? AND server_id IS NOT NULL '
+          'AND image_remote_url IS NOT NULL AND image_local_path IS NULL '
+          'AND image_retry_at <= ?',
+      whereArgs: [ownerUserId, familyId, now.millisecondsSinceEpoch],
+      orderBy: 'image_retry_at ASC, local_id ASC',
+      limit: limit.clamp(1, 8),
     );
-    _db = db;
-    return db;
+    return rows
+        .map(
+          (row) => ChatAttachmentRetry(
+            message: ChatLocalMessage.fromDb(row),
+            attempts: (row['image_retry_attempts'] as num?)?.toInt() ?? 0,
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> recordAttachmentAttempt({
+    required String ownerUserId,
+    required String familyId,
+    required String serverId,
+    required int attempts,
+    required DateTime now,
+    String? imageLocalPath,
+  }) async {
+    final db = await _database;
+    // 30 秒起步，最多 30 分钟。保留失败记录，下一次前台同步继续尝试。
+    final delaySeconds = (30 * (1 << attempts.clamp(0, 6))).clamp(30, 1800);
+    await db.update(
+      'chat_messages',
+      {
+        if (imageLocalPath != null) 'image_local_path': imageLocalPath,
+        'image_retry_attempts': imageLocalPath == null
+            ? (attempts + 1).clamp(0, 7)
+            : 0,
+        'image_retry_at': imageLocalPath == null
+            ? now.add(Duration(seconds: delaySeconds)).millisecondsSinceEpoch
+            : 0,
+      },
+      where:
+          'owner_user_id = ? AND family_id = ? AND server_id = ? '
+          'AND image_local_path IS NULL',
+      whereArgs: [ownerUserId, familyId, serverId],
+    );
   }
 
   Future<List<ChatLocalMessage>> listMessages({

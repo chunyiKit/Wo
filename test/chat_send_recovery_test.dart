@@ -33,10 +33,22 @@ ChatMessage receipt(ChatLocalMessage local) => ChatMessage.fromJson({
 });
 
 class MemoryStore implements ChatLocalStore {
+  bool attachmentQueueFails = false;
   final rows = <(String, String, String), ChatLocalMessage>{};
   void add(ChatLocalMessage local) =>
       rows[(local.ownerUserId, local.familyId, local.clientId)] = local;
   ChatLocalMessage get first => rows.values.first;
+
+  @override
+  Future<List<ChatAttachmentRetry>> pendingAttachments({
+    required String ownerUserId,
+    required String familyId,
+    required DateTime now,
+    int limit = 8,
+  }) async {
+    if (attachmentQueueFails) throw StateError('attachment queue unavailable');
+    return [];
+  }
 
   @override
   Future<List<ChatLocalMessage>> pendingMessages({
@@ -105,6 +117,10 @@ class MemoryStore implements ChatLocalStore {
 }
 
 class FakeApi implements WoApi {
+  @override
+  String get authToken => 'test-token';
+  @override
+  String get userId => '';
   List<ChatMessage> remote = [];
   bool offline = false;
   int sends = 0;
@@ -151,6 +167,18 @@ void main() {
     store = MemoryStore()..add(outgoing());
     api = FakeApi();
     service = ChatSyncService(api: api, store: store);
+  });
+
+  test('附件队列失败也完成发送恢复，重复同步共享完成结果', () async {
+    store.attachmentQueueFails = true;
+    final first = service.sync(ownerUserId: 'u1', familyId: 'f1');
+    final duplicate = service.sync(ownerUserId: 'u1', familyId: 'f1');
+    expect(identical(first, duplicate), true);
+    await expectLater(first, throwsStateError);
+    expect(store.first.status, chatStatusFailed);
+    store.attachmentQueueFails = false;
+    await service.sync(ownerUserId: 'u1', familyId: 'f1');
+    expect(api.sends, 0);
   });
 
   test('进程在发送前退出：恢复为可重试，重试保留 client_id', () async {
@@ -237,8 +265,10 @@ void main() {
   });
 
   test('图片文件丢失时保留原消息并进入可重试状态', () async {
-    final image = store.first.copyWith(kind: 'image',
-        imageLocalPath: '/missing-chat-recovery-test/image.jpg');
+    final image = store.first.copyWith(
+      kind: 'image',
+      imageLocalPath: '/missing-chat-recovery-test/image.jpg',
+    );
     store.add(image);
     await service.sync(ownerUserId: 'u1', familyId: 'f1');
     await expectLater(service.sendPending(image), throwsStateError);
