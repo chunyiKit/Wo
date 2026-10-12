@@ -25,7 +25,7 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _store = ChatLocalStore.instance;
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
@@ -35,7 +35,7 @@ class _ChatPageState extends State<ChatPage> {
   Timer? _poller;
   String? _scopeKey;
   WoSession? _session;
-  bool _syncing = false;
+  final _syncingScopes = <String>{};
   bool _sendingImage = false;
   static const _pageSize = 500;
   int _scopeGeneration = 0;
@@ -45,7 +45,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _hasNewMessages = false;
 
   bool _isScope(String owner, String family, int generation) =>
-      mounted &&
+      _isCurrentScope(owner, family) &&
       generation == _scopeGeneration &&
       owner == _ownerUserId &&
       family == _familyId;
@@ -54,22 +54,40 @@ class _ChatPageState extends State<ChatPage> {
       !_scrollController.hasClients || _scrollController.position.pixels < 80;
 
   ChatMessageCursor _cursor(ChatLocalMessage message) => ChatMessageCursor(
-        message.createdAt.toUtc().toIso8601String(),
-        message.localId!,
-      );
+    message.createdAt.toUtc().toIso8601String(),
+    message.localId!,
+  );
 
   ChatMessageCursor _oldestCursor(List<ChatLocalMessage> messages) => _cursor(
-        messages.reduce((a, b) {
-          final order = a.createdAt.compareTo(b.createdAt);
-          return order < 0 || (order == 0 && a.localId! < b.localId!) ? a : b;
-        }),
-      );
+    messages.reduce((a, b) {
+      final order = a.createdAt.compareTo(b.createdAt);
+      return order < 0 || (order == 0 && a.localId! < b.localId!) ? a : b;
+    }),
+  );
 
   String? _ownerUserId;
   String? _familyId;
   String _myName = '';
   String _myEmoji = '👤';
   String? _myAvatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncSilently());
+    }
+  }
+
+  bool _isCurrentScope(String owner, String family) =>
+      mounted &&
+      _session?.user?.id == owner &&
+      _session?.currentFamilyId == family;
 
   @override
   void didChangeDependencies() {
@@ -84,6 +102,16 @@ class _ChatPageState extends State<ChatPage> {
 
     final owner = session.user?.id;
     final family = session.currentFamilyId;
+    if (owner == null || family == null) {
+      _scopeGeneration++;
+      _loadRequest++;
+      _poller?.cancel();
+      _scopeKey = null;
+      _ownerUserId = null;
+      _familyId = null;
+      _items = null;
+      return;
+    }
     final nextKey = '$owner|$family';
     if (nextKey != _scopeKey) {
       _scopeGeneration++;
@@ -93,7 +121,6 @@ class _ChatPageState extends State<ChatPage> {
       _hasOlder = false;
       _loadingOlder = false;
       _hasNewMessages = false;
-      _syncing = false;
       _scopeKey = nextKey;
       _ownerUserId = owner;
       _familyId = family;
@@ -108,6 +135,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
     _session?.chatRefreshSignal.removeListener(_onExternalRefresh);
     _textController.dispose();
@@ -224,7 +252,8 @@ class _ChatPageState extends State<ChatPage> {
         owner == null ||
         family == null ||
         items == null ||
-        items.isEmpty) return;
+        items.isEmpty)
+      return;
     final generation = _scopeGeneration;
     ++_loadRequest;
     setState(() => _loadingOlder = true);
@@ -255,21 +284,27 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _syncSilently({bool scroll = false}) async {
-    if (_syncing) return;
     final owner = _ownerUserId;
     final family = _familyId;
     final service = _syncService;
     if (owner == null || family == null || service == null) return;
     final generation = _scopeGeneration;
-    _syncing = true;
+    final scope = '$owner|$family';
+    if (!_isCurrentScope(owner, family) || !_syncingScopes.add(scope)) return;
     try {
-      await service.sync(ownerUserId: owner, familyId: family);
-      if (!_isScope(owner, family, generation)) return;
-      await _loadLocal(ownerUserId: owner, familyId: family, scroll: scroll);
+      await service.sync(
+        ownerUserId: owner,
+        familyId: family,
+        isCurrentScope: () => _isScope(owner, family, generation),
+      );
     } catch (_) {
       // 保留本地历史，不用网络错误打断聊天。
     } finally {
-      if (_isScope(owner, family, generation)) _syncing = false;
+      _syncingScopes.remove(scope);
+      // 网络失败时也显示恢复后的可重试状态。
+      if (_isScope(owner, family, generation)) {
+        await _loadLocal(ownerUserId: owner, familyId: family, scroll: scroll);
+      }
     }
   }
 
@@ -281,6 +316,7 @@ class _ChatPageState extends State<ChatPage> {
     final service = _syncService;
     if (owner == null || family == null || service == null) return;
 
+    final generation = _scopeGeneration;
     _textController.clear();
     final local = await _store.insertOutgoingText(
       ownerUserId: owner,
@@ -291,8 +327,9 @@ class _ChatPageState extends State<ChatPage> {
       senderAvatarUrl: _myAvatarUrl,
       body: text,
     );
+    if (!_isScope(owner, family, generation)) return;
     await _loadLocal(ownerUserId: owner, familyId: family, scroll: true);
-    await _sendLocal(service, local);
+    await _sendLocal(service, local, generation);
   }
 
   Future<void> _pickAndSendImage() async {
@@ -302,10 +339,11 @@ class _ChatPageState extends State<ChatPage> {
     final service = _syncService;
     if (owner == null || family == null || service == null) return;
 
+    final generation = _scopeGeneration;
     _sendingImage = true;
     try {
       final bytes = await pickAndCompressImage(maxEdge: 1600, quality: 86);
-      if (bytes == null) return;
+      if (bytes == null || !_isScope(owner, family, generation)) return;
       final clientId = const Uuid().v4();
       final path = await _store.writeImageBytes(
         ownerUserId: owner,
@@ -313,6 +351,7 @@ class _ChatPageState extends State<ChatPage> {
         key: clientId,
         bytes: Uint8List.fromList(bytes),
       );
+      if (!_isScope(owner, family, generation)) return;
       final local = await _store.insertOutgoingImage(
         ownerUserId: owner,
         familyId: family,
@@ -323,8 +362,9 @@ class _ChatPageState extends State<ChatPage> {
         imageLocalPath: path,
         imageSizeBytes: bytes.length,
       );
+      if (!_isScope(owner, family, generation)) return;
       await _loadLocal(ownerUserId: owner, familyId: family, scroll: true);
-      await _sendLocal(service, local);
+      await _sendLocal(service, local, generation);
     } finally {
       _sendingImage = false;
     }
@@ -335,23 +375,26 @@ class _ChatPageState extends State<ChatPage> {
     final owner = _ownerUserId;
     final family = _familyId;
     if (service == null || owner == null || family == null) return;
-    await _sendLocal(service, message);
-    await _loadLocal(ownerUserId: owner, familyId: family, scroll: true);
+    await _sendLocal(service, message, _scopeGeneration);
   }
 
   Future<void> _sendLocal(
     ChatSyncService service,
     ChatLocalMessage message,
+    int generation,
   ) async {
+    final owner = message.ownerUserId;
+    final family = message.familyId;
     try {
-      await service.sendPending(message);
+      await service.sendPending(
+        message,
+        isCurrentScope: () => _isScope(owner, family, generation),
+      );
     } catch (e) {
-      if (mounted) _toast(e);
+      if (_isScope(owner, family, generation)) _toast(e);
     } finally {
-      final owner = _ownerUserId;
-      final family = _familyId;
-      if (owner != null && family != null) {
-        await _loadLocal(ownerUserId: owner, familyId: family, scroll: true);
+      if (_isScope(owner, family, generation)) {
+        await _loadLocal(ownerUserId: owner, familyId: family);
       }
     }
   }
@@ -361,7 +404,8 @@ class _ChatPageState extends State<ChatPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           generation != _scopeGeneration ||
-          !_scrollController.hasClients) return;
+          !_scrollController.hasClients)
+        return;
       _scrollController.animateTo(
         0,
         duration: const Duration(milliseconds: 220),
@@ -478,8 +522,9 @@ class _ChatPageState extends State<ChatPage> {
       padding: const EdgeInsets.only(bottom: WoTokens.space3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment:
-            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: mine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: mine
             ? [
                 Flexible(child: bubble),
@@ -501,8 +546,9 @@ class _ChatPageState extends State<ChatPage> {
     final bg = mine ? wo.accentSoft : wo.bgTint;
     final textColor = wo.fg;
     return Column(
-      crossAxisAlignment:
-          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: mine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         if (!mine)
           Padding(
@@ -513,8 +559,9 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         GestureDetector(
-          onTap:
-              message.status == chatStatusFailed ? () => _retry(message) : null,
+          onTap: message.status == chatStatusFailed
+              ? () => _retry(message)
+              : null,
           child: Container(
             constraints: const BoxConstraints(maxWidth: 280),
             padding: message.isImage

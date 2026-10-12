@@ -242,6 +242,22 @@ CREATE TABLE chat_sync_state (
     return rows.reversed.map(ChatLocalMessage.fromDb).toList();
   }
 
+  /// 不受历史列表分页上限影响，仅恢复当前用户、当前家庭的待发送消息。
+  Future<List<ChatLocalMessage>> pendingMessages({
+    required String ownerUserId,
+    required String familyId,
+  }) async {
+    final db = await _database;
+    final rows = await db.query(
+      'chat_messages',
+      where:
+          'owner_user_id = ? AND family_id = ? AND status = ? '
+          'AND server_id IS NULL',
+      whereArgs: [ownerUserId, familyId, chatStatusSending],
+    );
+    return rows.map(ChatLocalMessage.fromDb).toList();
+  }
+
   Future<ChatLocalMessage?> byClientId({
     required String ownerUserId,
     required String familyId,
@@ -349,8 +365,11 @@ CREATE TABLE chat_sync_state (
     await db.update(
       'chat_messages',
       {'status': status},
-      where: 'owner_user_id = ? AND family_id = ? AND client_id = ?',
-      whereArgs: [ownerUserId, familyId, clientId],
+      // 服务端回执是最终状态；迟到的超时或恢复操作不能将其降级。
+      where:
+          'owner_user_id = ? AND family_id = ? AND client_id = ? '
+          'AND server_id IS NULL AND status != ?',
+      whereArgs: [ownerUserId, familyId, clientId, chatStatusSent],
     );
   }
 
@@ -364,7 +383,8 @@ CREATE TABLE chat_sync_state (
       familyId: remote.familyId,
       serverId: remote.id,
     );
-    final existing = existingByServer ??
+    final existing =
+        existingByServer ??
         await byClientId(
           ownerUserId: ownerUserId,
           familyId: remote.familyId,
