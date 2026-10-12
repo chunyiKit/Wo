@@ -27,6 +27,12 @@ final message = ChatMessage(
 );
 
 class MemoryStore implements ChatLocalStore {
+  @override
+  Future<List<ChatLocalMessage>> pendingMessages({
+    required String ownerUserId,
+    required String familyId,
+  }) async => [];
+
   MemoryStore(this.directory);
   final Directory directory;
   final messages = <(String, String, String), ChatLocalMessage>{};
@@ -188,6 +194,62 @@ void main() {
     now = DateTime.utc(2026, 10, 1);
   });
   tearDown(() async => directory.delete(recursive: true));
+
+  test('完整组合：挂起下载在五秒预算内结束，记录重试且游标已推进', () async {
+    final dir = await Directory.systemTemp.createTemp('review-budget-');
+    try {
+      final store = MemoryStore(dir);
+      final api = FakeApi();
+      final clock = Stopwatch()..start();
+      final service = ChatSyncService(
+        api: api,
+        store: store,
+        imageClientFactory: () =>
+            MockClient((_) => Completer<http.Response>().future),
+      );
+      await service.sync(ownerUserId: 'u1', familyId: 'f1');
+      expect(
+        clock.elapsedMilliseconds >= 4900 && clock.elapsedMilliseconds < 10000,
+        isTrue,
+      );
+      expect(store.states[('u1', 'f1')]!.afterId, 'm1');
+      expect(store.attempts[('u1', 'f1', 'm1')], 1);
+      expect(store.messages[('u1', 'f1', 'm1')]!.imageLocalPath, isNull);
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
+  test('完整组合：Bearer 不变但外部 generation 失效时拒绝旧附件', () async {
+    final dir = await Directory.systemTemp.createTemp('review-scope-');
+    try {
+      final store = MemoryStore(dir);
+      final api = FakeApi();
+      var active = true;
+      final started = Completer<void>();
+      final response = Completer<http.Response>();
+      final service = ChatSyncService(
+        api: api,
+        store: store,
+        imageClientFactory: () => MockClient((_) {
+          started.complete();
+          return response.future;
+        }),
+      );
+      final pending = service.sync(
+        ownerUserId: 'u1',
+        familyId: 'f1',
+        isCurrentScope: () => active,
+      );
+      await started.future;
+      active = false;
+      response.complete(http.Response('png', 200));
+      await pending;
+      expect(store.messages[('u1', 'f1', 'm1')]!.imageLocalPath, isNull);
+      expect(await dir.list(recursive: true).toList(), isEmpty);
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
 
   test('失败后游标照常推进，重建服务后空增量页也能补图且不会重复下载', () async {
     var requests = 0;

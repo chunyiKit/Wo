@@ -23,26 +23,80 @@ class ChatSyncService {
   final WoApi api;
   final ChatLocalStore store;
 
-  Future<void> sync({required String ownerUserId, required String familyId}) {
+  // 页面重建也共享进行中请求，恢复操作不能把活跃发送误判为中断。
+  static final _sends = <(String, String, String), Future<void>>{};
+  static final _recoveries = <(String, String, String), Future<void>>{};
+
+  (String, String, String) _key(ChatLocalMessage local) =>
+      (local.ownerUserId, local.familyId, local.clientId);
+
+  Future<void> _recoverInterrupted(String ownerUserId, String familyId) async {
+    final pending = await store.pendingMessages(
+      ownerUserId: ownerUserId,
+      familyId: familyId,
+    );
+    for (final local in pending) {
+      final key = _key(local);
+      if (_sends.containsKey(key) || _recoveries.containsKey(key)) continue;
+      final recovery = store.markStatus(
+        ownerUserId: ownerUserId,
+        familyId: familyId,
+        clientId: local.clientId,
+        status: chatStatusFailed,
+      );
+      _recoveries[key] = recovery;
+      try {
+        await recovery;
+      } finally {
+        _recoveries.remove(key);
+      }
+    }
+  }
+
+  Future<void> sync({
+    required String ownerUserId,
+    required String familyId,
+    bool Function()? isCurrentScope,
+  }) {
     final key = (ownerUserId, familyId);
     return _syncs.putIfAbsent(
       key,
-      () => _sync(
-        ownerUserId: ownerUserId,
-        familyId: familyId,
-      ).whenComplete(() {
-        _syncs.remove(key);
-      }),
+      () =>
+          _sync(
+            ownerUserId: ownerUserId,
+            familyId: familyId,
+            isCurrentScope: isCurrentScope,
+          ).whenComplete(() {
+            _syncs.remove(key);
+          }),
     );
   }
 
   Future<void> _sync({
     required String ownerUserId,
     required String familyId,
+    bool Function()? isCurrentScope,
+  }) async {
+    try {
+      await _pull(
+        ownerUserId: ownerUserId,
+        familyId: familyId,
+        isCurrentScope: isCurrentScope,
+      );
+    } finally {
+      await _recoverInterrupted(ownerUserId, familyId);
+    }
+  }
+
+  Future<void> _pull({
+    required String ownerUserId,
+    required String familyId,
+    bool Function()? isCurrentScope,
   }) async {
     final token = api.authToken;
     // 正常登录仅设置 Bearer，X-User-Id 留空；开发模式才使用 userId。
     bool active() =>
+        isCurrentScope?.call() != false &&
         api.authToken == token &&
         (token.isNotEmpty || api.userId == ownerUserId);
     if (!active()) return;
@@ -114,7 +168,33 @@ class ChatSyncService {
     }
   }
 
-  Future<void> sendPending(ChatLocalMessage local) async {
+  Future<void> sendPending(
+    ChatLocalMessage local, {
+    bool Function()? isCurrentScope,
+  }) {
+    final key = _key(local);
+    return _sends[key] ??= _sendPending(local, isCurrentScope).whenComplete(() {
+      _sends.remove(key);
+    });
+  }
+
+  Future<void> _sendPending(
+    ChatLocalMessage local,
+    bool Function()? isCurrentScope,
+  ) async {
+    await _recoveries[_key(local)];
+    // 重试可能持有过期的 UI 对象，必须重新读取已归并的本地状态。
+    final latest = await store.byClientId(
+      ownerUserId: local.ownerUserId,
+      familyId: local.familyId,
+      clientId: local.clientId,
+    );
+    if (latest == null ||
+        latest.serverId != null ||
+        latest.status == chatStatusSent)
+      return;
+    local = latest;
+    if (isCurrentScope?.call() == false) return;
     await store.markStatus(
       ownerUserId: local.ownerUserId,
       familyId: local.familyId,
@@ -122,16 +202,19 @@ class ChatSyncService {
       status: chatStatusSending,
     );
     try {
+      if (isCurrentScope?.call() == false) return;
       final ChatMessage remote;
       if (local.isImage) {
         final path = local.imageLocalPath;
         if (path == null || !await File(path).exists()) {
           throw StateError('图片文件不存在');
         }
+        final bytes = await File(path).readAsBytes();
+        if (isCurrentScope?.call() == false) return;
         remote = await api.sendChatImage(
           local.familyId,
           clientId: local.clientId,
-          bytes: await File(path).readAsBytes(),
+          bytes: bytes,
           body: local.body,
         );
         await store.upsertRemote(

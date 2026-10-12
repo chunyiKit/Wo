@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'chat_message_query.dart';
 import 'models.dart';
 
 const chatStatusSending = 'sending';
@@ -306,15 +307,43 @@ ON chat_messages(owner_user_id, family_id, created_at, local_id)
   Future<List<ChatLocalMessage>> listMessages({
     required String ownerUserId,
     required String familyId,
-    int limit = 500,
+    int? limit = 500,
+    ChatMessageCursor? before,
+    ChatMessageCursor? from,
+    List<int> retainedLocalIds = const [],
+  }) async {
+    final query = ChatMessageQuery(
+      ownerUserId: ownerUserId,
+      familyId: familyId,
+      before: before,
+      from: from,
+      retainedLocalIds: retainedLocalIds,
+      limit: limit,
+    );
+    final db = await _database;
+    final rows = await db.query(
+      'chat_messages',
+      where: query.where,
+      whereArgs: query.whereArgs,
+      orderBy: ChatMessageQuery.orderBy,
+      limit: query.limit,
+    );
+    // SQL 先截取最新窗口，展示仍保持从旧到新。
+    return rows.reversed.map(ChatLocalMessage.fromDb).toList();
+  }
+
+  /// 不受历史列表分页上限影响，仅恢复当前用户、当前家庭的待发送消息。
+  Future<List<ChatLocalMessage>> pendingMessages({
+    required String ownerUserId,
+    required String familyId,
   }) async {
     final db = await _database;
     final rows = await db.query(
       'chat_messages',
-      where: 'owner_user_id = ? AND family_id = ?',
-      whereArgs: [ownerUserId, familyId],
-      orderBy: 'created_at ASC, local_id ASC',
-      limit: limit,
+      where:
+          'owner_user_id = ? AND family_id = ? AND status = ? '
+          'AND server_id IS NULL',
+      whereArgs: [ownerUserId, familyId, chatStatusSending],
     );
     return rows.map(ChatLocalMessage.fromDb).toList();
   }
@@ -426,8 +455,11 @@ ON chat_messages(owner_user_id, family_id, created_at, local_id)
     await db.update(
       'chat_messages',
       {'status': status},
-      where: 'owner_user_id = ? AND family_id = ? AND client_id = ?',
-      whereArgs: [ownerUserId, familyId, clientId],
+      // 服务端回执是最终状态；迟到的超时或恢复操作不能将其降级。
+      where:
+          'owner_user_id = ? AND family_id = ? AND client_id = ? '
+          'AND server_id IS NULL AND status != ?',
+      whereArgs: [ownerUserId, familyId, clientId, chatStatusSent],
     );
   }
 
@@ -441,7 +473,8 @@ ON chat_messages(owner_user_id, family_id, created_at, local_id)
       familyId: remote.familyId,
       serverId: remote.id,
     );
-    final existing = existingByServer ??
+    final existing =
+        existingByServer ??
         await byClientId(
           ownerUserId: ownerUserId,
           familyId: remote.familyId,
