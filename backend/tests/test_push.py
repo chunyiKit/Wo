@@ -89,7 +89,9 @@ async def test_notification_stages_outbox_when_push_enabled(
 # ---- Outbox dispatch -------------------------------------------------------
 
 
-async def test_dispatch_sends_to_device_tokens_and_marks_sent(client: AsyncClient) -> None:
+async def test_dispatch_sends_to_device_tokens_and_marks_sent(
+    client: AsyncClient, authenticated_account
+) -> None:
     """client fixture guarantees the lifespan/seed ran so SEED_USER_ID exists."""
     rid = _reg_id()
     sent: list[PushMessage] = []
@@ -99,10 +101,14 @@ async def test_dispatch_sends_to_device_tokens_and_marks_sent(client: AsyncClien
 
     async with async_session_maker() as session:
         await device_service.register_device(
-            session, user_id=SEED_USER_ID, registration_id=rid, platform="android"
+            session,
+            user_id=authenticated_account[0],
+            registration_id=rid,
+            platform="android",
+            bearer_token=authenticated_account[1],
         )
         notif = Notification(
-            user_id=SEED_USER_ID,
+            user_id=authenticated_account[0],
             type="test_push",
             title="测试推送",
             body="正文",
@@ -164,7 +170,9 @@ async def test_dispatch_settles_row_when_recipient_has_no_device(client: AsyncCl
         assert row.status == "sent"
 
 
-async def test_dispatch_retries_then_fails_after_max_attempts(client: AsyncClient) -> None:
+async def test_dispatch_retries_then_fails_after_max_attempts(
+    client: AsyncClient, authenticated_account
+) -> None:
     rid = _reg_id()
 
     async def failing_sender(message: PushMessage) -> None:
@@ -172,9 +180,15 @@ async def test_dispatch_retries_then_fails_after_max_attempts(client: AsyncClien
 
     async with async_session_maker() as session:
         await device_service.register_device(
-            session, user_id=SEED_USER_ID, registration_id=rid, platform="ios"
+            session,
+            user_id=authenticated_account[0],
+            registration_id=rid,
+            platform="ios",
+            bearer_token=authenticated_account[1],
         )
-        notif = Notification(user_id=SEED_USER_ID, type="test_push", title="t", body="b")
+        notif = Notification(
+            user_id=authenticated_account[0], type="test_push", title="t", body="b"
+        )
         session.add(notif)
         outbox = PushOutbox(notification_id=notif.id)
         session.add(outbox)

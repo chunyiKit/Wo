@@ -11,13 +11,13 @@ import 'models.dart';
 import 'push_service.dart';
 import 'wo_api.dart';
 
-/// 全局会话状态：持有 [WoApi]、管理登录身份（手机号登录拿到的 user id，持久化到
-/// 本地），并缓存一次性的 bootstrap 结果。
-///
-/// 身份目前就是 user id（后端 dev shim 用 X-User-Id 头识别）；接真实 JWT 后只需
-/// 把存的 token 换成 JWT、ApiClient 改发 Authorization 头即可，上层流程不变。
+typedef AuthSnapshot = ({int generation, String? token});
+
+/// 持久化服务端可撤销的 Bearer 会话，并管理首屏数据。
 class WoSession extends ChangeNotifier {
-  WoSession({WoApi? api, this.push}) : api = api ?? WoApi(ApiClient());
+  WoSession({WoApi? api, this.push}) : api = api ?? WoApi(ApiClient()) {
+    this.api.onSessionInvalid = clearAuth;
+  }
 
   static const _kToken = 'wo.token';
   static const _kThemeMode = 'wo.themeMode';
@@ -44,6 +44,9 @@ class WoSession extends ChangeNotifier {
   Bootstrap? _bootstrap;
   bool _loading = false;
   Object? _error;
+  int _authGeneration = 0;
+  bool _authBusy = false;
+  bool _disposed = false;
 
   /// 消息中心刷新信号。点「消息」Tab、App 恢复前台、前台收到推送时自增；
   /// 消息页监听它并重新拉取列表（消息页常驻 Tab 不会自己重建，故需外部触发）。
@@ -60,6 +63,14 @@ class WoSession extends ChangeNotifier {
 
   void requestChatRefresh() {
     chatRefreshSignal.value++;
+  }
+
+  AuthSnapshot get authSnapshot => (generation: _authGeneration, token: _token);
+  bool isCurrentAuth(AuthSnapshot snapshot) =>
+      !_disposed && snapshot == authSnapshot;
+
+  Future<void> clearAuthIfCurrent(AuthSnapshot snapshot) async {
+    if (isCurrentAuth(snapshot)) await clearAuth();
   }
 
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
@@ -135,43 +146,81 @@ class WoSession extends ChangeNotifier {
 
   /// 手机号 + 密码登录/注册：成功后持久化身份并拉取首屏数据。
   Future<AuthResult> login(String phone, String password) async {
-    final result = await api.login(phone, password);
-    _token = result.token;
-    api.authToken = result.token;
-    api.userId = '';
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kToken, result.token);
-    await load();
-    // 上报本机推送 token（后台进行，失败不影响登录）。
-    unawaited(_syncPushRegistration());
-    return result;
-  }
-
-  /// 退出登录：清掉身份与缓存。
-  Future<void> logout() async {
-    // 先注销设备 token（此时令牌仍在，后端才能定位并删除）。
-    await _clearPushRegistration();
-    // 撤销服务端会话令牌（失败也无妨，本地照常清理）。
+    if (_authBusy) throw StateError('认证请求正在处理中');
+    _authBusy = true;
+    final generation = ++_authGeneration;
     try {
-      await api.logout();
-    } catch (_) {
-      // 尽力而为。
+      final result = await api.login(phone, password);
+      if (_disposed || generation != _authGeneration) {
+        unawaited(api.discardLoginToken(result.token).catchError((_) {}));
+        throw StateError('登录已中断，请重试');
+      }
+      _token = result.token;
+      api.authToken = result.token;
+      api.userId = '';
+      final prefs = await SharedPreferences.getInstance();
+      if (_disposed || generation != _authGeneration) {
+        unawaited(api.discardLoginToken(result.token).catchError((_) {}));
+        throw StateError('登录已中断，请重试');
+      }
+      await prefs.setString(_kToken, result.token);
+      if (_disposed || generation != _authGeneration) {
+        await prefs.remove(_kToken);
+        unawaited(api.discardLoginToken(result.token).catchError((_) {}));
+        throw StateError('登录已中断，请重试');
+      }
+      await load();
+      if (!isLoggedIn || generation != _authGeneration) {
+        throw StateError('登录已失效，请重试');
+      }
+      unawaited(_syncPushRegistration());
+      return result;
+    } finally {
+      _authBusy = false;
     }
-    await _clearLocalAuth();
-    // 清掉「回忆」本地缓存（内容 + 进程内热缓存），避免登出后残留上一个账号的数据。
-    await MemoryCache.clearAll();
-    _bootstrap = null;
-    _error = null;
-    notifyListeners();
   }
 
-  /// 清掉本地登录态（持久化 token + 内存令牌/身份）。不发网络请求。
-  Future<void> _clearLocalAuth() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kToken);
+  /// 当前登出离线时仍清本地；全部撤销失败则保留状态，让用户重试。
+  Future<void> logout({bool all = false}) async {
+    _authGeneration++;
+    final snapshot = authSnapshot;
+    if (all) {
+      await api.logoutAll();
+    } else {
+      try {
+        await api.logout();
+      } catch (_) {/* 离线本地退出。 */}
+    }
+    await clearAuthIfCurrent(snapshot);
+  }
+
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    final snapshot = authSnapshot;
+    await api.changePassword(
+      oldPassword: oldPassword,
+      newPassword: newPassword,
+    );
+    await clearAuthIfCurrent(snapshot);
+  }
+
+  /// 会话撤销、过期和改密共用同一清理路径；先清内存，阻止继续发送旧令牌。
+  Future<void> clearAuth() async {
+    final generation = ++_authGeneration;
     _token = null;
     api.authToken = '';
     api.userId = '';
+    _bootstrap = null;
+    _loading = false;
+    _error = null;
+    if (!_disposed) notifyListeners();
+    await _clearLocalAuth(generation);
+    if (generation == _authGeneration) await MemoryCache.clearAll();
+  }
+
+  /// 清掉本地登录态（持久化 token + 内存令牌/身份）。不发网络请求。
+  Future<void> _clearLocalAuth(int generation) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (generation == _authGeneration) await prefs.remove(_kToken);
   }
 
   /// 取本机 registration id 并上报后端。任何失败都吞掉——推送注册是尽力而为，
@@ -189,38 +238,30 @@ class WoSession extends ChangeNotifier {
     }
   }
 
-  /// 登出时注销本机 token。拿不到 id 或网络失败都安全忽略。
-  Future<void> _clearPushRegistration() async {
-    final p = push;
-    if (p == null) return;
-    try {
-      final rid = await p.currentRegistrationId(retries: 1);
-      if (rid != null && rid.isNotEmpty) {
-        await api.unregisterDevice(rid);
-      }
-    } catch (_) {
-      // 忽略。
-    }
-  }
-
   /// 拉取首屏聚合数据。
   Future<void> load() async {
+    final generation = _authGeneration;
     _loading = true;
     _error = null;
     notifyListeners();
     try {
-      _bootstrap = await api.bootstrap();
+      final data = await api.bootstrap();
+      if (_disposed || generation != _authGeneration) return;
+      _bootstrap = data;
     } catch (e) {
+      if (_disposed || generation != _authGeneration) return;
       // 令牌失效/过期（含旧版本遗留的非会话令牌）→ 清登录态，让路由回登录页。
       if (e is ApiException &&
           (e.statusCode == 401 || e.code == 'UNAUTHORIZED')) {
-        await _clearLocalAuth();
-        _bootstrap = null;
+        await clearAuth();
+        return;
       }
       _error = e;
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (!_disposed && generation == _authGeneration) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -252,6 +293,9 @@ class WoSession extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _authGeneration++;
+    api.onSessionInvalid = null;
     messagesRefreshSignal.dispose();
     chatRefreshSignal.dispose();
     themeMode.dispose();

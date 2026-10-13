@@ -63,10 +63,10 @@ class Settings(BaseSettings):
     # app.services.session). 90 days keeps a family from re-logging-in often.
     session_ttl_days: int = 90
     # The legacy dev shim: when True, requests may authenticate via the
-    # `X-User-Id` header (and default to the seed user when absent). Kept True
-    # for dev/tests; set AUTH_DEV_SHIM_ENABLED=false in production so only real
-    # bearer tokens are accepted and X-User-Id can't be forged.
-    auth_dev_shim_enabled: bool = True
+    # `X-User-Id` header (and default to the seed user when absent). Disabled
+    # by default; enable explicitly only in local dev/tests. Production must
+    # keep it disabled so unverified identifiers cannot authenticate.
+    auth_dev_shim_enabled: bool = False
 
     # ---- Push (JPush / 极光推送) -------------------------------------------
     # Master switch. When false: notifications skip outbox staging and the

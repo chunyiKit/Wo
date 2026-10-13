@@ -14,9 +14,7 @@ def _random_phone() -> str:
 
 
 async def _login(client: AsyncClient, phone: str, password: str = PW):
-    return await client.post(
-        "/api/v1/auth/login", json={"phone": phone, "password": password}
-    )
+    return await client.post("/api/v1/auth/login", json={"phone": phone, "password": password})
 
 
 async def test_login_registers_new_phone(client: AsyncClient) -> None:
@@ -87,42 +85,31 @@ async def test_short_password_rejected(client: AsyncClient) -> None:
     assert res.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-async def test_legacy_user_first_login_sets_password(client: AsyncClient) -> None:
-    """A pre-existing account with no password gets one set on first login,
-    then must use it thereafter."""
+async def test_legacy_user_first_login_cannot_set_password(client: AsyncClient) -> None:
     from app.core.database import async_session_maker
     from app.models.user import User
 
     phone = _random_phone()
     async with async_session_maker() as session:
-        session.add(
-            User(
-                phone=phone,
-                username=f"u{phone}",
-                display_name="老用户",
-                password_hash=None,
-            )
-        )
+        user = User(phone=phone, username=f"u{phone}", display_name="老用户")
+        session.add(user)
         await session.commit()
-
-    # First login sets the password (existing account → is_new False).
+        uid = user.id
     first = await _login(client, phone, "firstpass")
-    assert first.status_code == 200
-    assert first.json()["data"]["is_new"] is False
-
-    # Now it's verified: the set password works, a different one is rejected.
-    assert (await _login(client, phone, "firstpass")).status_code == 200
-    assert (await _login(client, phone, "nope999")).status_code == 401
+    assert first.status_code == 401
+    assert first.json()["error"]["code"] == "UNAUTHORIZED"
+    async with async_session_maker() as session:
+        assert (await session.get(User, uid)).password_hash is None
 
 
 async def test_change_password(client: AsyncClient) -> None:
     phone = _random_phone()
     reg = (await _login(client, phone, "oldpass1")).json()["data"]
-    uid = reg["user"]["id"]
+    token = reg["token"]
 
     changed = await client.post(
         "/api/v1/auth/change-password",
-        headers={"X-User-Id": uid},
+        headers={"Authorization": f"Bearer {token}"},
         json={"old_password": "oldpass1", "new_password": "newpass2"},
     )
     assert changed.status_code == 200
@@ -135,10 +122,10 @@ async def test_change_password(client: AsyncClient) -> None:
 
 async def test_change_password_wrong_old_rejected(client: AsyncClient) -> None:
     phone = _random_phone()
-    uid = (await _login(client, phone, "oldpass1")).json()["data"]["user"]["id"]
+    token = (await _login(client, phone, "oldpass1")).json()["data"]["token"]
     res = await client.post(
         "/api/v1/auth/change-password",
-        headers={"X-User-Id": uid},
+        headers={"Authorization": f"Bearer {token}"},
         json={"old_password": "WRONG", "new_password": "newpass2"},
     )
     assert res.status_code == 401
@@ -146,10 +133,10 @@ async def test_change_password_wrong_old_rejected(client: AsyncClient) -> None:
 
 async def test_change_password_short_rejected(client: AsyncClient) -> None:
     phone = _random_phone()
-    uid = (await _login(client, phone, "oldpass1")).json()["data"]["user"]["id"]
+    token = (await _login(client, phone, "oldpass1")).json()["data"]["token"]
     res = await client.post(
         "/api/v1/auth/change-password",
-        headers={"X-User-Id": uid},
+        headers={"Authorization": f"Bearer {token}"},
         json={"old_password": "oldpass1", "new_password": "12"},
     )
     assert res.status_code == 422
@@ -195,9 +182,7 @@ async def test_login_rate_limited_per_phone(client: AsyncClient) -> None:
 async def test_bearer_token_authenticates(client: AsyncClient) -> None:
     token = (await _login(client, _random_phone())).json()["data"]["token"]
     # No X-User-Id — auth comes purely from the bearer token.
-    res = await client.get(
-        "/api/v1/me/bootstrap", headers={"Authorization": f"Bearer {token}"}
-    )
+    res = await client.get("/api/v1/me/bootstrap", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200
     assert res.json()["data"]["user"]["id"]
 
@@ -240,17 +225,12 @@ async def test_shim_disabled_blocks_xuserid_but_bearer_works(
     nobody = await client.get("/api/v1/me/bootstrap")
     assert nobody.status_code == 401
     # A real bearer token still authenticates.
-    ok_res = await client.get(
-        "/api/v1/me/bootstrap", headers={"Authorization": f"Bearer {token}"}
-    )
+    ok_res = await client.get("/api/v1/me/bootstrap", headers={"Authorization": f"Bearer {token}"})
     assert ok_res.status_code == 200
 
 
-async def test_login_seed_user(client: AsyncClient) -> None:
-    # Seed user 老陈 (phone backfilled by p5). First login with a password sets
-    # it; the same password is idempotent across runs against the shared DB.
+async def test_login_seed_user_requires_migration(client: AsyncClient) -> None:
+    # Unverified historic seed identifiers must not become password credentials.
     res = await _login(client, "13800000001", "laochen-pw")
-    assert res.status_code == 200
-    data = res.json()["data"]
-    assert data["is_new"] is False
-    assert data["user"]["display_name"] == "老陈"
+    assert res.status_code == 401
+    assert "线下核验迁移" in res.json()["error"]["message"]

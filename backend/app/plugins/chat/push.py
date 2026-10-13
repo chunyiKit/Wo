@@ -100,20 +100,37 @@ async def dispatch_pending_chat(
         .where(ChatPushOutbox.status == PUSH_PENDING)
         .order_by(ChatPushOutbox.created_at)
         .limit(batch_size)
-        .with_for_update(skip_locked=True)
     )
     rows = list((await session.execute(stmt)).scalars().all())
 
-    for row in rows:
+    processed = 0
+    for candidate in rows:
+        tokens = await device_service.tokens_for_user(session, candidate.user_id)
+        row = (
+            await session.execute(
+                select(ChatPushOutbox)
+                .where(
+                    ChatPushOutbox.id == candidate.id,
+                    ChatPushOutbox.status == PUSH_PENDING,
+                )
+                .with_for_update(skip_locked=True)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            await session.commit()
+            continue
+        processed += 1
         message = await session.get(ChatMessage, row.message_id)
         if message is None:
             _mark_sent(row)
             session.add(row)
+            await session.commit()
             continue
-        tokens = await device_service.tokens_for_user(session, row.user_id)
         if not tokens:
             _mark_sent(row)
             session.add(row)
+            await session.commit()
             continue
         try:
             await sender(
@@ -138,9 +155,9 @@ async def dispatch_pending_chat(
         else:
             _mark_sent(row)
         session.add(row)
+        await session.commit()
 
-    await session.commit()
-    return len(rows)
+    return processed
 
 
 def _mark_sent(row: ChatPushOutbox) -> None:
