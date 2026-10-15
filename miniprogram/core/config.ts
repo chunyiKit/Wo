@@ -1,7 +1,7 @@
 // 仅公开配置。AppSecret、COS 密钥永远不能写入客户端。
 export const config = {
-  apiOrigin: 'https://chunyi-work.online',
-  // 已只读确认该域名承载 Wo，但当前私有 CA 证书校验失败；修复 TLS、部署后端并授权联调后才开启。
+  apiOrigin: 'https://trek.chunyi-work.online',
+  // 用户已选定 trek；当前公开路由仍为 502，完成后端路由、迁移并获准真实联调后才开启。
   connectionReady: false,
   // 可选：放在已备案 HTTPS 静态域名的精简字体；空值使用系统字体。
   fontUrl: '',

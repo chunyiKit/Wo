@@ -55,8 +55,12 @@ python -m pytest tests/test_wechat_auth.py tests/test_miniprogram_media.py \
 
 已收到公开 AppID `wx0619d005f568430c` 并写入 `project.config.json`。本机没有发现微信开发者工具（`Developer.app` 为 Apple Developer），未安装或接受新软件条款；所以尚无开发者工具编译、实际包体、原生截图或 Android/iOS 真机验收。
 
-[域名核查](wechat-domain-readiness.md) 表明根域/`www` 当前承载 Wo 但证书不合格，`trek` 证书有效但返回 502。推荐根域新增精确 vhost 和可信域名证书，保留旧 App 的默认 IP 入口；线上变更需要后续明确授权。客户端模板填入根域，但 `connectionReady:false` 阻止联网。
+[域名核查](wechat-domain-readiness.md) 表明根域/`www` 当前承载 Wo 但证书不合格，`trek` 证书有效但返回 502。用户已进一步确认原 `trek` 服务下线并选定该域名作为 API 入口；第二次只读复核其可信 TLS 通过、三条公开路由均 502。客户端与后端示例现统一为 `https://trek.chunyi-work.online`，但 `connectionReady:false` 阻止联网。最小路由改动及 Android 兼容计划见域名核查文档，线上变更仍需明确授权。
 
 还需：可信 HTTPS 与后端部署准备、用户在服务端安全注入 AppSecret、小程序开发者资格、后台 request/upload/download 合法域名、个人主体服务类目与隐私指引。未请求、读取或输出任何密钥文件；未将 AppSecret 放到客户端、日志或聊天。
 
 没有真实微信 code 交换、真实 COS 下载联调、真实记录上传、生产 migration、线上配置变更、Android 发布、合并或成员消息。家务指派和邀请码确认加入的将来实际使用会沿用现有站内通知规则；本次只运行合成测试。上线顺序仍为后端迁移支持→发布移动端同步旧手机本地记录→上线小程序；旧家聊 SQLite、图片和私人草稿另行迁移，禁止自动重发或共享私人草稿。
+
+## 目标域名后续修订
+
+用户选定 `trek.chunyi-work.online` 后，仅修正本地模板、文档及同一 PR，未部署。本次新增 3 项域名配置回归，与原 8 项连接脚本回归共 11 项通过；59 项客户端测试与 TypeScript 检查也重新通过。配置回归均使用本地替身；本次不重跑未改动的后端业务测试，也不把旧的 235 项结果冒充新的线上联调证据。
