@@ -15,7 +15,7 @@ AUTH_DEV_SHIM_ENABLED=false
 
 AppSecret 在 Settings 中使用 `SecretStr` 避免常规 repr 泄漏。缺 AppID 或 AppSecret 返回 503，绝不会自动启用假微信身份。上游固定 `https://api.weixin.qq.com/sns/jscode2session`；不接受客户端提交 openid / unionid / session_key，不存储或返回 session_key。httpx 的该端点请求日志已脱敏；生产网关、代理与追踪系统也应禁止采集该上游 URL 查询参数与鉴权请求体。测试使用 `httpx.MockTransport` 或测试级 monkeypatch，运行时没有测试身份开关。
 
-公开 AppID `wx0619d005f568430c` 已收到并写入小程序项目；用户确认 `chunyi-work.online`、`www.chunyi-work.online`、`trek.chunyi-work.online` 已备案，用户已确定使用原服务下线的 `https://trek.chunyi-work.online`。只读复核其 TLS 校验通过、公开路由仍为 502；部署改动尚未授权。剩余最小信息是：对 `trek` 最小路由改动的明确授权、由用户自行完成的 AppSecret 服务端安全配置、开发者工具体验成员及个人主体实际可用类目/隐私声明核验结果。无需在聊天中发送任何秘密。当前实现不依赖手机号授权能力；原账号手机号是用户手工输入的登录标识，不宣称验证了手机号所有权。
+公开 AppID `wx0619d005f568430c` 已收到并写入小程序项目；用户确认 `chunyi-work.online`、`www.chunyi-work.online`、`trek.chunyi-work.online` 已备案，用户已确定使用原服务下线的 `https://trek.chunyi-work.online`。随后已获用户明确批准并完成 trek API 的 Nginx 路由，公开 health/version 严格 TLS 检查均为 200；未部署此 PR 后端。详见 [变更记录](../docs/wechat-trek-routing-20261015.md)。剩余最小信息是：对 PR 合并后 migration/后端部署的单独授权、由用户自行完成的 AppSecret 服务端安全配置、开发者工具体验成员及个人主体实际可用类目/隐私声明核验结果。无需在聊天中发送任何秘密。当前实现不依赖手机号授权能力；原账号手机号是用户手工输入的登录标识，不宣称验证了手机号所有权。
 
 正式域名须为有有效公信证书的 HTTPS，目标已选定 `https://trek.chunyi-work.online`，在微信后台配置对应 request / uploadFile / downloadFile 合法域名。禁止裸 IP、自签 CA 覆盖或以跳过域名校验作为正式方案。家庭头像、回忆附件继续经既有家庭权限校验和 Authorization 请求头下载，禁止公开私有 COS、禁止把 Bearer 放 URL。
 

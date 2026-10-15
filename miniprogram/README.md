@@ -5,12 +5,12 @@
 ## 运行
 
 1. 使用微信官方开发者工具导入本目录，项目类型为小程序。`project.config.json` 已写入用户提供的公开 AppID `wx0619d005f568430c`；真实 `wx.login` 还需要开发者资格及服务端凭据。项目使用开发者工具自带 TypeScript 编译插件，无运行时第三方依赖。
-2. `core/config.ts` 已按用户决定填入 `https://trek.chunyi-work.online`。其原服务已由用户确认下线；当前公开路由仍为 502，`connectionReady:false` 主动阻止请求。确认可信 TLS、测试后端及迁移已准备并获准联调后，才改为 `true`；也可以将 `apiOrigin` 改成独立测试 HTTPS 域名（不含 `/api/v1`）。不能用裸 IP、自签 CA 或关闭 URL 校验代替正式接入。
+2. `core/config.ts` 已按用户决定填入 `https://trek.chunyi-work.online`。其原服务已由用户确认下线；已另获批准将 API 接到现有 Wo 服务，健康/版本检查通过；但 PR 新后端尚未部署、真实微信尚未联调，`connectionReady:false` 继续阻止请求。确认可信 TLS、测试后端及迁移已准备并获准联调后，才改为 `true`；也可以将 `apiOrigin` 改成独立测试 HTTPS 域名（不含 `/api/v1`）。不能用裸 IP、自签 CA 或关闭 URL 校验代替正式接入。
 3. 由管理员在隔离测试后端运行 migration，并按 [后端接入说明](../backend/WECHAT.md) 安全配置 AppID / AppSecret。AppSecret 只在服务端，缺失时返回明确的 503；客户端没有假微信账号开关。
 4. 在微信后台配置同一 API 域名的 request、uploadFile、downloadFile 合法域名与隐私保护指引。基础库至少 2.26.0；用当前稳定基础库、Android 和 iOS 真机验收文件与字体 API。个人主体类目资格尚未核验。
 5. 已有窝账号选择验证原密码绑定；新账号自设密码并安全保存一次性恢复码，再创建家庭或预览确认邀请码加入。主人或管理员可明确逐项启用记账、家务、回忆；普通成员使用已安装功能。不会依据同手机号自动合并。
 
-本机尚未发现微信开发者工具。已收到 AppID 与用户确认备案的 `chunyi-work.online`、`www.chunyi-work.online`、`trek.chunyi-work.online`；目标入口已确定为 `trek`，当前 TLS 校验通过，但 Wo 路由可用性与服务端 AppSecret 配置尚未验证，不能声称真实微信联调或原生渲染验收通过。浏览器预览只检查布局，不能验证微信模板编译、API 行为、合法域名或隐私授权。
+本机尚未发现微信开发者工具。已收到 AppID 与用户确认备案的 `chunyi-work.online`、`www.chunyi-work.online`、`trek.chunyi-work.online`；目标入口已确定为 `trek`，当前 TLS 校验通过，但 Wo API 路由已验证；AppSecret、新后端与真实微信联调尚未验证，不能声称真实微信联调或原生渲染验收通过。浏览器预览只检查布局，不能验证微信模板编译、API 行为、合法域名或隐私授权。
 
 ## 首版范围与行为
 
@@ -52,7 +52,7 @@ node tools/visual-preview.cjs /tmp/wo-mini-visual
 
 ## 接入与切换前置条件
 
-AppID 已收到；三个域名的核查结果见 [域名接入检查](../docs/wechat-domain-readiness.md)：用户已选择原服务下线的 `trek`，当前证书有效但路由返回 502。用户还需授权 `trek` 的最小路由改动并提供个人主体已获准服务类目，以及测试开发者/体验成员资格；AppSecret 由用户在服务端安全注入并告知已完成即可，不发聊天。若启用远程字体，再提供静态字体 URL。必须在微信后台完成图片/相册与上传数据的隐私指引，验收取消授权、拒绝相册、弱网、存储不足与真机恢复。
+AppID 已收到；三个域名的核查结果见 [域名接入检查](../docs/wechat-domain-readiness.md)：用户已选择原服务下线的 `trek`，当前可信证书及现有 Wo API 路由已验证（见 [变更记录](../docs/wechat-trek-routing-20261015.md)）。用户仍需另行授权 PR 后端合并/迁移部署，并提供个人主体已获准服务类目，以及测试开发者/体验成员资格；AppSecret 由用户在服务端安全注入并告知已完成即可，不发聊天。若启用远程字体，再提供静态字体 URL。必须在微信后台完成图片/相册与上传数据的隐私指引，验收取消授权、拒绝相册、弱网、存储不足与真机恢复。
 
 上线顺序保持：**后端迁移支持 → 发布移动端版本同步旧手机本地记录 → 上线小程序**。本 PR 只准备后端支持和小程序代码，没有运行生产 migration、部署、发版、合并、读取密钥、上传真实记录或发布 Android 迁移版本。`2.1.7+57` 仅按 AGENTS 约定预留下一版本号。
 
