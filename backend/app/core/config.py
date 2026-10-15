@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +58,11 @@ class Settings(BaseSettings):
     login_rate_limit_max: int = 10
     login_rate_limit_per_phone_max: int = 5
     login_rate_limit_window_seconds: int = 60
+
+    # Server-only 微信凭证；空值时登录 fail closed，无运行时演示后门。
+    wechat_app_id: str = ""
+    wechat_app_secret: SecretStr = SecretStr("")
+    wechat_timeout_seconds: float = 10.0
 
     # ---- Session tokens / request auth ------------------------------------
     # Login mints an opaque bearer token valid for this long (see

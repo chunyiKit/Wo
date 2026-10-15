@@ -1,0 +1,20 @@
+<view class="screen {{theme}}">
+  <view class="row mast"><view class="grow"><view class="eyebrow">WO · A PLACE FOR US</view><view class="brand">窝</view></view><button class="theme-toggle" bindtap="toggleTheme" aria-label="切换外观">{{theme==='cinema'?'暖纸 ☀':'影院 ☾'}}</button><button class="account-toggle" bindtap="account" aria-label="账号设置">我的</button></view>
+  <view wx:if="{{loading}}" class="empty">正在打开我们的日常…</view>
+  <view wx:if="{{error}}" class="error">{{error}}<button class="secondary" bindtap="retry">重新加载</button></view>
+  <block wx:if="{{bootstrap}}">
+    <view class="hero"><image class="hero-image" src="{{background || '/assets/sunset.jpg'}}" mode="aspectFill"/><view class="hero-shade"/><view class="hero-content"><view class="hero-kicker">THE EVERYDAY, TOGETHER</view><picker wx:if="{{bootstrap.current_family}}" range="{{familyNames}}" disabled="{{busy}}" bindchange="switchFamily"><view class="hero-title">{{bootstrap.current_family.name}} <text class="chevron">⌄</text></view></picker><view wx:else class="hero-title"><view>日子慢一点，</view><view>我们近一点。</view></view><view class="hero-slogan">{{bootstrap.current_family.slogan || '把生活的小事，过成我们的故事。'}}</view></view></view>
+    <view wx:if="{{!bootstrap.current_family}}" class="family-entry">
+      <view class="card"><view class="title small">给日常一个家</view><view class="subtitle">创建自己的小窝，或用家人的邀请码加入。</view><view class="label">家庭名称</view><input class="field" value="{{familyName}}" maxlength="16" placeholder="例如：我们的小窝" disabled="{{busy}}" bindinput="updateFamilyName"/><button class="button" loading="{{busyAction === 'create'}}" disabled="{{busy}}" bindtap="createFamily">创建家庭</button></view>
+      <view class="card"><view class="title small">加入已有家庭</view><view class="subtitle">请向家人获取邀请码，先核对家庭信息再加入。</view><input class="field invite-input" value="{{inviteInput}}" maxlength="20" placeholder="WO-XXXX-XXXX" disabled="{{busy}}" bindinput="updateInvite"/><button class="secondary" loading="{{busyAction === 'preview'}}" disabled="{{busy}}" bindtap="previewInvitation">查看邀请</button><view wx:if="{{invitePreview}}" class="invitation-preview"><view class="preview-name">{{invitePreview.name}}</view><view class="muted">{{invitePreview.memberCount}} 位家人 · 以{{invitePreview.role}}身份加入</view><button class="button" loading="{{busyAction === 'accept'}}" disabled="{{busy}}" bindtap="acceptInvitation">确认加入这个家庭</button></view></view>
+      <view class="migration-note muted">旧手机本地记录仍需先通过移动端迁移版本同步。创建或加入家庭不会自动迁移旧记录。</view>
+    </view>
+    <block wx:else>
+      <view class="row people"><view class="faces"><member-avatar wx:for="{{members}}" wx:key="user_id" url="{{item.avatar_url}}" emoji="{{item.avatar_emoji}}"/></view><view class="muted grow">{{bootstrap.current_family.member_count}} 位家人 · 日常都有回声</view></view>
+      <view class="row chapter"><view class="grow"><view class="eyebrow">OUR EVERYDAY</view><view class="title small">生活的几个角落</view></view><text class="chapter-no">01 / 03</text></view>
+      <view wx:if="{{missingCards.length}}" class="card plugin-setup"><view class="setup-title">{{cards.length ? '再添一个生活角落' : '从一个生活角落开始'}}</view><view class="muted setup-copy">{{canManagePlugins ? '按需启用，和家人一起使用。' : '请家庭主人或管理员启用以下功能。'}}</view><view wx:for="{{missingCards}}" wx:key="id" class="row setup-row"><text class="setup-icon">{{item.icon}}</text><view class="grow">{{item.title}}</view><button wx:if="{{canManagePlugins}}" class="secondary enable-button" data-id="{{item.id}}" disabled="{{busy}}" loading="{{installing === item.id}}" bindtap="installPlugin">启用</button><text wx:else class="muted">尚未启用</text></view></view>
+      <view class="tile {{item.id}}" wx:for="{{cards}}" wx:key="id" data-page="{{item.page}}" bindtap="open" role="button" aria-label="{{item.title}}"><view class="tile-icon">{{item.icon}}</view><view class="tile-en">{{item.en}}</view><view class="tile-name">{{item.title}}</view><view class="tile-desc">{{item.desc}}</view><view class="tile-arrow">↗</view></view>
+      <view class="closing">日落以后，生活还在发光。<view class="closing-rule"/></view>
+    </block>
+  </block>
+</view>

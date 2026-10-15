@@ -14,6 +14,7 @@ from app.models.pet import Pet
 from app.models.plugin import InstalledPlugin, Plugin
 from app.models.push_outbox import PushOutbox
 from app.models.user import User
+from app.models.wechat_identity import WechatIdentity
 
 __all__ = [
     "AuthSession",
@@ -28,4 +29,5 @@ __all__ = [
     "Plugin",
     "PushOutbox",
     "User",
+    "WechatIdentity",
 ]

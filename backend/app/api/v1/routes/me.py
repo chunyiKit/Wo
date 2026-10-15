@@ -302,17 +302,21 @@ async def delete_avatar(
 async def get_avatar_raw(
     session: SessionDep,
     current_user: CurrentUserDep,
+    download: bool = False,
 ) -> Response:
     """返回头像原始字节（非信封）。URL 带 `?v=` 版本号，故可长期缓存。
 
     COS 后端：302 到 1 小时预签名 URL，客户端直接从对象存储拉全量（与回忆 /raw
     一致，避免经后端代发字节）。本地盘（dev/tests）回退为内联流。
+    小程序传 `download=true` 时始终经鉴权端点返回字节，避免带 Bearer 跨域跳转。
     """
     if current_user.avatar_storage_key is None:
         raise AppError(ErrorCode.NOT_FOUND, "尚未设置头像", status_code=404)
-    if isinstance(storage, PresignableStorage):
+    if not download and isinstance(storage, PresignableStorage):
         url = await storage.presigned_get_url(current_user.avatar_storage_key, ttl_seconds=3600)
-        return RedirectResponse(url, status_code=302)
+        return RedirectResponse(
+            url, status_code=302, headers={"Cache-Control": "private, no-store"}
+        )
     try:
         data = await storage.get(current_user.avatar_storage_key)
     except FileNotFoundError as exc:
@@ -320,5 +324,9 @@ async def get_avatar_raw(
     return Response(
         content=data,
         media_type=current_user.avatar_content_type or "application/octet-stream",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={
+            "Cache-Control": (
+                "private, no-store" if download else "private, max-age=31536000, immutable"
+            )
+        },
     )

@@ -81,10 +81,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     """Attach global handlers so all errors come out wrapped in the envelope."""
 
     @app.exception_handler(AppError)
-    async def _app_error(_: Request, exc: AppError) -> JSONResponse:
+    async def _app_error(request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body(exc.code, exc.message, exc.details),
+            headers={"Cache-Control": "no-store"}
+            if request.url.path.startswith("/api/v1/auth/")
+            else {},
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -110,6 +113,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            headers={"Cache-Control": "no-store"}
+            if request.url.path.startswith("/api/v1/auth/")
+            else {},
             content=_error_body(
                 ErrorCode.VALIDATION_ERROR,
                 "请求参数错误",

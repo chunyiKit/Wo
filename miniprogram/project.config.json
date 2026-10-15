@@ -1,0 +1,48 @@
+{
+  "description": "窝 · 微信小程序首版（未发布）",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "wx0619d005f568430c",
+  "projectname": "wo-miniprogram",
+  "setting": {
+    "es6": true,
+    "minified": true,
+    "urlCheck": true,
+    "useCompilerPlugins": [
+      "typescript"
+    ]
+  },
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "tools"
+      },
+      {
+        "type": "file",
+        "value": "README.md"
+      },
+      {
+        "type": "file",
+        "value": "package.json"
+      },
+      {
+        "type": "file",
+        "value": "tsconfig.json"
+      },
+      {
+        "type": "file",
+        "value": "types.d.ts"
+      },
+      {
+        "type": "file",
+        "value": "package-lock.json"
+      }
+    ]
+  },
+  "libVersion": "2.26.0"
+}

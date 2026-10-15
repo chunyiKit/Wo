@@ -1,0 +1,1 @@
+<view class="avatar"><image wx:if="{{url && !failed}}" src="{{url}}" mode="aspectFill" binderror="imageError"/><text wx:else>{{emoji || '👤'}}</text></view>
