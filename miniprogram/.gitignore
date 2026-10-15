@@ -1,0 +1,4 @@
+node_modules/
+project.private.config.json
+*.js
+*.js.map

@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "回忆",
+  "enablePullDownRefresh": true,
+  "usingComponents": { "member-avatar": "../../components/member-avatar/index" }
+}

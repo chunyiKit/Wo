@@ -1,0 +1,1 @@
+{"name":"wo-miniprogram","private":true,"version":"0.1.0","scripts":{"test":"node --test tests/*.test.cjs","check":"tsc --noEmit","check:package":"node tools/check-package.cjs"},"devDependencies":{"typescript":"6.0.3"}}

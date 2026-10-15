@@ -98,7 +98,9 @@ async def read_background(
     session: SessionDep,
     current_user: CurrentUserDep,
     v: int | None = None,
+    download: bool = False,
 ) -> Response:
+    """鉴权读取家庭背景；小程序传 `download=true` 可避免 COS 跨域跳转。"""
     await require_membership(session, current_user.id, family_id)
     family = await session.get(Family, family_id)
     if (
@@ -108,7 +110,7 @@ async def read_background(
     ):
         raise AppError(ErrorCode.NOT_FOUND, "背景图片不存在", status_code=404)
     storage = storage_module.storage
-    if isinstance(storage, PresignableStorage):
+    if not download and isinstance(storage, PresignableStorage):
         url = await storage.presigned_get_url(family.background_storage_key, ttl_seconds=3600)
         return RedirectResponse(
             url, status_code=302, headers={"Cache-Control": "private, no-store"}
@@ -121,7 +123,10 @@ async def read_background(
         data,
         media_type=family.background_content_type,
         headers={
-            "Cache-Control": "private, max-age=31536000, immutable" if v is not None else "no-store"
+            "Cache-Control": (
+                "private, no-store" if download or v is None
+                else "private, max-age=31536000, immutable"
+            )
         },
     )
 

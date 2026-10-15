@@ -25,6 +25,7 @@ from app.api.v1.routes import (
     notifications,
     pets,
     plugins,
+    wechat,
 )
 from app.plugins.registry import registry
 
@@ -33,6 +34,7 @@ api_router = APIRouter(prefix="/api/v1")
 # Platform routes.
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(wechat.router)
 api_router.include_router(me.router)
 api_router.include_router(families.router)
 api_router.include_router(members.router)

@@ -6,6 +6,10 @@
 这里是 **Flutter + Material 3** 的 Android 端骨架工程：完整的设计系统、导航
 栈、底 Tab、所有主要页面都已就位。原始 Web 设计稿在 [`design/`](./design/index.html)。
 
+## 微信小程序首版
+
+新增独立的 [原生小程序客户端](miniprogram/README.md)，复用后端身份、家庭权限、记账、家务与回忆接口。接入、运行与限制见 [说明](miniprogram/README.md)，本次测试及布局截图见 [验收记录](docs/wechat-v1-validation.md)。目前待真实微信及可信 HTTPS 联调，未发布。
+
 ## 项目结构
 
 ```

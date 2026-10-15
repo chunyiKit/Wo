@@ -1,0 +1,35 @@
+<view class="screen {{theme}}">
+  <view class="row page-heading"><view class="grow"><view class="eyebrow">OUR LITTLE MOMENTS</view><view class="title">把日子，慢慢收藏</view><view class="subtitle">照片留住的，是一起生活的温度。</view></view></view>
+  <view wx:if="{{!editor}}" class="row actions"><button class="button grow" bindtap="startEditor">{{draft ? '继续本机草稿' : '＋ 留下一段回忆'}}</button></view>
+  <view wx:if="{{draft ? !editor : false}}" class="draft-notice">有一份仅存本机的草稿，等待你手动继续保存。</view>
+  <view wx:if="{{editor ? !!draft : false}}" class="card editor">
+    <view class="row"><view class="grow editor-title">{{restored ? '继续这段回忆' : '留下一段回忆'}}</view><button class="text-button" disabled="{{saving || picking}}" bindtap="closeEditor">收起</button></view>
+    <input class="field" placeholder="给这一天起个名字" value="{{draft.title}}" maxlength="80" disabled="{{saving || picking}}" data-field="title" bindinput="updateField" />
+    <textarea class="field body-input" placeholder="记下当时的小事与心情……" value="{{draft.body}}" maxlength="2000" disabled="{{saving || picking}}" data-field="body" bindinput="updateField" />
+    <picker mode="date" value="{{draft.eventDate}}" disabled="{{saving || picking}}" data-field="eventDate" bindchange="updateField"><view class="field row"><text class="grow">发生日期</text><text>{{draft.eventDate}} ›</text></view></picker>
+    <picker range="{{visibilityLabels}}" value="{{visibilityIndex}}" disabled="{{saving || picking}}" bindchange="updateVisibility"><view class="field row"><text class="grow">可见范围</text><text>{{visibilityLabels[visibilityIndex]}} ›</text></view></picker>
+    <view class="muted privacy-note">草稿默认仅自己可见。选择「分享给家庭」后，只有全部图片保存完成才会分享。</view>
+    <view class="photo-grid draft-grid">
+      <view wx:for="{{draft.attachments}}" wx:key="id" class="photo-slot"><image class="photo" src="{{item.path}}" mode="aspectFill"/><button class="remove-image" data-id="{{item.id}}" disabled="{{saving || picking || item.uploaded}}" bindtap="removeImage">{{item.uploaded ? '已保存' : '×'}}</button></view>
+      <button wx:if="{{draft.attachments.length &lt; 9}}" class="add-image" disabled="{{saving || picking}}" bindtap="chooseImages">{{picking ? '暂存中…' : '＋ 选图片'}}<text class="image-count">{{draft.attachments.length}} / 9</text></button>
+    </view>
+    <view class="muted privacy-note">图片先压缩并暂存本机，每张不超过 10 MB。上传仅在你点击保存时开始。</view>
+    <view wx:if="{{saveError}}" class="error" role="alert">{{saveError}}</view>
+    <button class="button" disabled="{{saving || picking}}" loading="{{saving}}" bindtap="save">{{saving ? '正在保存…' : (draft.memoryId ? '继续保存' : '保存回忆')}}</button>
+    <button class="text-button discard" disabled="{{saving || picking}}" bindtap="discard">清理本机草稿</button>
+  </view>
+  <view wx:if="{{loaded ? false : loading}}" class="empty">正在翻开回忆…</view>
+  <view wx:if="{{error}}" class="card empty"><view class="error">{{error}}</view><button class="secondary" bindtap="load">重新加载</button></view>
+  <view wx:if="{{refreshError}}" class="error refresh-error">刷新未完成，仍展示上次内容。{{refreshError}}</view>
+  <view wx:if="{{loaded ? !items.length : false}}" class="card empty"><view class="empty-icon">✧</view><view class="editor-title">故事从这一刻开始</view><view class="subtitle">一顿晚饭、一次散步，都值得被记住。</view></view>
+  <view class="timeline" wx:if="{{items.length}}">
+    <view wx:for="{{items}}" wx:key="id" class="moment"><view class="date-dot"></view><view class="date-label">{{item.event_date}}</view><view class="card memory-card">
+      <view class="row author-row"><member-avatar url="{{item.author_avatar_url}}" emoji="{{item.author_emoji}}" name="{{item.author_name}}"/><view class="grow author-name">{{item.author_name || '家庭成员'}}</view><text class="visibility-tag">{{item.visibility === 'private' ? '仅自己' : '家庭'}}</text></view>
+      <view class="moment-title">{{item.title}}</view><view wx:if="{{item.body}}" class="moment-body">{{item.body}}</view>
+      <view wx:if="{{item.media.length}}" class="photo-grid"><view wx:for="{{item.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-memory="{{item.id}}" data-media="{{media.id}}" bindtap="previewImage"><image wx:if="{{media.local}}" class="photo" src="{{media.local}}" mode="aspectFill"/><view wx:else class="photo-placeholder">{{previewingId === item.id ? '正在加载…' : '点击查看图片'}}</view></view></view>
+      <view wx:if="{{previewingId === item.id}}" class="muted image-status">正在打开这段回忆的图片…</view>
+      <view wx:if="{{imageErrorMemory === item.id}}" class="error">{{imageError}}</view>
+    </view></view>
+  </view>
+  <view wx:if="{{items.length}}" class="muted list-footnote">当前展示最近 {{items.length}} 条回忆 · 下拉刷新</view>
+</view>

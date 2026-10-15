@@ -1,0 +1,1 @@
+Component({properties:{url:{type:String,value:''},emoji:{type:String,value:'👤'}},data:{failed:false},observers:{url(){this.setData({failed:false});}},methods:{imageError(){this.setData({failed:true});}}});

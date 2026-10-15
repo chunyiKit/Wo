@@ -468,6 +468,7 @@ async def get_media_raw(
     media_id: UUID,
     session: SessionDep,
     current_user: CurrentUserDep,
+    download: bool = False,
 ) -> Response:
     """Serve a memory's photo or video bytes.
 
@@ -480,6 +481,8 @@ async def get_media_raw(
     `CachedNetworkImage` and other dart:io clients follow the 302 transparently
     and cache against the original `/raw` URL, so the App doesn't need to
     know that COS is in the loop.
+
+    小程序传 `download=true` 时经鉴权端点返回字节，避免带 Bearer 跨域跳转。
     """
     await require_membership(session, current_user.id, family_id)
     media = await session.get(MemoryMedia, media_id)
@@ -489,15 +492,21 @@ async def get_media_raw(
     if not visible_to(memory, current_user.id):
         raise AppError(ErrorCode.NOT_FOUND, "媒体不存在", status_code=404)
 
-    if isinstance(storage, PresignableStorage):
+    if not download and isinstance(storage, PresignableStorage):
         url = await storage.presigned_get_url(media.storage_key, ttl_seconds=3600)
-        return RedirectResponse(url, status_code=302)
+        return RedirectResponse(
+            url, status_code=302, headers={"Cache-Control": "private, no-store"}
+        )
 
     try:
         data = await storage.get(media.storage_key)
     except FileNotFoundError as exc:
         raise AppError(ErrorCode.INTERNAL, "媒体文件丢失", status_code=500) from exc
-    return Response(content=data, media_type=media.content_type)
+    return Response(
+        content=data,
+        media_type=media.content_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 # ---- Comments -------------------------------------------------------------
