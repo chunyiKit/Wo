@@ -1,0 +1,102 @@
+<view class="page">
+
+  <view class="header">
+    <view class="family">{{familyName || 'Wo'}}</view>
+    <view class="sub" wx:if="{{memberCount > 0}}">{{memberCount}} 位成员 · {{cards.length}} 个插件</view>
+  </view>
+
+  <!-- 首屏加载 / 首屏失败重试 -->
+  <view wx:if="{{loading}}" class="state">
+    <view class="state-title">正在加载…</view>
+  </view>
+
+  <view wx:elif="{{error}}" class="state">
+    <view class="state-title">{{error}}</view>
+    <view class="btn" bindtap="onRetry">重试</view>
+  </view>
+
+  <!-- 家庭里还没装任何插件 -->
+  <view wx:elif="{{empty}}" class="state">
+    <view class="state-empty-icon">🧩</view>
+    <view class="state-title">还没有安装插件</view>
+    <view class="state-hint">到 Wo App 的插件市场安装后，这里会自动出现</view>
+  </view>
+
+  <view wx:else class="grid">
+    <view
+      wx:for="{{cards}}"
+      wx:key="id"
+      wx:for-index="ci"
+      class="card {{item.compact ? 'card--compact' : ''}} {{item.photos.length ? 'card--photo' : ''}}"
+      style="background:{{item.bg}}; grid-column:span {{item.cw}}; grid-row:span {{item.ch}};"
+      data-index="{{ci}}"
+      bindtap="onCardTap"
+    >
+      <!--
+        有照片的卡：图片铺满整卡，文字压在底部渐变上。
+        没做成「左文右图」是因为小程序 4 列网格里 2×2 的卡只有 343×368rpx，
+        左右一分，文字和图片都剩不到一半，两边都难看。铺满 + 渐变在任何
+        cw/ch 下都成立，不必为每种尺寸单独调。
+      -->
+      <block wx:if="{{!item.compact && item.photos.length}}">
+        <swiper
+          class="cover"
+          autoplay="{{item.photos.length > 1}}"
+          circular="{{item.photos.length > 1}}"
+          interval="4000"
+          duration="600"
+        >
+          <swiper-item wx:for="{{item.photos}}" wx:for-item="photo" wx:key="id">
+            <image
+              class="cover-img"
+              src="{{photo.url}}"
+              mode="aspectFill"
+              data-index="{{ci}}"
+              binderror="onCoverError"
+            />
+          </swiper-item>
+        </swiper>
+
+        <view class="cover-icon">{{item.icon}}</view>
+        <view class="cover-scrim"></view>
+        <view class="cover-body">
+          <view class="cover-name">{{item.name}}</view>
+          <view class="cover-primary">{{item.primary}}</view>
+          <view
+            wx:if="{{item.secondary}}"
+            class="cover-secondary {{item.secondaryBold ? 'secondary--bold' : ''}}"
+          >{{item.secondary}}</view>
+        </view>
+        <view wx:if="{{!item.available}}" class="unavailable unavailable--photo">未开放</view>
+      </block>
+
+      <!-- 矮卡（ch<=1）：横向，只放 primary + secondary -->
+      <block wx:elif="{{item.compact}}">
+        <view class="icon icon--sm">{{item.icon}}</view>
+        <view class="compact-text">
+          <view class="compact-primary">{{item.primary}}</view>
+          <view class="compact-secondary" style="color:{{item.secondaryColor}}">
+            {{item.secondary || item.name}}
+          </view>
+        </view>
+      </block>
+
+      <!-- 常规卡：图标 → 插件名 → primary → secondary -->
+      <block wx:else>
+        <view class="icon">{{item.icon}}</view>
+        <view class="spacer"></view>
+        <view class="name">{{item.name}}</view>
+        <view class="primary {{item.isMoney ? 'primary--money' : ''}}">{{item.primary}}</view>
+        <view
+          wx:if="{{item.secondary}}"
+          class="secondary {{item.secondaryBold ? 'secondary--bold' : ''}}"
+          style="color:{{item.secondaryColor}}"
+        >{{item.secondary}}</view>
+      </block>
+
+      <!-- 后端已安装但小程序还没做分包：明确告诉用户，避免点了没反应 -->
+      <view wx:if="{{!item.available && !item.photos.length}}" class="unavailable">未开放</view>
+    </view>
+  </view>
+
+</view>

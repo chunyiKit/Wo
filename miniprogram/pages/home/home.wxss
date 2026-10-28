@@ -1,0 +1,260 @@
+/* 首页卡片墙。配色来自 utils/theme.js（与 App WoTokens 浅色板一致）。 */
+
+.page {
+  min-height: 100vh;
+  padding: 24rpx 24rpx 48rpx;
+  box-sizing: border-box;
+  background: #f8f1e7;
+}
+
+/* ---- 顶部：家庭名 + 概览 ---- */
+.header {
+  padding: 8rpx 8rpx 24rpx;
+}
+
+.family {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #302219;
+  letter-spacing: -0.5rpx;
+}
+
+.sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #736052;
+}
+
+/* ---- 卡片网格：4 列，行高固定，卡片按 cw/ch 跨格 ---- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 184rpx;
+  gap: 16rpx;
+}
+
+.card {
+  position: relative;
+  box-sizing: border-box;
+  padding: 24rpx;
+  border-radius: 28rpx;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2rpx 4rpx rgba(42, 30, 20, 0.04), 0 12rpx 40rpx rgba(42, 30, 20, 0.06);
+}
+
+/* 矮卡：横向排布，内容垂直居中 */
+.card--compact {
+  flex-direction: row;
+  align-items: center;
+  padding: 16rpx 20rpx;
+}
+
+/* ---- 封面卡：图片铺满整卡，文字压在底部渐变上 ---- */
+
+/* 卡片自身不留内边距，让 swiper 顶到圆角边缘；文字的内边距交给 .cover-body */
+.card--photo {
+  padding: 0;
+  /* 图片卡上的白字需要更实的底：阴影保证在浅色照片上也读得清 */
+  color: #fff;
+}
+
+.cover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+}
+
+.cover-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #e8dccd;
+}
+
+/* 暖棕渐变而不是纯黑：和 App 的暖调一致，也不会把照片压死 */
+.cover-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 68%;
+  background: linear-gradient(
+    to top,
+    rgba(38, 26, 18, 0.82) 0%,
+    rgba(38, 26, 18, 0.42) 46%,
+    rgba(38, 26, 18, 0) 100%
+  );
+  pointer-events: none;
+}
+
+/* 插件 emoji 放右上角：卡片上没有别的东西和它抢位置 */
+.cover-icon {
+  position: absolute;
+  top: 20rpx;
+  right: 22rpx;
+  font-size: 32rpx;
+  line-height: 1;
+  text-shadow: 0 2rpx 8rpx rgba(20, 12, 8, 0.35);
+}
+
+.cover-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20rpx 22rpx 22rpx;
+}
+
+.cover-name {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.cover-primary {
+  margin-top: 4rpx;
+  font-size: 32rpx;
+  color: #fff;
+  letter-spacing: -0.3rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2rpx 8rpx rgba(20, 12, 8, 0.3);
+}
+
+.cover-secondary {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.82);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 图片卡上的「未开放」挪到左上：右下角被文字占了。
+   写成双类名是为了压过基础规则里的 right/bottom（同文件内顺序会变）。 */
+.unavailable.unavailable--photo {
+  top: 12rpx;
+  right: auto;
+  bottom: auto;
+  left: 12rpx;
+}
+
+.icon {
+  font-size: 44rpx;
+  line-height: 1.1;
+}
+
+.icon--sm {
+  font-size: 34rpx;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+}
+
+.spacer {
+  flex: 1;
+  min-height: 8rpx;
+}
+
+.name {
+  font-size: 24rpx;
+  color: #736052;
+}
+
+.primary {
+  margin-top: 4rpx;
+  font-size: 34rpx;
+  color: #302219;
+  letter-spacing: -0.4rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 记账金额：App 里用更大字号突出 */
+.primary--money {
+  font-size: 56rpx;
+}
+
+.secondary {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secondary--bold {
+  font-weight: 700;
+}
+
+/* ---- 矮卡文字区 ---- */
+.compact-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.compact-primary {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #302219;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-secondary {
+  margin-top: 2rpx;
+  font-size: 22rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 未开放标记 ---- */
+.unavailable {
+  position: absolute;
+  right: 12rpx;
+  bottom: 12rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(48, 34, 25, 0.45);
+  color: #fff;
+  font-size: 18rpx;
+}
+
+/* ---- 空态 / 错误态 ---- */
+.state {
+  padding: 120rpx 32rpx;
+  text-align: center;
+}
+
+.state-empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 16rpx;
+}
+
+.state-title {
+  font-size: 30rpx;
+  color: #302219;
+}
+
+.state-hint {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #7d6655;
+}
+
+.btn {
+  display: inline-block;
+  margin-top: 24rpx;
+  padding: 16rpx 48rpx;
+  border-radius: 999rpx;
+  background: #a85d2d;
+  color: #fff;
+  font-size: 28rpx;
+}

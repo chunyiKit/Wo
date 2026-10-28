@@ -1,0 +1,127 @@
+.page {
+  min-height: 100vh;
+  padding-top: 24rpx;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 160rpx;
+}
+
+.retry {
+  width: 240rpx;
+  margin-top: 32rpx;
+}
+
+/* ---- 身份卡片 ---- */
+.profile {
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52rpx;
+}
+
+.who {
+  flex: 1;
+  margin-left: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: 36rpx;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sub {
+  font-size: 26rpx;
+}
+
+.badge {
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  background: #f0ede8;
+  color: var(--ink-3);
+}
+
+.badge.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- 家庭卡片 ---- */
+.family {
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+}
+
+.family-emoji {
+  font-size: 56rpx;
+  margin-right: 20rpx;
+}
+
+.family-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.family-name {
+  font-size: 34rpx;
+  color: var(--ink);
+}
+
+/* ---- 操作区 ---- */
+.actions {
+  margin: 24rpx 32rpx 0;
+}
+
+.actions > view {
+  margin-bottom: 20rpx;
+}
+
+.foot {
+  display: block;
+  text-align: center;
+  font-size: 24rpx;
+  margin-top: 40rpx;
+}
+
+/* 真实头像：尺寸同 emoji 版，但不铺底色、不需要 flex 居中 */
+.avatar-photo {
+  display: block;
+  background: var(--line);
+  flex: none;
+}
+
+/* 隐私指引入口：审核会专门找这个，位置固定在操作区下方 */
+.privacy-entry {
+  display: block;
+  margin-top: 8rpx;
+  padding: 16rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: var(--accent);
+}
+
+/* 注销入口：要找得到，但不该比「退出登录」更显眼 —— 所以小字 + 弱化色 */
+.delete-entry {
+  display: block;
+  padding: 16rpx 0 8rpx;
+  text-align: center;
+  font-size: 25rpx;
+  color: #b9a99b;
+}

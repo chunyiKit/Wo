@@ -1,0 +1,59 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="center muted">加载中…</view>
+
+  <view wx:elif="{{error}}" class="center">
+    <text class="muted">{{error}}</text>
+    <view class="btn-ghost retry" bindtap="onRetry">重试</view>
+  </view>
+
+  <block wx:else>
+    <!-- 身份卡片 -->
+    <view class="card profile">
+      <!-- 有真实头像就显示真实头像（AGENTS.md 约束），没有才回退 emoji -->
+      <image
+        wx:if="{{myAvatar}}"
+        class="avatar avatar-photo"
+        src="{{myAvatar}}"
+        mode="aspectFill"
+        binderror="onAvatarError"
+      />
+      <view wx:else class="avatar">{{user.avatar_emoji || '👤'}}</view>
+      <view class="who">
+        <text class="name">{{user.display_name}}</text>
+        <text class="muted sub">@{{user.username}}</text>
+      </view>
+      <view class="badge {{bound ? 'on' : ''}}">
+        {{bound ? '微信已绑定' : '微信未绑定'}}
+      </view>
+    </view>
+
+    <!-- 家庭卡片：这就是「数据互通」的证明 -->
+    <view class="card">
+      <text class="label">当前家庭</text>
+      <view wx:if="{{family}}" class="family">
+        <text class="family-emoji">{{family.emoji}}</text>
+        <view class="family-info">
+          <text class="family-name">{{family.name}}</text>
+          <text class="muted sub">
+            {{family.member_count}} 位成员 · 共 {{familyCount}} 个家庭
+          </text>
+        </view>
+      </view>
+      <view wx:else class="muted">还没有加入家庭，去 App 里创建或加入一个</view>
+    </view>
+
+    <view class="actions">
+      <view wx:if="{{bound}}" class="btn-danger-text" bindtap="onUnbind">解绑微信</view>
+      <view class="btn-ghost" bindtap="onLogout">退出登录</view>
+    </view>
+
+    <!-- 提审合规：隐私指引必须是固定可访问的入口，不能藏在弹窗里 -->
+    <view class="privacy-entry" bindtap="openPrivacy">用户隐私保护指引</view>
+
+    <!-- 合规要求：注销入口要找得到（微信 3.4.1 + PIPL 第 47 条）。
+         刻意放在最底部并用小字 —— 找得到，但不诱导。 -->
+    <view class="delete-entry" bindtap="goDeleteAccount">注销账号</view>
+
+    <text class="foot muted">数据和 Wo App 实时互通</text>
+  </block>
+</view>
