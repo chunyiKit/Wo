@@ -123,6 +123,7 @@ class BlobStat:
     size_bytes: int
     content_type: str
     head: bytes
+    etag: str | None = None
 
 
 @runtime_checkable
@@ -143,6 +144,8 @@ class DirectUploadStorage(Protocol):
     ) -> PresignedPost: ...
 
     async def stat(self, key: str) -> BlobStat | None: ...
+
+    async def copy(self, source_key: str, dest_key: str, *, etag: str | None) -> None: ...
 
 
 class LocalStorage:
@@ -376,6 +379,19 @@ class COSStorage:
             size_bytes=size,
             content_type=header("content-type"),
             head=head[:_STAT_HEAD_BYTES],
+            etag=header("etag") or None,
+        )
+
+    async def copy(self, source_key: str, dest_key: str, *, etag: str | None) -> None:
+        """在 COS 内复制到客户端没有写票据的最终对象，固定已校验的源内容。"""
+        if not etag:
+            raise ValueError("Cannot finalize a direct upload without a verified ETag")
+        self._client.copy_object(
+            Bucket=self._bucket,
+            Key=dest_key,
+            CopySource={"Bucket": self._bucket, "Region": self._region, "Key": source_key},
+            ACL="private",
+            CopySourceIfMatch=etag,
         )
 
 

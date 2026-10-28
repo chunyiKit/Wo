@@ -19,6 +19,8 @@ from app.models.membership import INVITABLE_ROLES, Membership
 from app.models.pet import Pet
 from app.models.user import User
 from app.services import notification as notification_service
+from app.services.auth import lock_active_user
+from app.services.membership import lock_family_memberships
 
 _ROLE_LABELS: dict[str, str] = {
     "owner": "主理人",
@@ -38,6 +40,7 @@ async def create_family(
     Also sets `creator.current_family_id` if it was unset, so a brand-new
     user lands inside their newly-created family.
     """
+    creator = await lock_active_user(session, creator.id)
     family = Family.model_validate(payload)
     session.add(family)
     await session.flush()  # populate family.id without committing yet
@@ -184,6 +187,8 @@ async def leave_family(
     user's current family, switch to another joined family (oldest first) or
     clear it. Remaining members are notified. Atomic.
     """
+    user = await lock_active_user(session, user.id)
+    await lock_family_memberships(session, family_id)
     membership = await require_membership(session, user.id, family_id)
     if membership.role == "owner":
         raise AppError(
@@ -243,6 +248,8 @@ async def update_member_role(
     `transfer_ownership`. Target role is limited to the invitable set, so no
     one can be promoted to owner through this path.
     """
+    requester = await lock_active_user(session, requester.id)
+    await lock_family_memberships(session, family_id)
     requester_m = await require_membership(session, requester.id, family_id)
     require_admin(requester_m)
 
@@ -288,6 +295,8 @@ async def transfer_ownership(
 ) -> None:
     """Hand ownership to another active member. Only the current owner may do
     this. The previous owner is demoted to admin. Atomic."""
+    requester = await lock_active_user(session, requester.id)
+    await lock_family_memberships(session, family_id)
     requester_m = await require_membership(session, requester.id, family_id)
     require_role(requester_m, "owner")
 

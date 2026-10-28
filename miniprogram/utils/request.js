@@ -37,142 +37,85 @@ function buildError(res) {
   return error;
 }
 
-function authHeader() {
-  const token = wx.getStorageSync('token');
-  return token ? { Authorization: 'Bearer ' + token } : {};
-}
-
-/**
- * 发一个请求，成功 resolve `data`。
- * @param {object} o  {url, method, data, header, timeout}
- */
-function request(o) {
-  const url = o.url.startsWith('/') ? o.url : '/' + o.url;
-  return new Promise((resolve, reject) => {
-    wx.request({
-      url: baseUrl + API_PREFIX + url,
-      method: o.method || 'GET',
-      data: o.data,
-      timeout: o.timeout || TIMEOUT,
-      header: Object.assign(
-        { 'Content-Type': 'application/json', Accept: 'application/json' },
-        authHeader(),
-        o.header || {}
-      ),
-      success(res) {
-        const body = res.data;
-        if (body && body.success === true) {
-          resolve(body.data);
-          return;
-        }
-        const error = buildError(res);
-        if (error.statusCode === 401 && error.details && error.details.session_invalid) {
-          if (typeof onSessionInvalid === 'function') onSessionInvalid();
-        }
-        reject(error);
-      },
-      fail(err) {
-        const error = new Error('网络连接失败，请检查网络后重试');
-        error.code = 'NETWORK_ERROR';
-        error.raw = err;
-        reject(error);
-      },
-    });
+/** 丢弃已换号的登录响应时，仅撤销该响应新签发的会话。 */
+function discardLoginToken(url, body) {
+  const token = body && body.data && body.data.token;
+  if (!url.startsWith('/auth/') || !token) return;
+  wx.request({
+    url: baseUrl + API_PREFIX + '/auth/logout', method: 'POST',
+    header: { Authorization: 'Bearer ' + token },
+    timeout: TIMEOUT,
+    fail() {},
   });
 }
 
-/**
- * 同上，但额外带回信封里的 `meta`（分页游标 / 总数）。
- * 分页接口用这个；普通接口用 request。
- */
-function requestWithMeta(o) {
+/** 三条请求通道共用会话检查、信封解析与失效处理。 */
+function send(o, withMeta, isUpload) {
+  const { snapshot, isCurrent, staleSessionError } = require('./session');
+  const scope = o.sessionScope || snapshot();
   const url = o.url.startsWith('/') ? o.url : '/' + o.url;
+  const header = Object.assign(
+    isUpload ? { Accept: 'application/json' }
+      : { 'Content-Type': 'application/json', Accept: 'application/json' },
+    scope.token ? { Authorization: 'Bearer ' + scope.token } : {},
+    o.header || {}
+  );
   return new Promise((resolve, reject) => {
-    wx.request({
+    if (!isCurrent(scope)) {
+      reject(staleSessionError());
+      return;
+    }
+    const callbacks = {
       url: baseUrl + API_PREFIX + url,
-      method: o.method || 'GET',
-      data: o.data,
-      timeout: o.timeout || TIMEOUT,
-      header: Object.assign(
-        { 'Content-Type': 'application/json', Accept: 'application/json' },
-        authHeader(),
-        o.header || {}
-      ),
+      header,
+      timeout: o.timeout || (isUpload ? UPLOAD_TIMEOUT : TIMEOUT),
       success(res) {
-        const body = res.data;
-        if (body && body.success === true) {
-          resolve({ data: body.data, meta: body.meta || null });
-          return;
-        }
-        const error = buildError(res);
-        if (error.statusCode === 401 && error.details && error.details.session_invalid) {
-          if (typeof onSessionInvalid === 'function') onSessionInvalid();
-        }
-        reject(error);
-      },
-      fail(err) {
-        const error = new Error('网络连接失败，请检查网络后重试');
-        error.code = 'NETWORK_ERROR';
-        error.raw = err;
-        reject(error);
-      },
-    });
-  });
-}
-
-/**
- * 上传一个文件（multipart/form-data），成功 resolve `data`。
- *
- * 注意**不要**手动设 Content-Type：multipart 需要带 boundary，微信会自动填。
- *
- * @param {object} o
- *   {url, filePath, name, formData, timeout, onProgress}
- *   onProgress 收到 `{progress}`（0-100），用于大视频的进度提示。
- */
-function upload(o) {
-  const url = o.url.startsWith('/') ? o.url : '/' + o.url;
-  return new Promise((resolve, reject) => {
-    const task = wx.uploadFile({
-      url: baseUrl + API_PREFIX + url,
-      filePath: o.filePath,
-      name: o.name || 'file',
-      formData: o.formData || {},
-      timeout: o.timeout || UPLOAD_TIMEOUT,
-      // 刻意不设 Content-Type：multipart 的 boundary 由微信生成。
-      header: Object.assign({ Accept: 'application/json' }, authHeader(), o.header || {}),
-      success(res) {
-        // uploadFile 的响应体是字符串，不像 wx.request 会自动按 JSON 解析。
         let body = res.data;
-        if (typeof body === 'string') {
-          try {
-            body = JSON.parse(body);
-          } catch (e) {
-            body = null;
-          }
+        if (isUpload && typeof body === 'string') {
+          try { body = JSON.parse(body); } catch (e) { body = null; }
+        }
+        if (!isCurrent(scope)) {
+          discardLoginToken(url, body);
+          reject(staleSessionError());
+          return;
         }
         if (body && body.success === true) {
-          resolve(body.data);
+          resolve(withMeta ? { data: body.data, meta: body.meta || null } : body.data);
           return;
         }
         const error = buildError({ data: body, statusCode: res.statusCode });
-        if (error.statusCode === 401 && error.details && error.details.session_invalid) {
+        if (error.statusCode === 401 && error.details && error.details.session_invalid
+            && header.Authorization === 'Bearer ' + scope.token) {
           if (typeof onSessionInvalid === 'function') onSessionInvalid();
         }
         reject(error);
       },
       fail(err) {
-        const error = new Error('上传失败，请检查网络后重试');
+        if (!isCurrent(scope)) {
+          reject(staleSessionError());
+          return;
+        }
+        const error = new Error(isUpload ? '上传失败，请检查网络后重试' : '网络连接失败，请检查网络后重试');
         error.code = 'NETWORK_ERROR';
         error.raw = err;
         reject(error);
       },
-    });
-
-    // 返回值在个别运行环境里可能拿不到，拿不到就退化为「只有完成回调」。
+    };
+    if (!isUpload) {
+      wx.request(Object.assign(callbacks, { method: o.method || 'GET', data: o.data }));
+      return;
+    }
+    const task = wx.uploadFile(Object.assign(callbacks, {
+      filePath: o.filePath, name: o.name || 'file', formData: o.formData || {},
+    }));
     if (task && typeof task.onProgressUpdate === 'function' && typeof o.onProgress === 'function') {
-      task.onProgressUpdate((r) => o.onProgress(r || {}));
+      task.onProgressUpdate((r) => { if (isCurrent(scope)) o.onProgress(r || {}); });
     }
   });
 }
+
+function request(o) { return send(o, false, false); }
+function requestWithMeta(o) { return send(o, true, false); }
+function upload(o) { return send(o, false, true); }
 
 module.exports = { request, requestWithMeta, upload, setSessionInvalidHandler };

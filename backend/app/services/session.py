@@ -70,6 +70,7 @@ async def resolve_user_id(session: AsyncSession, raw_token: str) -> UUID | None:
             .join(User, User.id == AuthSession.user_id)
             .where(
                 AuthSession.token_hash == _hash_token(raw_token),
+                User.deleted_at.is_(None),
                 User.password_hash.is_not(None),
                 User.password_hash != "",
             )

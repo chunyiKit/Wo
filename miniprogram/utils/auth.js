@@ -8,20 +8,7 @@
 // code 是一次性的（5 分钟有效）。第 2 步消耗掉一个之后，第 3 步必须重新
 // wx.login() 取新 code，所以下面每次提交都现取，不做缓存。
 const { request } = require('./request');
-
-const TOKEN_KEY = 'token';
-
-function getToken() {
-  return wx.getStorageSync(TOKEN_KEY) || '';
-}
-
-function setToken(token) {
-  wx.setStorageSync(TOKEN_KEY, token);
-}
-
-function clearToken() {
-  wx.removeStorageSync(TOKEN_KEY);
-}
+const { getToken, setToken, clearToken, snapshot, assertCurrent, canSilentLogin } = require('./session');
 
 /** 取一个一次性的 wx.login code。 */
 function loginCode() {
@@ -43,8 +30,12 @@ function loginCode() {
  * 任何 Wo 账号，调用方应引导去绑定页。
  */
 async function silentLogin() {
+  const scope = snapshot();
   const code = await loginCode();
-  return request({ url: '/auth/wechat/login', method: 'POST', data: { code } });
+  assertCurrent(scope);
+  const res = await request({ url: '/auth/wechat/login', method: 'POST', data: { code } });
+  assertCurrent(scope);
+  return res;
 }
 
 /**
@@ -52,18 +43,23 @@ async function silentLogin() {
  * 返回 {user, token, is_new}。
  */
 async function bindWithPhone(phone, password) {
+  const scope = snapshot();
   const code = await loginCode();
-  return request({
+  assertCurrent(scope);
+  const res = await request({
     url: '/auth/wechat/bind',
     method: 'POST',
     data: { code, phone: (phone || '').trim(), password },
   });
+  assertCurrent(scope);
+  return res;
 }
 
 module.exports = {
   getToken,
   setToken,
   clearToken,
+  canSilentLogin,
   loginCode,
   silentLogin,
   bindWithPhone,

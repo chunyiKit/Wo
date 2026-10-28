@@ -356,6 +356,9 @@ async def test_author_avatar_url_surfaced_and_servable(
     """When the author uploaded a real avatar, the memory carries a member-avatar
     URL that any co-member can fetch; otherwise it's null (client uses emoji)."""
     fid = await _family_with_xiaolin(client)
+    # 共享种子用户可能已被其他头像测试更新；显式建立本用例的无头像前置条件。
+    cleared = await client.delete("/api/v1/me/avatar", headers=XIAOLIN)
+    assert cleared.status_code == 200, cleared.text
 
     # 小林 records a memory without an avatar → author_avatar_url is null.
     no_av = (

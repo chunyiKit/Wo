@@ -1,25 +1,9 @@
-"""账号注销 —— 按照「全部删除」的策略清除一个用户的全部痕迹。
+"""账号注销：清空账号身份，保留家庭历史内容并匿名展示提交者。
 
-合规依据
---------
-- 微信《小程序平台常见拒绝情形》**3.4.1**：「在用户注销账号后应相应删除相关数据」。
-- 《个人信息保护法》第 47 条：个人撤回同意的，处理者应当删除。
-
-删除范围（用户选择的最彻底一档）
---------------------------------
-身份数据清空 + 该用户创建的全部内容与上传的媒体一并删除，存储对象（照片/视频/
-头像）从 COS 移除。
-
-为什么保留 users 行（匿名化而非硬删）
--------------------------------------
-记账、宠物、回忆等历史记录的 `created_by` 外键指着这一行。硬删会让它们变孤儿
-（或触发意料之外的级联）。清空所有可识别字段后，这行**不再包含个人信息** ——
-即 PIPL 第 4 条定义的「匿名化」，保留它是合法的，也是业界通行做法。
-
-并发与事务
-----------
-整个注销在一个事务里。存储对象**必须等事务提交后再删**：先删对象再提交，
-一旦回滚就删错了，而且那还是不可逆的。
+回忆、留言、账目、聊天和附件不因作者注销而删除，原有可见范围不变。
+users 行与历史外键保留，用于维持权限及幂等；插件中的身份快照单独匿名化。
+注销者退出全部家庭，主理人自动移交；没有其他成员的家庭仍按现有规则解散。
+个人头像在事务提交后删除，避免回滚时误删仍在使用的头像。
 """
 
 from __future__ import annotations
@@ -42,12 +26,17 @@ from app.models.membership import Membership
 from app.models.notification import Notification
 from app.models.user import User
 from app.plugins.registry import registry
+from app.services import auth as auth_service
+from app.services.family_storage import family_storage_keys
+from app.services.membership import lock_family_memberships
 
 # 已注销账号的统一展示名。刻意不带任何原昵称痕迹。
 _ANON_NAME = "已注销用户"
 
 
-async def delete_account(session: AsyncSession, user: User, password: str) -> dict:
+async def delete_account(
+    session: AsyncSession, user: User, password: str, *, token: str | None = None
+) -> dict:
     """注销 `user`，返回结果统计。
 
     Raises:
@@ -59,6 +48,10 @@ async def delete_account(session: AsyncSession, user: User, password: str) -> di
     # 会话被盗后也能这么毁号。要求输入当前密码是零成本的（后端已有 hash）。
     # 先判「已注销」再校验密码：注销会清空 password_hash，若先校验密码，
     # 重复调用只会得到一个含义不清的 401，而不是「这个账号已经注销了」。
+    user = (
+        await auth_service.locked_user(session, user.id, token)
+        if token is not None else await auth_service.lock_user(session, user.id)
+    )
     if user.deleted_at is not None:
         raise AppError(ErrorCode.VALIDATION_ERROR, "该账号已注销", status_code=409)
     if not verify_password(password, user.password_hash):
@@ -68,12 +61,10 @@ async def delete_account(session: AsyncSession, user: User, password: str) -> di
     now = datetime.now(UTC)
     keys: list[str] = []
 
-    # ---- ② 各插件擦除自己的数据 -------------------------------------------
-    # 核心服务不知道每张表的形状 —— 17 个插件里谁持有用户数据，谁负责删。
-    # 钩子返回的是**待删对象 key**，不是删除动作本身（理由见模块 docstring）。
-    for hook in registry.erase_user_hooks():
-        with contextlib.suppress(Exception):
-            keys.extend((await hook(session, user.id)) or [])
+    # ---- ② 匿名化插件保存的身份快照，保留所有历史内容与附件 -----------------
+    # 失败必须回滚，不能留下账号已注销、聊天昵称却尚未清除的半成品。
+    for hook in registry.anonymize_user_hooks():
+        await hook(session, user.id)
 
     # ---- ③ 头像对象 -------------------------------------------------------
     if user.avatar_storage_key:
@@ -83,6 +74,7 @@ async def delete_account(session: AsyncSession, user: User, password: str) -> di
     # 现有 leave_family 禁止 owner 直接离开 —— 注销也不能绕开这个问题：
     # 一注销，全家的数据就没了主人（没人能转移、没人能解散）。
     stats = await _settle_families(session, user)
+    keys.extend(stats["storage_keys"])
 
     # ---- ⑤ 身份数据清空（匿名化） -----------------------------------------
     user.phone = None  # 释放手机号：这个号可以被重新注册
@@ -149,18 +141,28 @@ async def _settle_families(session: AsyncSession, user: User) -> dict:
 
     返回统计，供端点回传给客户端（用户有权知道自己删掉了什么）。
     """
-    memberships = (
+    family_ids = (
         await session.execute(
-            select(Membership).where(
-                Membership.user_id == user.id,
-                Membership.status == "active",
-            )
+            select(Membership.family_id)
+            .where(Membership.user_id == user.id)
+            .order_by(Membership.family_id)
         )
     ).scalars().all()
 
     left = transferred = dissolved = 0
+    keys: list[str] = []
 
-    for m in memberships:
+    for family_id in family_ids:
+        await lock_family_memberships(session, family_id)
+        # 等待家庭锁时角色可能已移交，必须重新读取，不能使用 ORM 里的旧角色。
+        m = (await session.execute(
+            select(Membership).where(
+                Membership.user_id == user.id, Membership.family_id == family_id,
+                Membership.status == "active",
+            ).execution_options(populate_existing=True)
+        )).scalar_one_or_none()
+        if m is None:
+            continue
         others = (
             await session.execute(
                 select(Membership)
@@ -170,6 +172,7 @@ async def _settle_families(session: AsyncSession, user: User) -> dict:
                     Membership.status == "active",
                 )
                 .order_by(Membership.joined_at)
+                .execution_options(populate_existing=True)
             )
         ).scalars().all()
 
@@ -187,7 +190,8 @@ async def _settle_families(session: AsyncSession, user: User) -> dict:
                 )
                 transferred += 1
             else:
-                # 独苗：这个家的一切都是他自己的内容，前面插件钩子已经删过。
+                # 无人接管的家庭仍按原有规则解散；有其他成员时始终保留家庭内容。
+                keys.extend(await family_storage_keys(session, m.family_id))
                 await session.execute(
                     delete(Membership).where(Membership.family_id == m.family_id)
                 )
@@ -198,4 +202,5 @@ async def _settle_families(session: AsyncSession, user: User) -> dict:
         await session.delete(m)
         left += 1
 
-    return {"left": left, "transferred": transferred, "dissolved": dissolved}
+    await session.execute(delete(Membership).where(Membership.user_id == user.id))
+    return {"left": left, "transferred": transferred, "dissolved": dissolved, "storage_keys": keys}

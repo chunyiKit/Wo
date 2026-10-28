@@ -13,7 +13,7 @@ from app.plugins.recipe.models import (
     RecipeTag,
 )
 from app.plugins.registry import PluginPreview
-from app.services.membership import MemberInfo, author_avatar_url
+from app.services.membership import MemberInfo, author_avatar_url, historical_member_info
 
 
 def build_cover_storage_key(family_id: UUID, recipe_id: UUID, ext: str) -> str:
@@ -32,7 +32,7 @@ def build_cover_url(family_id: UUID, recipe_id: UUID, version: int) -> str:
 def build_read(row: Recipe, members: dict[UUID, MemberInfo]) -> RecipeRead:
     """Serialize a row, injecting author display info + cover URL (immutable copy)."""
     read = RecipeRead.model_validate(row, from_attributes=True)
-    info = members.get(row.created_by) if row.created_by is not None else None
+    info = historical_member_info(members, row.created_by)
     cover_url = (
         build_cover_url(row.family_id, row.id, row.cover_version)
         if row.cover_storage_key is not None

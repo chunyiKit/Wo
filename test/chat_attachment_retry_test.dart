@@ -39,6 +39,16 @@ class MemoryStore implements ChatLocalStore {
   final attempts = <(String, String, String), int>{};
   final due = <(String, String, String), DateTime>{};
   final states = <(String, String), ChatSyncState>{};
+  final anonymizations = <(String, String, List<String>)>[];
+
+  @override
+  Future<void> anonymizeFormerSenders({
+    required String ownerUserId,
+    required String familyId,
+    required List<String> activeMemberIds,
+  }) async {
+    anonymizations.add((ownerUserId, familyId, activeMemberIds));
+  }
 
   @override
   Future<List<ChatAttachmentRetry>> pendingAttachments({
@@ -148,12 +158,18 @@ class FakeApi implements WoApi {
   @override
   String authToken = 'token1';
   final cursors = <String?>[];
+  List<String>? activeMemberIds;
   @override
   Map<String, String> get imageHeaders => {'Authorization': authToken};
   @override
   String chatImageUrl(ChatImage image) => 'https://example.test${image.url}';
   @override
-  Future<({List<ChatMessage> items, String? cursor})> chatMessages(
+  Future<
+      ({
+        List<ChatMessage> items,
+        String? cursor,
+        List<String>? activeMemberIds
+      })> chatMessages(
     String familyId, {
     DateTime? afterCreatedAt,
     String? afterId,
@@ -163,6 +179,7 @@ class FakeApi implements WoApi {
     return (
       items: afterId == null && familyId == 'f1' ? [message] : <ChatMessage>[],
       cursor: null,
+      activeMemberIds: activeMemberIds,
     );
   }
 
@@ -194,6 +211,45 @@ void main() {
     now = DateTime.utc(2026, 10, 1);
   });
   tearDown(() async => directory.delete(recursive: true));
+
+  test('空增量页仍同步历史身份，兼容不返回成员列表的旧服务端', () async {
+    store.states[('u1', 'f1')] =
+        ChatSyncState(afterCreatedAt: now, afterId: 'last');
+    final service = ChatSyncService(api: api, store: store);
+    await service.sync(ownerUserId: 'u1', familyId: 'f1');
+    expect(store.anonymizations, isEmpty);
+    api.activeMemberIds = ['u1', 'u3'];
+    await service.sync(ownerUserId: 'u1', familyId: 'f1');
+    expect(store.messages, isEmpty);
+    expect(store.anonymizations, hasLength(1));
+    expect(store.anonymizations.single.$1, 'u1');
+    expect(store.anonymizations.single.$2, 'f1');
+    expect(store.anonymizations.single.$3, ['u1', 'u3']);
+    expect(store.states[('u1', 'f1')]!.afterId, 'last');
+  });
+
+  test('匿名化历史身份不会清除消息内容和附件字段，且限定账号与家庭', () async {
+    final db = RecordingDatabase();
+    await ChatLocalStore.withDatabase(db).anonymizeFormerSenders(
+      ownerUserId: 'u1',
+      familyId: 'f1',
+      activeMemberIds: ['u1', 'u3'],
+    );
+    expect(db.last!.positionalArguments[1], {
+      'sender_name': '匿名用户',
+      'sender_emoji': '👤',
+      'sender_avatar_url': null,
+    });
+    expect(db.last!.namedArguments[#whereArgs], ['u1', 'f1', 'u1', 'u3', '匿名用户', '👤']);
+    expect(db.last!.namedArguments[#where], contains('server_id IS NOT NULL'));
+    final invalid = RecordingDatabase();
+    await ChatLocalStore.withDatabase(invalid).anonymizeFormerSenders(
+      ownerUserId: 'u1',
+      familyId: 'f1',
+      activeMemberIds: ['u3'],
+    );
+    expect(invalid.last, isNull);
+  });
 
   test('完整组合：挂起下载在五秒预算内结束，记录重试且游标已推进', () async {
     final dir = await Directory.systemTemp.createTemp('review-budget-');

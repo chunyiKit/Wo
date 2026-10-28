@@ -45,6 +45,7 @@ from app.plugins.memory.models import (
     MemoryUpdate,
 )
 from app.plugins.memory.service import (
+    build_direct_upload_key,
     build_read,
     build_storage_key,
     decode_cursor,
@@ -489,7 +490,11 @@ async def presign_media_upload(
         )
 
     media_id = payload.client_id or new_uuid7()
-    key = build_storage_key(family_id, memory_id, media_id, ext)
+    await _lock_client_id(session, media_id)
+    if await session.get(MemoryMedia, media_id) is not None:
+        # 重试可走普通上传恢复已提交结果；不能为已存在的媒体再签写入票据。
+        raise _client_id_conflict()
+    key = build_direct_upload_key(family_id, memory_id, current_user.id, media_id, ext)
     cap = settings.memory_video_max_bytes if kind == "video" else settings.max_upload_bytes
     ticket = await storage.presigned_post(
         key,
@@ -524,11 +529,10 @@ async def commit_media_upload(
 ) -> ApiResponse[MemoryMediaRead]:
     """Turn an object the client uploaded straight to COS into a media row (D3).
 
-    Three checks stand in for the byte-level validation the proxied upload path
-    does, in the order they get cheaper to explain:
+    Validate the user-scoped staging key, size and declared kind, then copy the
+    verified ETag to an independent final key before committing the media row.
 
-    1. `key` must be exactly the key this `media_id` was given — otherwise a
-       client could commit an object minted for another family or memory.
+    1. `key` must match this user, family, memory and media id.
     2. The object must exist and fit the same cap the proxied path enforces.
     3. Its leading bytes must not contradict the declared kind.
     """
@@ -542,7 +546,9 @@ async def commit_media_upload(
             "当前部署不支持直传，请走普通上传",
             status_code=501,
         )
-    expected_key = build_storage_key(family_id, memory_id, payload.media_id, ext)
+    expected_key = build_direct_upload_key(
+        family_id, memory_id, current_user.id, payload.media_id, ext
+    )
     if payload.key != expected_key:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
@@ -596,12 +602,16 @@ async def commit_media_upload(
         )
     ).scalar_one()
 
+    # 最终 key 每次提交独立生成，客户端拿到的票据只能改暂存对象。
+    # 即使旧票据被重放，也无法覆盖已提交的文件；复制在 COS 内完成，不中转视频。
+    final_key = build_storage_key(family_id, memory_id, new_uuid7(), ext)
+    await storage.copy(payload.key, final_key, etag=stat.etag)
     media = MemoryMedia(
         id=payload.media_id,
         memory_id=memory_id,
         family_id=family_id,
         kind=kind,
-        storage_key=payload.key,
+        storage_key=final_key,
         content_type=content_type,
         size_bytes=stat.size_bytes,
         width=payload.width if kind == "photo" else None,
@@ -615,6 +625,8 @@ async def commit_media_upload(
     session.add(memory)
     await session.commit()
     await session.refresh(media)
+    with contextlib.suppress(Exception):
+        await storage.delete(payload.key)
     return ok(to_media_read(media))
 
 

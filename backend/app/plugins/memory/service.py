@@ -10,7 +10,7 @@ import base64
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, func
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -26,7 +26,7 @@ from app.plugins.memory.models import (
     MemoryRead,
 )
 from app.plugins.registry import PluginPreview
-from app.services.membership import MemberInfo
+from app.services.membership import MemberInfo, historical_member_info
 from app.services.membership import author_avatar_url as _author_avatar_url
 from app.services.membership import member_info_map as member_map
 
@@ -74,6 +74,13 @@ def validate_media(data: bytes) -> tuple[str, str, str, int | None, int | None]:
 def build_storage_key(family_id: UUID, memory_id: UUID, media_id: UUID, ext: str) -> str:
     """Namespace media by family then memory for easy cleanup boundaries."""
     return f"memory/{family_id}/{memory_id}/{media_id}.{ext}"
+
+
+def build_direct_upload_key(
+    family_id: UUID, memory_id: UUID, user_id: UUID, media_id: UUID, ext: str
+) -> str:
+    """直传只授予写入本人暂存对象的权限，永远不为最终媒体签发写票据。"""
+    return f"memory-uploads/{family_id}/{memory_id}/{user_id}/{media_id}.{ext}"
 
 
 # ---- Direct upload (COS 直传) --------------------------------------------
@@ -162,7 +169,7 @@ def to_comment_read(
     members: dict[UUID, MemberInfo],
     family_id: UUID,
 ) -> MemoryCommentRead:
-    info = members.get(c.created_by) if c.created_by is not None else None
+    info = historical_member_info(members, c.created_by)
     return MemoryCommentRead(
         id=c.id,
         body=c.body,
@@ -188,7 +195,7 @@ def build_read(
     and just reports `comment_count`.
     """
     read = MemoryRead.model_validate(memory, from_attributes=True)
-    info = members.get(memory.created_by) if memory.created_by is not None else None
+    info = historical_member_info(members, memory.created_by)
     ordered = sorted(media, key=lambda m: (m.sort_order, m.created_at))
     return read.model_copy(
         update={
@@ -325,55 +332,3 @@ __all__ = [
 # Re-exported for route convenience (avoids re-importing date/datetime there).
 def today() -> date:
     return datetime.now(UTC).date()
-
-
-async def erase_user_data(session: AsyncSession, user_id: UUID) -> list[str]:
-    """注销钩子：删除该用户在「回忆」里的全部数据，返回要删的存储对象 key。
-
-    删三样东西，且顺序不能换：
-
-    1. 他**创建**的回忆 —— 整条删除，连同下面的媒体与留言。注意：这些数据的
-       可见范围可能是「全家可见」，其他成员此前一直看得见；用户既然选了
-       「连内容一起删」，删掉就是预期行为（家庭相册会缺一段）。
-    2. 他**上传**但挂在别人回忆里的媒体 —— 行删掉，别人的那条回忆少几张图。
-    3. 他**写**在别人回忆下的留言。
-
-    实现上刻意用 bulk delete 并**显式删子表**，不依赖外键的 ON DELETE CASCADE：
-    生产是 Postgres（外键真实生效），但测试跑 SQLite，而 SQLite 的外键约束默认
-    是关闭的 —— 靠级联会让两个环境行为不一致，测出来的绿灯是假的。
-    """
-    keys: list[str] = []
-
-    # ① 他上传的媒体（无论挂在谁的回忆上）
-    uploaded = await session.execute(
-        select(MemoryMedia.storage_key).where(MemoryMedia.created_by == user_id)
-    )
-    keys.extend(uploaded.scalars().all())
-
-    # ② 他创建的回忆
-    own_ids = (
-        await session.execute(select(Memory.id).where(Memory.created_by == user_id))
-    ).scalars().all()
-
-    if own_ids:
-        # 这些回忆下的媒体 key 未必在 ① 里 —— 早年上传的行 created_by 可能是
-        # 空。宁可多收几个 key（删不存在的对象是幂等的），也不能漏删。
-        under_own = await session.execute(
-            select(MemoryMedia.storage_key).where(MemoryMedia.memory_id.in_(own_ids))
-        )
-        keys.extend(under_own.scalars().all())
-
-        await session.execute(
-            delete(MemoryComment).where(MemoryComment.memory_id.in_(own_ids))
-        )
-        await session.execute(
-            delete(MemoryMedia).where(MemoryMedia.memory_id.in_(own_ids))
-        )
-        await session.execute(delete(Memory).where(Memory.id.in_(own_ids)))
-
-    # ③ 剩下的（挂在别人回忆上的）
-    await session.execute(delete(MemoryMedia).where(MemoryMedia.created_by == user_id))
-    await session.execute(delete(MemoryComment).where(MemoryComment.created_by == user_id))
-
-    # 去重保序：① 与 ② 很可能收到同一个 key
-    return list(dict.fromkeys(keys))

@@ -4,6 +4,7 @@
 // 登录态与首屏数据放 globalData，页面在 onShow 里读；跨页面需要刷新时直接
 // 调 app.refresh()，不做全局事件总线（当前页面量级用不上）。
 const { request } = require('./utils/request');
+const { snapshot, assertCurrent, markManualLogout } = require('./utils/session');
 const {
   getToken,
   setToken,
@@ -30,12 +31,17 @@ App({
   },
 
   getToken,
-  setToken,
-  clearToken,
-
-  handleSessionInvalid() {
+  setToken(token) {
+    setToken(token);
+    this.clearSessionData();
+  },
+  clearToken() {
     clearToken();
     this.clearSessionData();
+  },
+
+  handleSessionInvalid() {
+    this.clearToken();
     wx.reLaunch({ url: '/pages/index/index' });
   },
 
@@ -55,7 +61,9 @@ App({
 
   /** 拉首屏聚合数据。401 由请求层的 setSessionInvalidHandler 统一处理。 */
   async loadBootstrap() {
+    const scope = snapshot();
     const data = await request({ url: '/me/bootstrap' });
+    assertCurrent(scope);
     this.globalData.user = data.user || null;
     this.globalData.family = data.current_family || null;
     this.globalData.families = data.families || [];
@@ -67,26 +75,33 @@ App({
 
   /** 查当前账号的微信绑定状态。 */
   async loadWechatBinding() {
+    const scope = snapshot();
     const data = await request({ url: '/me/wechat' });
+    assertCurrent(scope);
     this.globalData.wechatBound = !!data.bound;
     return data;
   },
 
   /** 重新拉首屏 + 绑定状态。页面 onShow 里调。 */
   async refresh() {
+    const scope = snapshot();
     await this.loadBootstrap();
+    assertCurrent(scope);
     await this.loadWechatBinding();
+    assertCurrent(scope);
   },
 
-  /** 退出登录：先通知服务端撤销会话，失败也要清本地。 */
+  /** 手动退出立即清本地，撤销旧会话在后台完成，保持退出状态直至用户主动登录。 */
   async logout() {
+    markManualLogout();
+    const revocation = getToken()
+      ? request({ url: '/auth/logout', method: 'POST' }) : Promise.resolve();
+    this.clearToken();
+    wx.reLaunch({ url: '/pages/index/index' });
     try {
-      await request({ url: '/auth/logout', method: 'POST' });
+      await revocation;
     } catch (e) {
       // 离线退出：服务端撤销不了就算了，本地必须清干净。
     }
-    clearToken();
-    this.clearSessionData();
-    wx.reLaunch({ url: '/pages/index/index' });
   },
 });

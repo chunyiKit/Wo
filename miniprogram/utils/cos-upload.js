@@ -12,6 +12,7 @@
  */
 
 const { request } = require('./request');
+const { snapshot, assertCurrent } = require('./session');
 
 // 服务端明确说「这个部署不支持直传」（本地磁盘存储）。一次就够，别每个文件
 // 都去问一遍 —— 升级前答案不会变。
@@ -125,14 +126,18 @@ function postToCos(ticket, filePath, onProgress) {
  * @throws 任一步失败都抛错；501 会顺手把直传标记为不可用。
  */
 async function uploadDirect(o) {
+  const scope = o.sessionScope || snapshot();
+  assertCurrent(scope);
   if (directDisabled) throw new Error('直传不可用');
 
   const base = `/families/${o.familyId}/plugins/memory/memories/${o.memoryId}/media`;
   const probe = await probeMedia(o.filePath, o.kind);
+  assertCurrent(scope);
 
   let ticket;
   try {
     ticket = await request({
+      sessionScope: scope,
       url: `${base}/presign`,
       method: 'POST',
       data: {
@@ -147,6 +152,7 @@ async function uploadDirect(o) {
   }
 
   await postToCos(ticket, o.filePath, o.onProgress);
+  assertCurrent(scope);
 
   const body = {
     media_id: ticket.media_id,
@@ -158,7 +164,7 @@ async function uploadDirect(o) {
     body.width = probe.width;
     body.height = probe.height;
   }
-  return request({ url: `${base}/commit`, method: 'POST', data: body });
+  return request({ url: `${base}/commit`, method: 'POST', data: body, sessionScope: scope });
 }
 
 module.exports = { uploadDirect, isDirectDisabled, probeMedia };

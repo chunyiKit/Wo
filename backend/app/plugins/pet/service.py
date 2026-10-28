@@ -44,7 +44,12 @@ from app.plugins.pet.models import (
     WeightPoint,
 )
 from app.plugins.registry import PluginPreview
-from app.services.membership import MemberInfo, author_avatar_url, member_info_map
+from app.services.membership import (
+    MemberInfo,
+    author_avatar_url,
+    historical_member_info,
+    member_info_map,
+)
 
 DEFAULT_RECORD_TYPES: tuple[tuple[str, str, str], ...] = (
     ("喂食", "🍚", "general"),
@@ -458,7 +463,7 @@ def record_read(
     info: dict[UUID, MemberInfo],
     attachments: list[PetRecordAttachment] | None = None,
 ) -> RecordRead:
-    member = info.get(row.created_by) if row.created_by else None
+    member = historical_member_info(info, row.created_by)
     return RecordRead(
         id=row.id,
         family_id=row.family_id,

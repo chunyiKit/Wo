@@ -444,7 +444,12 @@ class WoApi {
 
   // ── 家聊插件 ─────────────────────────────────────────────────
   /// 拉取服务端最近 7 天窗口内的聊天消息。传入游标时只返回游标之后的新消息。
-  Future<({List<ChatMessage> items, String? cursor})> chatMessages(
+  Future<
+      ({
+        List<ChatMessage> items,
+        String? cursor,
+        List<String>? activeMemberIds
+      })> chatMessages(
     String familyId, {
     DateTime? afterCreatedAt,
     String? afterId,
@@ -465,6 +470,8 @@ class WoApi {
           .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
           .toList(),
       cursor: page.meta?['cursor'] as String?,
+      activeMemberIds:
+          (page.meta?['active_member_ids'] as List?)?.cast<String>(),
     );
   }
 

@@ -82,12 +82,8 @@ class User(UserBase, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-    # 账号注销时间。非空 = 已注销：身份数据已清空、内容已按用户选择处置。
-    #
-    # 保留这一行（而不是硬删）是刻意的：记账、宠物、回忆等历史记录的
-    # `created_by` 外键还指着它，硬删会让这些记录变成孤儿（或触发意料之外的
-    # 级联）。行内已不含任何可识别信息 —— 等同于《个人信息保护法》第 4 条
-    # 的「匿名化」，因此保留不违反「注销后应删除相关数据」。
+    # 账号注销时间。身份资料与凭据清空，家庭历史记录和附件保留并匿名展示。
+    # 保留 users 行及历史外键，维持原有权限边界、幂等和归属；不再允许登录。
     deleted_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),

@@ -15,6 +15,7 @@
 // 条回忆或一张重复的照片。这也是为什么部分上传失败时页面不退出 —— 留在原地重
 // 试，比替用户做决定更好。
 const { request, upload } = require('../../../utils/request');
+const { snapshot, assertCurrent } = require('../../../utils/session');
 const { uploadDirect, isDirectDisabled } = require('../../../utils/cos-upload');
 const { memoryMediaUrls } = require('../../../utils/media-url');
 const { uuidV4 } = require('../../../utils/uuid');
@@ -155,10 +156,12 @@ Page({
   },
 
   /** 保存后重拉媒体：以服务端为准，而不是拿本地的乐观结果充数。 */
-  async reloadMedia() {
+  async reloadMedia(scope) {
     const m = await request({
+      sessionScope: scope,
       url: `/families/${this.familyId}/plugins/memory/memories/${this.memoryId}`,
     });
+    if (scope) assertCurrent(scope);
     await this.applyMedia(m.media || []);
   },
 
@@ -334,6 +337,7 @@ Page({
 
   async onSave() {
     if (!this.data.canSave || this.data.saving || this.data.loading) return;
+    const scope = snapshot();
 
     const payload = {
       title: this.data.title.trim(),
@@ -349,16 +353,20 @@ Page({
       let memoryId = this.memoryId;
       if (memoryId) {
         await request({
+          sessionScope: scope,
           url: `/families/${this.familyId}/plugins/memory/memories/${memoryId}`,
           method: 'PUT',
           data: payload,
         });
+        assertCurrent(scope);
       } else {
         const created = await request({
+          sessionScope: scope,
           url: `/families/${this.familyId}/plugins/memory/memories`,
           method: 'POST',
           data: Object.assign({ client_id: this.createKey }, payload),
         });
+        assertCurrent(scope);
         memoryId = created.id;
         this.memoryId = memoryId;
         this.setData({ memoryId: memoryId, editing: true });
@@ -366,25 +374,28 @@ Page({
 
       // 删除用户移除的旧媒体。404 视为已完成（上一次重试可能已经删掉了）。
       const pendingRemoval = this.removed.slice();
-      this.removed = [];
       for (const id of pendingRemoval) {
         try {
           await request({
+            sessionScope: scope,
             url: `/families/${this.familyId}/plugins/memory/memories/${memoryId}/media/${id}`,
             method: 'DELETE',
           });
         } catch (e) {
           if (e.statusCode !== 404) throw e;
         }
+        assertCurrent(scope);
+        this.removed = this.removed.filter((pendingId) => pendingId !== id);
       }
 
       const mediaTouched = pendingRemoval.length > 0 || this.data.pending.length > 0;
-      const failedKeys = await this.uploadPending(memoryId);
+      const failedKeys = await this.uploadPending(memoryId, scope);
 
       // 媒体动过就从服务端重拉一遍：原先的占位、被服务端拒绝的文件各归各位，
       // 屏幕上剩的就是真实状态，不会出现「看着有图、其实没传上去」。
       // 纯文字改动不必多这一次往返。
-      if (mediaTouched) await this.reloadMedia();
+      if (mediaTouched) await this.reloadMedia(scope);
+      assertCurrent(scope);
 
       this.setData({
         saving: false,
@@ -425,7 +436,7 @@ Page({
    * ② 串行才能让「第 2/5 个」这种进度提示有意义；
    * ③ 服务端按 client_id 幂等，重试不会重复入账。
    */
-  async uploadPending(memoryId) {
+  async uploadPending(memoryId, scope) {
     const failed = [];
     const list = this.data.pending;
     this.setData({ progress: { done: 0, total: list.length } });
@@ -438,10 +449,10 @@ Page({
         formData.duration_ms = String(item.durationMs);
       }
       try {
-        await this.uploadOne(memoryId, item);
+        await this.uploadOne(memoryId, item, scope);
       } catch (e) {
         // 登录态失效时不硬扛：后面的文件一样会失败，交给外层提示。
-        if (e.statusCode === 401) throw e;
+        if (e.statusCode === 401 || e.code === 'SESSION_CHANGED') throw e;
         failed.push(item.key);
       }
       this.setData({ progress: { done: i + 1, total: list.length } });
@@ -457,10 +468,13 @@ Page({
    * 中转路径会重新按字节校验，所以两条路的落库结果是一致的，
    * 唯一的代价是直传留下的那个对象成了孤儿（无害：私有、无人引用）。
    */
-  async uploadOne(memoryId, item) {
+  async uploadOne(memoryId, item, sessionScope) {
+    const scope = sessionScope || snapshot();
+    assertCurrent(scope);
     if (!isDirectDisabled()) {
       try {
         await uploadDirect({
+          sessionScope: scope,
           familyId: this.familyId,
           memoryId: memoryId,
           filePath: item.path,
@@ -470,7 +484,7 @@ Page({
         });
         return;
       } catch (e) {
-        if (e.statusCode === 401) throw e;
+        if (e.statusCode === 401 || e.code === 'SESSION_CHANGED') throw e;
         // 其余原因统统静默回退，不打断整次保存。
       }
     }
@@ -481,6 +495,7 @@ Page({
       formData.duration_ms = String(item.durationMs);
     }
     await upload({
+      sessionScope: scope,
       url: `/families/${this.familyId}/plugins/memory/memories/${memoryId}/media`,
       filePath: item.path,
       name: 'file',

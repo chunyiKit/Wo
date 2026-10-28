@@ -9,13 +9,13 @@ import contextlib
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Header, UploadFile
 from pydantic import BaseModel, Field
 from sqlmodel import select
 from starlette.responses import RedirectResponse, Response
 
 from app.api.deps import SessionDep
-from app.core.auth import CurrentUserDep
+from app.core.auth import CurrentUserDep, parse_bearer
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.images import validate_image
@@ -340,17 +340,18 @@ async def delete_account(
     payload: DeleteAccountRequest,
     session: SessionDep,
     current_user: CurrentUserDep,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> ApiResponse[dict]:
     """永久注销当前账号。
 
-    合规要求（微信《常见拒绝情形》3.4.1 + PIPL 第 47 条）：注销后必须删除个人数据。
-    本端点按最彻底的一档执行：
-
-    - 删除你创建的全部内容（回忆、留言）和上传的媒体文件（COS 对象一并移除）
+    - 保留家庭历史内容（回忆、留言、账目、聊天和附件），提交者统一匿名展示
+    - 保留内容原有可见范围，私密回忆不会因注销而向其他成员公开
     - 退出所有家庭；若你是主理人，主理人自动移交给资历最老的成员，无人则解散
     - 清空手机号、密码、微信绑定、头像 —— 此后无法再登录，手机号可被重新注册
     - 所有端（App + 小程序）的会话立即失效
 
-    返回统计（退出了几个家 / 移交了几次 / 删了多少对象），让用户知道删掉了什么。
+    返回退出家庭、移交主理人、解散家庭及删除个人头像的统计。
     """
-    return ok(await account_service.delete_account(session, current_user, payload.password))
+    return ok(await account_service.delete_account(
+        session, current_user, payload.password, token=parse_bearer(authorization)
+    ))

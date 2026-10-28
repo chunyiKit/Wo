@@ -9,13 +9,13 @@ from sqlmodel import select
 from app.models.plugin import InstalledPlugin
 from app.plugins.chore.models import Chore, ChoreRead
 from app.plugins.registry import PluginPreview
-from app.services.membership import MemberInfo, author_avatar_url
+from app.services.membership import MemberInfo, author_avatar_url, historical_member_info
 
 
 def build_read(row: Chore, members: dict[UUID, MemberInfo]) -> ChoreRead:
     """Serialize a row, injecting assignee display info (immutable copy)."""
     read = ChoreRead.model_validate(row, from_attributes=True)
-    info = members.get(row.assigned_to) if row.assigned_to is not None else None
+    info = historical_member_info(members, row.assigned_to)
     return read.model_copy(
         update={
             "assignee_name": info.name if info else None,

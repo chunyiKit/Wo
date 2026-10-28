@@ -22,6 +22,8 @@ class Meta(BaseModel):
     total: int | None = None
     cursor: str | None = None
     limit: int | None = None
+    # 家聊增量同步同时刷新本地历史消息的身份展示，空消息页也要携带。
+    active_member_ids: list[str] | None = None
 
 
 class ApiResponse[T](BaseModel):

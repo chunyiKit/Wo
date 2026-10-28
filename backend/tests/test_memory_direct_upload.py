@@ -9,6 +9,7 @@ so every test injects a fake. Two fake shapes matter:
 """
 
 import base64
+import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
@@ -36,6 +37,7 @@ class FakeDirectStorage:
         self.objects: dict[str, bytes] = {}
         self.tickets: list[tuple[str, str, int]] = []  # (key, content_type, max_bytes)
         self.forced_size: int | None = None
+        self.copies: list[tuple[str, str]] = []
 
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         self.objects[key] = data
@@ -80,7 +82,14 @@ class FakeDirectStorage:
             size_bytes=self.forced_size if self.forced_size is not None else len(data),
             content_type="application/octet-stream",
             head=data[:16],
+            etag=hashlib.sha256(data).hexdigest(),
         )
+
+    async def copy(self, source_key: str, dest_key: str, *, etag: str | None) -> None:
+        data = self.objects[source_key]
+        assert hashlib.sha256(data).hexdigest() == etag
+        self.copies.append((source_key, dest_key))
+        self.objects[dest_key] = data
 
 
 class FakeProxyOnlyStorage:
@@ -220,7 +229,8 @@ async def test_presign_pins_key_type_and_size(client: AsyncClient, direct: FakeD
     )
 
     assert ticket["media_id"] == media_id
-    assert ticket["key"] == f"memory/{fid}/{mid}/{media_id}.jpg"
+    assert ticket["key"].startswith(f"memory-uploads/{fid}/{mid}/")
+    assert ticket["key"].endswith(f"/{media_id}.jpg")
     assert ticket["max_bytes"] == PHOTO_MB * 1024 * 1024
     assert ticket["file_field"] == "file"
     assert ticket["fields"]["key"] == ticket["key"]
@@ -291,7 +301,10 @@ async def test_commit_turns_object_into_media(client: AsyncClient, direct: FakeD
     assert row["id"] == media_id
     assert row["kind"] == "photo"
     assert row["content_type"] == "image/png"
-    assert row["size_bytes"] == len(direct.objects[ticket["key"]])
+    assert row["size_bytes"] == len(_png())
+    assert ticket["key"] not in direct.objects
+    assert direct.copies[0][1].startswith(f"memory/{fid}/{mid}/")
+    assert direct.objects[direct.copies[0][1]] == _png()
     assert row["width"] == 120 and row["height"] == 90
 
     # Visible through the normal read path too.

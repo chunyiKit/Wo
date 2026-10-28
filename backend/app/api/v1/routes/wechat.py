@@ -19,16 +19,17 @@
 状态，省一份需要清理的中间态。
 """
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.api.deps import SessionDep
-from app.core.auth import CurrentUserDep
+from app.core.auth import CurrentUserDep, parse_bearer
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.password import verify_password
@@ -116,15 +117,14 @@ async def _find_bound_user(session: SessionDep, ws: WeChatSession) -> User | Non
 
 
 async def _locked_user(session: SessionDep, user_id: UUID) -> User:
-    """Serialize concurrent binds against the same account."""
-    return (
-        await session.execute(
-            select(User)
-            .where(User.id == user_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-    ).scalar_one()
+    """与注销、改密、解绑共享用户锁，并刷新已加载的身份数据。"""
+    return await auth_service.lock_user(session, user_id)
+
+
+def _matches_identity(user: User, ws: WeChatSession) -> bool:
+    return user.wechat_openid == ws.openid or bool(
+        ws.unionid and user.wechat_unionid == ws.unionid
+    )
 
 
 # ---- A1: silent login --------------------------------------------------------
@@ -148,6 +148,10 @@ async def wechat_login(
     ws = await wechat_service.code_to_session(payload.code)
     user = await _find_bound_user(session, ws)
     if user is None:
+        return ok(WeChatLoginResponse(bound=False))
+
+    user = await _locked_user(session, user.id)
+    if user.deleted_at is not None or not user.password_hash or not _matches_identity(user, ws):
         return ok(WeChatLoginResponse(bound=False))
 
     token = await issue_session(
@@ -188,6 +192,12 @@ async def wechat_bind(
 
     existing = await _find_bound_user(session, ws)
     if existing is not None:
+        existing = await _locked_user(session, existing.id)
+        auth_service.require_active_account(existing)
+        if not _matches_identity(existing, ws):
+            raise AppError(
+                ErrorCode.WECHAT_OPENID_BOUND, "微信绑定状态已变化，请重试", status_code=409
+            )
         if not existing.password_hash or not verify_password(
             payload.password, existing.password_hash
         ):
@@ -203,6 +213,7 @@ async def wechat_bind(
         )
 
     user = await _locked_user(session, user.id)
+    auth_service.require_active_account(user)
     user.wechat_openid = ws.openid
     user.wechat_unionid = ws.unionid
     session.add(user)
@@ -251,12 +262,19 @@ async def get_wechat_binding(
 async def unbind_wechat(
     session: SessionDep,
     current_user: CurrentUserDep,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> ApiResponse[dict]:
     """Unbind WeChat and drop the mini program's sessions.
 
     Refuses when the account has no password — unbinding would leave the user
     with no way back in. Rebinding later just means running A2 again.
     """
+    token = parse_bearer(authorization)
+    current_user = (
+        await auth_service.locked_user(session, current_user.id, token)
+        if token is not None else await _locked_user(session, current_user.id)
+    )
+    auth_service.require_active_account(current_user)
     if not current_user.password_hash:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,

@@ -96,16 +96,39 @@ async def login_or_register(
     return user, True
 
 
-async def locked_user(session: AsyncSession, user_id: UUID, token: str) -> User:
-    """Serialize auth mutations/issuance and recheck bearer after waiting for the lock."""
-    user = (
+async def lock_user(session: AsyncSession, user_id: UUID) -> User:
+    """刷新并锁定用户，串行处理身份与成员关系变更。
+
+    NO KEY UPDATE 与历史记录插入所需的外键 KEY SHARE 兼容，避免注销清理家庭时
+    与正在提交的内容相互等待；身份变更之间仍互斥，更新唯一标识时由数据库升级锁。
+    """
+    return (
         await session.execute(
             select(User)
             .where(User.id == user_id)
-            .with_for_update()
+            .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
     ).scalar_one()
+
+
+def require_active_account(user: User) -> None:
+    if user.deleted_at is not None:
+        raise AppError(
+            ErrorCode.UNAUTHORIZED, "账号已注销，请重新登录", status_code=401,
+            details={"session_invalid": True},
+        )
+
+
+async def lock_active_user(session: AsyncSession, user_id: UUID) -> User:
+    user = await lock_user(session, user_id)
+    require_active_account(user)
+    return user
+
+
+async def locked_user(session: AsyncSession, user_id: UUID, token: str) -> User:
+    """Serialize auth mutations/issuance and recheck bearer after waiting for the lock."""
+    user = await lock_user(session, user_id)
     if await resolve_user_id(session, token) != user_id:
         raise AppError(
             ErrorCode.UNAUTHORIZED,

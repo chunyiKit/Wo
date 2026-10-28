@@ -29,7 +29,7 @@ async def require_membership(
         Membership.user_id == user_id,
         Membership.family_id == family_id,
         Membership.status == "active",
-    )
+    ).execution_options(populate_existing=True)
     result = await session.execute(stmt)
     membership = result.scalar_one_or_none()
     if membership is None:

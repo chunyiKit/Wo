@@ -2,7 +2,7 @@
 //
 // 顺序：本地有 token → 先试 bootstrap（顺带验证 token 还有效）→ 有效就进主页；
 // 无效或没有 token → wx.login 静默登录 → 已绑定进主页 / 未绑定显示引导。
-const { silentLogin } = require('../../utils/auth');
+const { silentLogin, canSilentLogin } = require('../../utils/auth');
 const { openPrivacyContract } = require('../../utils/privacy');
 
 const app = getApp();
@@ -19,9 +19,14 @@ Page({
         await app.refresh();
         return this.enter();
       } catch (e) {
+        if (e.code === 'SESSION_CHANGED') return;
         // token 失效或网络抖动：清空后走微信静默登录，不要卡在空白页。
         app.clearToken();
       }
+    }
+    if (!canSilentLogin()) {
+      this.setData({ status: 'unbound', message: '你已退出登录' });
+      return;
     }
     await this.tryWechatLogin();
   },

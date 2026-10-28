@@ -132,14 +132,19 @@ class FakeApi implements WoApi {
   Map<String, String> get imageHeaders => {};
 
   @override
-  Future<({List<ChatMessage> items, String? cursor})> chatMessages(
+  Future<
+      ({
+        List<ChatMessage> items,
+        String? cursor,
+        List<String>? activeMemberIds
+      })> chatMessages(
     String familyId, {
     DateTime? afterCreatedAt,
     String? afterId,
     int limit = 100,
   }) async {
     if (offline) throw StateError('offline');
-    return (items: remote, cursor: null);
+    return (items: remote, cursor: null, activeMemberIds: null);
   }
 
   @override

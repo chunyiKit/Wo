@@ -26,7 +26,7 @@ from app.plugins.retirement.models import (
     RetireLedgerRead,
     RetirePlan,
 )
-from app.services.membership import MemberInfo, author_avatar_url
+from app.services.membership import MemberInfo, author_avatar_url, historical_member_info
 
 ACCOUNTING_PLUGIN_ID = "accounting"
 RETIREMENT_PLUGIN_ID = "retirement"
@@ -58,7 +58,7 @@ def _sum(values: list[Decimal]) -> Decimal:
 
 def build_account_read(row: RetireAccount, members: dict[UUID, MemberInfo]) -> RetireAccountRead:
     read = RetireAccountRead.model_validate(row, from_attributes=True)
-    info = members.get(row.created_by) if row.created_by is not None else None
+    info = historical_member_info(members, row.created_by)
     return read.model_copy(
         update={
             "creator_name": info.name if info else None,
@@ -70,7 +70,7 @@ def build_account_read(row: RetireAccount, members: dict[UUID, MemberInfo]) -> R
 
 def build_debt_read(row: RetireDebt, members: dict[UUID, MemberInfo]) -> RetireDebtRead:
     read = RetireDebtRead.model_validate(row, from_attributes=True)
-    info = members.get(row.created_by) if row.created_by is not None else None
+    info = historical_member_info(members, row.created_by)
     return read.model_copy(
         update={
             "creator_name": info.name if info else None,

@@ -2,11 +2,11 @@
   <!-- 后果先说清楚。不可逆操作最忌讳的是「点完才知道删了什么」。 -->
   <view class="card danger">
     <text class="danger-title">注销后无法恢复</text>
-    <text class="danger-sub">以下内容会被永久删除：</text>
+    <text class="danger-sub">注销后将进行以下处理：</text>
 
-    <view class="line">· 你创建的全部回忆，以及其中的照片与视频</view>
-    <view class="line">· 你写在别人回忆下的全部留言</view>
-    <view class="line">· 你的头像、手机号、密码与微信绑定</view>
+    <view class="line">· 保留家庭中的回忆、照片、视频、留言及其他历史记录</view>
+    <view class="line">· 提交者匿名展示，原有可见范围保持不变</view>
+    <view class="line">· 清除你的头像、手机号、密码与微信绑定</view>
     <view class="line">· 你会退出所属的全部家庭</view>
 
     <text class="danger-note">
@@ -31,7 +31,7 @@
     <checkbox-group class="agree" bindchange="onToggleAgree">
       <label class="agree-label">
         <checkbox value="yes" checked="{{agreed}}" />
-        <text class="agree-text">我已知悉上述内容会被永久删除，且无法恢复</text>
+        <text class="agree-text">我已知悉账号注销后无法恢复，家庭历史内容将按上述规则保留</text>
       </label>
     </checkbox-group>
   </view>

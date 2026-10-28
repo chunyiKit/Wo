@@ -132,18 +132,9 @@ class PluginPreview(BaseModel):
 # hooks annotate the concrete `InstalledPlugin` type themselves.
 PreviewProvider = Callable[[AsyncSession, "object", "UUID | None"], Awaitable[PluginPreview]]
 
-# 账号注销钩子（合规要求：注销后必须清除该用户的个人数据）。
-#
-# 为什么是钩子：用户数据散落在各个插件里（回忆的照片、记账的流水、宠物的记录…），
-# 核心服务不可能知道每张表的形状。规则是 —— **谁创建的数据谁负责擦除**。
-#
-# 契约：
-#   - 接收 (session, user_id)，删除该用户在该插件里的全部数据**行**
-#   - 返回需要一并删除的**存储对象 key 列表**（照片/视频等二进制）
-#     由调用方在事务提交后统一清理：提交前删对象，万一事务回滚就删错了
-#   - 不要自己 commit，事务由调用方控制
-#   - 不实现即视为该插件不持有用户数据（17 个插件里绝大多数如此）
-EraseUserHook = Callable[[AsyncSession, UUID], Awaitable[list[str]]]
+# 注销时保留家庭历史内容，只匿名化插件额外保存的身份快照（例如聊天昵称）。
+# 使用公共成员信息拼装作者的插件无需注册；不得删除内容或附件，也不要自行 commit。
+AnonymizeUserHook = Callable[[AsyncSession, UUID], Awaitable[None]]
 
 
 @dataclass
@@ -151,7 +142,7 @@ class PluginRegistration:
     manifest: PluginManifest
     router: APIRouter | None = None
     preview: PreviewProvider | None = None
-    erase_user: EraseUserHook | None = None
+    anonymize_user: AnonymizeUserHook | None = None
     # Reserved for future hooks (uninstall cleanup, config validators, etc.).
     extras: dict[str, object] = field(default_factory=dict)
 
@@ -167,17 +158,17 @@ class PluginRegistry:
         manifest: PluginManifest,
         router: APIRouter | None = None,
         preview: PreviewProvider | None = None,
-        erase_user: EraseUserHook | None = None,
+        anonymize_user: AnonymizeUserHook | None = None,
     ) -> None:
         if manifest.id in self._regs:
             raise RuntimeError(f"Plugin {manifest.id!r} already registered")
         self._regs[manifest.id] = PluginRegistration(
-            manifest=manifest, router=router, preview=preview, erase_user=erase_user
+            manifest=manifest, router=router, preview=preview, anonymize_user=anonymize_user
         )
 
-    def erase_user_hooks(self) -> list[EraseUserHook]:
-        """所有实现了注销擦除的插件钩子。"""
-        return [r.erase_user for r in self._regs.values() if r.erase_user]
+    def anonymize_user_hooks(self) -> list[AnonymizeUserHook]:
+        """匿名化插件内保存的身份快照，与账号注销在同一事务内提交。"""
+        return [r.anonymize_user for r in self._regs.values() if r.anonymize_user]
 
     def get(self, plugin_id: str) -> PluginRegistration | None:
         return self._regs.get(plugin_id)

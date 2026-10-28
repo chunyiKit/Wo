@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -19,7 +20,21 @@ from app.plugins.chat.models import (
     ChatMessageRead,
 )
 from app.plugins.registry import PluginPreview
-from app.services.membership import MemberInfo, author_avatar_url
+from app.services.membership import (
+    ANONYMOUS_MEMBER,
+    MemberInfo,
+    author_avatar_url,
+    member_info_map,
+)
+
+
+async def anonymize_user_data(session: AsyncSession, user_id: UUID) -> None:
+    """保留消息与图片，只清空发送者身份快照；不改变消息 ID 或同步游标。"""
+    await session.execute(
+        update(ChatMessage)
+        .where(ChatMessage.sender_id == user_id)
+        .values(sender_name=ANONYMOUS_MEMBER.name, sender_emoji=ANONYMOUS_MEMBER.emoji)
+    )
 
 
 def retention_cutoff() -> datetime:
@@ -59,8 +74,8 @@ def to_message_read(
         client_id=message.client_id,
         kind=message.kind,
         body=message.body,
-        sender_name=message.sender_name,
-        sender_emoji=message.sender_emoji,
+        sender_name=message.sender_name if info else ANONYMOUS_MEMBER.name,
+        sender_emoji=message.sender_emoji if info else ANONYMOUS_MEMBER.emoji,
         sender_avatar_url=author_avatar_url(message.family_id, message.sender_id, info),
         created_at=message.created_at,
         image=to_image_read(image) if image is not None else None,
@@ -156,9 +171,10 @@ async def preview_hook(
             emoji="💬",
         )
     primary = latest.body if latest.kind == KIND_TEXT and latest.body else "发来一张图片"
+    members = await member_info_map(session, ip.family_id)
     return PluginPreview(
         primary=primary[:32],
-        secondary=latest.sender_name,
+        secondary=latest.sender_name if latest.sender_id in members else ANONYMOUS_MEMBER.name,
         color_token="accent",
         emoji="💬",
     )

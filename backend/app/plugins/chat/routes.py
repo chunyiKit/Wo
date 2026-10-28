@@ -90,7 +90,11 @@ async def list_messages(
     image_by_id = await image_map_for(session, [m.id for m in page])
     members = await member_info_map(session, family_id)
     data = [to_message_read(m, image_by_id.get(m.id), members) for m in page]
-    meta = Meta(cursor=_cursor_for(page[-1] if has_more and page else None), limit=limit)
+    meta = Meta(
+        cursor=_cursor_for(page[-1] if has_more and page else None),
+        limit=limit,
+        active_member_ids=[str(uid) for uid in members],
+    )
     return ok(data, meta=meta)
 
 

@@ -20,6 +20,8 @@ from app.models.invitation import Invitation
 from app.models.membership import INVITABLE_ROLES, Membership
 from app.models.user import User
 from app.services import notification as notification_service
+from app.services.auth import lock_active_user
+from app.services.membership import lock_family_memberships
 
 # Char set avoids ambiguous glyphs (no I/L/O/0/1).
 _ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -69,6 +71,8 @@ async def create_invitation(
     channel: str,
 ) -> Invitation:
     """Generate an invitation. Inviter must be Admin or Owner of the family."""
+    inviter = await lock_active_user(session, inviter.id)
+    await lock_family_memberships(session, family_id)
     # Permission check first — never reveal validation errors to non-members.
     membership = await require_membership(session, inviter.id, family_id)
     require_admin(membership)
@@ -161,7 +165,14 @@ async def accept_invitation(
 
     Atomic — if any step fails, nothing is persisted.
     """
-    family = await session.get(Family, invitation.family_id)
+    user = await lock_active_user(session, user.id)
+    await lock_family_memberships(session, invitation.family_id)
+    # 邀请可能在等待锁期间被使用或随邀请人注销而删除。
+    refreshed = await session.get(Invitation, invitation.code, populate_existing=True)
+    if refreshed is None:
+        raise AppError(ErrorCode.INVITATION_INVALID, "邀请码不存在", status_code=400)
+    invitation = await get_usable_invitation(session, refreshed.code)
+    family = await session.get(Family, invitation.family_id, populate_existing=True)
     if family is None:
         raise AppError(
             ErrorCode.FAMILY_NOT_FOUND,

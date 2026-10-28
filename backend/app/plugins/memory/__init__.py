@@ -8,12 +8,11 @@ anything else inspects them (notably Alembic autogenerate).
 from app.plugins.memory import models as _models  # noqa: F401  registers tables
 from app.plugins.memory.manifest import MANIFEST
 from app.plugins.memory.routes import router
-from app.plugins.memory.service import erase_user_data, preview_hook
+from app.plugins.memory.service import preview_hook
 from app.plugins.registry import registry
 
 registry.register(
     manifest=MANIFEST,
     router=router,
     preview=preview_hook,
-    erase_user=erase_user_data,
 )

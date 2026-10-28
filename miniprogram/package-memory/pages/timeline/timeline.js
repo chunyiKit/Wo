@@ -238,9 +238,9 @@ Page({
 
     const urls = memory.allPhotoUrls || [];
     if (!urls.length) return;
-    const index = urls.indexOf(id);
+    const photo = (memory.photos || []).find((p) => p.id === id);
     wx.previewImage({
-      current: index >= 0 ? urls[index] : urls[0],
+      current: photo ? photo.url : urls[0],
       urls: urls,
       fail() {
         wx.showToast({ title: '预览失败，请重试', icon: 'none' });

@@ -12,7 +12,7 @@ from sqlmodel import select
 from app.models.plugin import InstalledPlugin
 from app.plugins.accounting.models import Budget, Transaction, TransactionRead
 from app.plugins.registry import BackgroundTrend, PluginPreview, TrendPoint
-from app.services.membership import MemberInfo, author_avatar_url
+from app.services.membership import MemberInfo, author_avatar_url, historical_member_info
 
 # Below this fraction of budget remaining the card warns; below the second it
 # alarms. Matches the product spec: <40% yellow, <10% red.
@@ -112,7 +112,7 @@ async def get_budget(session: AsyncSession, family_id: UUID) -> Decimal | None:
 def build_read(row: Transaction, members: dict[UUID, MemberInfo]) -> TransactionRead:
     """Serialize a row, injecting recorder display info (immutable copy)."""
     read = TransactionRead.model_validate(row, from_attributes=True)
-    info = members.get(row.created_by) if row.created_by is not None else None
+    info = historical_member_info(members, row.created_by)
     return read.model_copy(
         update={
             "creator_name": info.name if info else None,

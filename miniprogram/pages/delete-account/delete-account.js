@@ -1,8 +1,7 @@
 // 注销账号 —— 不可逆操作的页面。
 //
-// 合规要求：微信《常见拒绝情形》3.4.1「在用户注销账号后应相应删除相关数据」。
-// 后端已经按「全部删除」实现（内容、媒体对象、身份数据一并清除），所以这一页
-// 的职责是**让用户在按下之前真正知道自己会失去什么**，而不是藏一句话就行。
+// 清空账号身份和登录凭据；仍有成员的家庭保留历史内容与附件，提交者匿名展示。
+// 页面必须说明保留范围、原有可见性及仅本人家庭的解散规则。
 //
 // 三道闸：说清楚后果 → 输当前密码 → 勾「我已知悉」。
 // 密码这道是后端要求的（挡住拿到已登录手机的人），勾选这道是给人的最后一次
@@ -45,7 +44,7 @@ Page({
     const go = await new Promise((resolve) => {
       wx.showModal({
         title: '永久注销',
-        content: '账号将被注销，所有回忆、照片与留言会被永久删除，且无法恢复。确定继续吗？',
+        content: '账号与登录凭据将被清除。仍有成员的家庭会保留回忆、照片、留言及其他记录，并匿名显示提交者；原有可见范围不变。仅剩你一人的家庭会解散。确定继续吗？',
         confirmText: '注销',
         confirmColor: '#C0492B',
         cancelText: '再想想',
@@ -68,7 +67,7 @@ Page({
 
       // 服务端已经作废了所有会话（App 端也一样），本地直接清掉回引导页。
       // 走 clearSessionData 而不是逐字段置空：直链缓存也是账号相关的，
-      // 漏清会留下指向已删对象的 URL。
+      // 避免下一个账号继续使用本账号签发的媒体直链。
       app.clearToken();
       app.clearSessionData();
 
@@ -76,11 +75,11 @@ Page({
       const parts = [];
       if (stats.families_dissolved) parts.push(`解散了 ${stats.families_dissolved} 个家庭`);
       if (stats.ownerships_transferred) parts.push(`移交了 ${stats.ownerships_transferred} 个家庭的主理人`);
-      if (stats.storage_objects_deleted) parts.push(`删除了 ${stats.storage_objects_deleted} 个文件`);
 
       wx.showModal({
         title: '账号已注销',
-        content: parts.length ? `已清除你的全部数据：${parts.join('，')}。` : '已清除你的全部数据。',
+        content: '账号身份与登录凭据已清除。仍有成员的家庭中的历史内容和附件已保留，提交者匿名展示。'
+          + (parts.length ? `已${parts.join('，')}。` : ''),
         showCancel: false,
         confirmText: '知道了',
         success: () => wx.reLaunch({ url: '/pages/index/index' }),

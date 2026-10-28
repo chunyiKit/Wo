@@ -515,6 +515,31 @@ ON chat_messages(owner_user_id, family_id, created_at, local_id)
     }
   }
 
+  /// 退出或注销的发送者保留消息与附件，仅替换本地缓存的昵称和头像。
+  /// 更新限于当前账号和家庭，覆盖已超出服务端同步窗口的历史消息。
+  Future<void> anonymizeFormerSenders({
+    required String ownerUserId,
+    required String familyId,
+    required List<String> activeMemberIds,
+  }) async {
+    // 有效家庭响应一定包含当前用户；拒绝异常成员列表，避免误处理整个缓存。
+    if (!activeMemberIds.contains(ownerUserId)) return;
+    final db = await _database;
+    final placeholders = List.filled(activeMemberIds.length, '?').join(',');
+    await db.update(
+      'chat_messages',
+      {
+        'sender_name': '匿名用户',
+        'sender_emoji': '👤',
+        'sender_avatar_url': null,
+      },
+      where: 'owner_user_id = ? AND family_id = ? AND server_id IS NOT NULL '
+          'AND sender_id IS NOT NULL AND sender_id NOT IN ($placeholders) '
+          'AND (sender_name != ? OR sender_emoji != ? OR sender_avatar_url IS NOT NULL)',
+      whereArgs: [ownerUserId, familyId, ...activeMemberIds, '匿名用户', '👤'],
+    );
+  }
+
   Future<ChatSyncState> syncState({
     required String ownerUserId,
     required String familyId,

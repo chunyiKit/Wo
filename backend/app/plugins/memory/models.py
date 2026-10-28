@@ -197,8 +197,8 @@ class MediaPresignResponse(SQLModel):
     """A presigned POST ticket: post `fields` + the file to `url`.
 
     `fields` must precede the file part (COS stops reading at `file`). The
-    ticket is single-use in spirit but stateless on our side — commit is where
-    the row actually gets created, and it's idempotent by `media_id`.
+    ticket writes only a user-scoped staging object. Commit copies it to an
+    independent final key and is idempotent by `media_id`.
     """
 
     media_id: UUID

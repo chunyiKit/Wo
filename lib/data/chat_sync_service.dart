@@ -112,7 +112,6 @@ class ChatSyncService {
         afterId: state.afterId,
       );
       if (!active()) return;
-      if (page.items.isEmpty) break;
       for (final remote in page.items) {
         if (!active()) return;
         if (remote.familyId != familyId) {
@@ -122,6 +121,15 @@ class ChatSyncService {
         await store.upsertRemote(ownerUserId: ownerUserId, remote: remote);
       }
       if (!active()) return;
+      final activeMemberIds = page.activeMemberIds;
+      if (activeMemberIds != null) {
+        await store.anonymizeFormerSenders(
+          ownerUserId: ownerUserId,
+          familyId: familyId,
+          activeMemberIds: activeMemberIds,
+        );
+      }
+      if (!active() || page.items.isEmpty) break;
       final last = page.items.last;
       await store.saveSyncState(
         ownerUserId: ownerUserId,

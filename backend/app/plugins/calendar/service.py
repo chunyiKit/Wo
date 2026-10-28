@@ -10,7 +10,7 @@ from sqlmodel import select
 from app.models.plugin import InstalledPlugin
 from app.plugins.calendar.models import CalendarItem, CalendarItemRead
 from app.plugins.registry import PluginPreview
-from app.services.membership import MemberInfo, author_avatar_url
+from app.services.membership import MemberInfo, author_avatar_url, historical_member_info
 
 
 def _clamp_day(year: int, month: int, day: int) -> date:
@@ -76,7 +76,7 @@ def build_read(
 ) -> CalendarItemRead:
     """Serialize a row, injecting next_date / days_until + assignee display."""
     read = CalendarItemRead.model_validate(row, from_attributes=True)
-    info = members.get(row.assigned_to) if row.assigned_to is not None else None
+    info = historical_member_info(members, row.assigned_to)
 
     next_date: date | None = None
     days_until: int | None = None
