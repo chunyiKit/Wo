@@ -1,0 +1,69 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 200rpx;
+}
+
+.mark {
+  font-size: 64rpx;
+  font-weight: 600;
+  letter-spacing: 4rpx;
+  color: var(--ink);
+  margin-bottom: 88rpx;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 80rpx;
+}
+
+.state-title {
+  font-size: 34rpx;
+  color: var(--ink);
+  margin-bottom: 12rpx;
+}
+
+.state-text {
+  font-size: 28rpx;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.bind-btn {
+  width: 440rpx;
+  margin-top: 56rpx;
+}
+
+.retry {
+  margin-top: 32rpx;
+  font-size: 28rpx;
+  color: var(--ink-3);
+}
+
+.spinner {
+  width: 48rpx;
+  height: 48rpx;
+  border: 4rpx solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  margin-bottom: 28rpx;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 隐私指引入口：要小，但得看得见、点得到（审核会找这个入口） */
+.privacy {
+  margin-top: 24rpx;
+  padding: 8rpx 16rpx;
+  font-size: 26rpx;
+  color: var(--accent);
+}

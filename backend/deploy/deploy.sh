@@ -106,6 +106,35 @@ sudo install -m 0644 "$WO_APP_DIR/deploy/nginx/wo-backend.conf" \
     /etc/nginx/sites-available/wo-backend
 sudo ln -sf /etc/nginx/sites-available/wo-backend \
     /etc/nginx/sites-enabled/wo-backend
+
+# Shared location block (body caps / proxy timeouts). Both server blocks include
+# it, so it has to be installed too — otherwise the domain block below would
+# reference a file that only exists on whichever machine set it up by hand.
+sudo install -m 0644 "$WO_APP_DIR/deploy/nginx/snippets/wo-backend-locations.conf" \
+    /etc/nginx/snippets/wo-backend-locations.conf
+
+# Domain + Let's Encrypt block, for the WeChat mini program (it rejects bare IPs
+# and self-signed certs). Guarded on the certificate actually existing: the block
+# points at the cert path unconditionally, so with no cert `nginx -t` fails and
+# would abort the entire deploy before the backend even restarts.
+# Issue it first: sudo bash deploy/tls/setup-letsencrypt.sh
+WO_DOMAIN="${WO_DOMAIN:-wo.chunyi-work.online}"
+# ⚠️ 必须 `sudo test`，不能用 `[[ -f ... ]]`：
+# /etc/letsencrypt/{live,archive} 都是 0700 root，而本脚本整体以 ubuntu 身份
+# 运行（只有 install/systemctl 前面加了 sudo）。不带 sudo 的 `-f` 无权限穿越
+# 目录，即使证书已签发也会判成不存在，域名块就永远装不上。
+if sudo test -f "/etc/letsencrypt/live/$WO_DOMAIN/fullchain.pem"; then
+    # sites-enabled, NOT conf.d: nginx.conf includes conf.d *before*
+    # sites-enabled, and `upstream wo_backend` is defined in the latter. A
+    # conf.d copy would fail `nginx -t` with "host not found in upstream".
+    sudo install -m 0644 "$WO_APP_DIR/deploy/nginx/wo-backend-domain.conf" \
+        /etc/nginx/sites-available/wo-backend-domain
+    sudo ln -sf /etc/nginx/sites-available/wo-backend-domain \
+        /etc/nginx/sites-enabled/wo-backend-domain
+else
+    echo "跳过域名 server 块：$WO_DOMAIN 证书未签发，先跑 deploy/tls/setup-letsencrypt.sh"
+fi
+
 sudo nginx -t
 sudo systemctl reload nginx
 REMOTE

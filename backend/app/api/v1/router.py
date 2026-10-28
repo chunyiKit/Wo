@@ -21,10 +21,12 @@ from app.api.v1.routes import (
     health,
     invitations,
     me,
+    media_url,
     members,
     notifications,
     pets,
     plugins,
+    wechat,
 )
 from app.plugins.registry import registry
 
@@ -34,6 +36,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(me.router)
+api_router.include_router(media_url.router)
 api_router.include_router(families.router)
 api_router.include_router(members.router)
 api_router.include_router(pets.router)
@@ -45,6 +48,7 @@ api_router.include_router(notifications.router)
 api_router.include_router(devices.router)
 api_router.include_router(app_release.router)
 api_router.include_router(ai_config.router)
+api_router.include_router(wechat.router)
 
 # Per-plugin routes (each registered via its own __init__.py).
 for _reg in registry.list_registrations():

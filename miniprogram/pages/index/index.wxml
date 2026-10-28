@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="mark">Wo</view>
+
+  <view wx:if="{{status === 'loading'}}" class="state">
+    <view class="spinner"></view>
+    <text class="state-text">{{message}}</text>
+  </view>
+
+  <view wx:elif="{{status === 'unbound'}}" class="state">
+    <text class="state-title">{{message}}</text>
+    <text class="state-text">用手机号登录一次，之后打开就能直接进</text>
+    <view class="btn-primary bind-btn" bindtap="goBind">登录 Wo 账号</view>
+    <!-- 提审合规：登录前必须让用户能读到隐私指引，且不能默认勾选同意 -->
+    <view class="privacy" bindtap="openPrivacy">阅读《用户隐私保护指引》</view>
+    <view class="retry" bindtap="tryWechatLogin">重新尝试</view>
+  </view>
+
+  <view wx:else class="state">
+    <text class="state-title">暂时进不去</text>
+    <text class="state-text">{{message}}</text>
+    <view class="btn-primary bind-btn" bindtap="tryWechatLogin">重试</view>
+  </view>
+</view>

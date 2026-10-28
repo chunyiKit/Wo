@@ -1,0 +1,5 @@
+# 开发者工具生成的本地配置（含个人目录路径、调试开关），不入库。
+project.private.config.json
+.idea/
+node_modules/
+miniprogram_npm/

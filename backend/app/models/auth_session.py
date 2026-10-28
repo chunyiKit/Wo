@@ -28,6 +28,11 @@ class AuthSession(SQLModel, table=True):
     )
     # SHA-256 hex of the raw token (64 chars). Unique + indexed for O(1) lookup.
     token_hash: str = Field(max_length=64, unique=True, index=True)
+    # Which client the token was minted for: "app" (Android) or "mp" (微信小程
+    # 序). Purely descriptive today — it lets ops see where a session came from
+    # and gives us the hook to revoke one client's sessions without touching the
+    # other's (e.g. "log the mini program out everywhere").
+    client: str = Field(default="app", max_length=16, index=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),

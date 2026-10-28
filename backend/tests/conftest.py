@@ -11,9 +11,11 @@ from app.main import app
 def _reset_login_limiter() -> None:
     """Login limiters are process-global; clear them so per-test counts start fresh."""
     from app.api.v1.routes.auth import _login_ip_limiter, _login_phone_limiter
+    from app.api.v1.routes.wechat import _wechat_ip_limiter
 
     _login_ip_limiter.reset()
     _login_phone_limiter.reset()
+    _wechat_ip_limiter.reset()
 
 
 @pytest.fixture

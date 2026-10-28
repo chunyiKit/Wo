@@ -48,6 +48,17 @@ class User(UserBase, table=True):
     # passwords landed remain locked until a trusted recovery factor exists. Never
     # exposed in UserRead — passwords (even hashed) stay off public reads.
     password_hash: str | None = Field(default=None, max_length=255)
+    # ---- WeChat Mini Program binding (微信小程序账号互通) -------------------
+    # `openid` is unique per (user × this mini program); `unionid` is unique per
+    # (user × 微信开放平台账号) and is only issued when the mini program is bound
+    # to an Open Platform account — which it is, so we store both. Lookup binds
+    # on `openid` first and falls back to `unionid` so a user stays identified
+    # if the binding was made before the Open Platform linkage (or vice versa).
+    # Unique + nullable: Postgres allows many NULLs, so unbound users don't
+    # collide. Never exposed in UserRead — the client asks /me/wechat for the
+    # boolean binding state instead of receiving identifiers it has no use for.
+    wechat_openid: str | None = Field(default=None, max_length=64, unique=True, index=True)
+    wechat_unionid: str | None = Field(default=None, max_length=64, unique=True, index=True)
     # Generated only after password reauthentication; raw code is shown once.
     recovery_code_hash: str | None = Field(default=None, max_length=64)
     recovery_expires_at: datetime | None = Field(
@@ -70,6 +81,16 @@ class User(UserBase, table=True):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    # 账号注销时间。非空 = 已注销：身份数据已清空、内容已按用户选择处置。
+    #
+    # 保留这一行（而不是硬删）是刻意的：记账、宠物、回忆等历史记录的
+    # `created_by` 外键还指着它，硬删会让这些记录变成孤儿（或触发意料之外的
+    # 级联）。行内已不含任何可识别信息 —— 等同于《个人信息保护法》第 4 条
+    # 的「匿名化」，因此保留不违反「注销后应删除相关数据」。
+    deleted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
     )
 
 

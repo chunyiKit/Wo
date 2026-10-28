@@ -1,0 +1,81 @@
+/* 全局设计变量与基础排版。
+   配色沿用 App 的暖调（日落质感），但整体做浅色 —— 微信内以浅色为主流，
+   深色在这里会显得突兀。 */
+page {
+  --bg: #f7f5f2;
+  --card: #ffffff;
+  --ink: #1f1b16;
+  --ink-2: #6b6257;
+  --ink-3: #a39a8d;
+  --line: rgba(31, 27, 22, 0.09);
+  --accent: #c4703a;
+  --accent-soft: #f6e8de;
+  --danger: #c0492b;
+
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 30rpx;
+  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+view,
+text,
+button,
+input {
+  box-sizing: border-box;
+}
+
+/* 卡片：整站唯一的容器形态，避免每个页面各写一份圆角阴影。 */
+.card {
+  background: var(--card);
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin: 0 32rpx 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 27, 22, 0.04);
+}
+
+/* 主按钮 */
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999rpx;
+  font-size: 32rpx;
+  line-height: 96rpx;
+  height: 96rpx;
+  text-align: center;
+}
+
+.btn-primary.disabled {
+  background: #ddd7cf;
+  color: #fff;
+}
+
+/* 次级按钮（描边） */
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1rpx solid var(--line);
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  line-height: 88rpx;
+  height: 88rpx;
+  text-align: center;
+}
+
+.btn-danger-text {
+  color: var(--danger);
+  font-size: 30rpx;
+  line-height: 88rpx;
+  height: 88rpx;
+  text-align: center;
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.label {
+  color: var(--ink-3);
+  font-size: 26rpx;
+}

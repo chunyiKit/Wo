@@ -1,0 +1,108 @@
+{
+  "description": "Wo 配套微信小程序",
+  "projectname": "wo-miniprogram",
+  "appid": "wx0619d005f568430c",
+  "compileType": "miniprogram",
+  "libVersion": "3.5.0",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "coverView": true,
+    "lazyloadPlaceholderEnable": false,
+    "ignoreDevUnusedFiles": false,
+    "checkInvalidKey": true,
+    "showShadowRootInWxmlPanel": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "name": "启动引导（每次从头走）",
+          "pathName": "pages/index/index",
+          "query": "",
+          "scene": null
+        },
+        {
+          "name": "登录页",
+          "pathName": "pages/bind/bind",
+          "query": "",
+          "scene": null
+        },
+        {
+          "name": "注册页",
+          "pathName": "pages/register/register",
+          "query": "",
+          "scene": null
+        },
+        {
+          "name": "首页卡片墙",
+          "pathName": "pages/home/home",
+          "query": "",
+          "scene": null
+        },
+        {
+          "name": "我的",
+          "pathName": "pages/me/me",
+          "query": "",
+          "scene": null
+        },
+        {
+          "name": "注销账号（危险，别用真号试）",
+          "pathName": "pages/delete-account/delete-account",
+          "query": "",
+          "scene": null
+        },
+        {
+          "name": "回忆时间线（分包）",
+          "pathName": "package-memory/pages/timeline/timeline",
+          "query": "familyId=",
+          "scene": null
+        },
+        {
+          "name": "回忆详情（分包，需填 id）",
+          "pathName": "package-memory/pages/detail/detail",
+          "query": "familyId=&id=",
+          "scene": null
+        },
+        {
+          "name": "新的回忆（分包）",
+          "pathName": "package-memory/pages/edit/edit",
+          "query": "familyId=",
+          "scene": null
+        },
+        {
+          "name": "编辑回忆（分包，需填 id）",
+          "pathName": "package-memory/pages/edit/edit",
+          "query": "familyId=&id=",
+          "scene": null
+        }
+      ]
+    }
+  },
+  "compileWorklet": false,
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {}
+}

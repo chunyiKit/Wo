@@ -68,6 +68,19 @@ class Settings(BaseSettings):
     # keep it disabled so unverified identifiers cannot authenticate.
     auth_dev_shim_enabled: bool = False
 
+    # ---- WeChat Mini Program (微信小程序) ----------------------------------
+    # Credentials for the companion mini program. `jscode2session` exchanges the
+    # one-shot `wx.login()` code for the user's openid/unionid (see
+    # app.services.wechat). Both blank → the WeChat endpoints report a clear
+    # "not configured" error instead of failing with a confusing upstream error.
+    # The AppSecret is a long-lived secret: keep it in /etc/wo/app.env on the
+    # server, never in the repo.
+    wechat_app_id: str = ""
+    wechat_app_secret: str = ""
+    # Upstream call timeout. The WeChat auth API is fast; a short budget keeps a
+    # slow upstream from holding a request slot (and a DB transaction) hostage.
+    wechat_timeout_seconds: float = 5.0
+
     # ---- Push (JPush / 极光推送) -------------------------------------------
     # Master switch. When false: notifications skip outbox staging and the
     # dispatcher loop never starts — so dev/tests behave exactly as before push.

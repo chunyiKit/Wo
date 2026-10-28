@@ -1,0 +1,49 @@
+<view class="page">
+  <view class="head">
+    <text class="title">登录 Wo 账号</text>
+    <text class="sub">用你在 Wo App 里的手机号登录一次，之后打开小程序就能直接进入</text>
+  </view>
+
+  <view class="card">
+    <view class="field">
+      <text class="label">手机号</text>
+      <input
+        class="input"
+        type="number"
+        maxlength="11"
+        placeholder="11 位手机号"
+        placeholder-class="ph"
+        value="{{phone}}"
+        bindinput="onPhoneInput"
+      />
+    </view>
+
+    <view class="divider"></view>
+
+    <view class="field">
+      <text class="label">密码</text>
+      <input
+        class="input"
+        password
+        maxlength="64"
+        placeholder="登录密码"
+        placeholder-class="ph"
+        value="{{password}}"
+        bindinput="onPasswordInput"
+        bindconfirm="submit"
+      />
+    </view>
+  </view>
+
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+
+  <view
+    class="btn-primary {{loading ? 'disabled' : ''}} submit"
+    bindtap="submit"
+  >{{loading ? '处理中…' : '登录并绑定'}}</view>
+
+  <!-- 底部小字：切换去注册。整行居中（见 .switch），中间那段才是可点的 -->
+  <view class="switch">
+    <text>还没有 Wo 账号？</text><text class="switch-link" bindtap="goRegister">去注册</text>
+  </view>
+</view>

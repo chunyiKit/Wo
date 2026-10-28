@@ -32,6 +32,26 @@ class ErrorCode:
     INVALID_IMAGE = "INVALID_IMAGE"
     RATE_LIMIT = "RATE_LIMIT"
     INTERNAL = "INTERNAL"
+    # ---- Direct media URLs (微信小程序直链) --------------------------------
+    # The deployment's storage backend can't mint presigned URLs (e.g. local
+    # disk in dev/tests). Callers that *require* a headerless URL — the mini
+    # program's <image>, which cannot send Authorization — get this instead of
+    # a broken URL, so they can degrade to a placeholder rather than a blank.
+    STORAGE_NO_DIRECT_URL = "STORAGE_NO_DIRECT_URL"
+    # ---- Direct upload to COS (微信小程序 / 大文件直传) ---------------------
+    # The client got a presigned POST ticket but the object never landed (or
+    # landed under a different key) — retry the upload, don't retry blindly.
+    DIRECT_UPLOAD_MISSING = "DIRECT_UPLOAD_MISSING"
+    # ---- WeChat Mini Program (微信小程序) ----------------------------------
+    # Server lacks (or has wrong) AppID / AppSecret — an operator fix, not the
+    # user's, so it must never read like "you did something wrong".
+    WECHAT_NOT_CONFIGURED = "WECHAT_NOT_CONFIGURED"
+    # The `wx.login()` code was consumed, stale, or forged.
+    WECHAT_CODE_INVALID = "WECHAT_CODE_INVALID"
+    # WeChat upstream unreachable / returned something we don't model.
+    WECHAT_UPSTREAM = "WECHAT_UPSTREAM"
+    # The openid is already bound to a *different* Wo account.
+    WECHAT_OPENID_BOUND = "WECHAT_OPENID_BOUND"
 
 
 class AppError(Exception):

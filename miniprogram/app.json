@@ -1,0 +1,49 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/home/home",
+    "pages/bind/bind",
+    "pages/register/register",
+    "pages/delete-account/delete-account",
+    "pages/me/me"
+  ],
+  "subpackages": [
+    {
+      "root": "package-memory",
+      "name": "memory",
+      "pages": ["pages/timeline/timeline", "pages/detail/detail", "pages/edit/edit"]
+    }
+  ],
+  "preloadRule": {
+    "pages/home/home": {
+      "network": "all",
+      "packages": ["memory"]
+    }
+  },
+  "window": {
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#F8F1E7",
+    "navigationBarTitleText": "Wo",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F8F1E7"
+  },
+  "tabBar": {
+    "color": "#7D6655",
+    "selectedColor": "#A85D2D",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/me/me",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}
