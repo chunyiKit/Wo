@@ -1,0 +1,105 @@
+/* 注销页。刻意不用主色调 —— 这一页要让人慢下来，暖棕会让人误以为是常规流程。 */
+
+.page {
+  min-height: 100vh;
+  padding: 32rpx 0 64rpx;
+  box-sizing: border-box;
+  background: var(--bg);
+}
+
+/* 后果卡片：整页唯一有颜色倾向的地方 */
+.danger {
+  border-left: 8rpx solid var(--danger);
+}
+
+.danger-title {
+  display: block;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 12rpx;
+}
+
+.danger-sub {
+  display: block;
+  font-size: 28rpx;
+  color: var(--ink);
+  margin-bottom: 16rpx;
+}
+
+.line {
+  display: block;
+  font-size: 27rpx;
+  line-height: 1.9;
+  color: var(--ink-2);
+}
+
+.danger-note {
+  display: block;
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid var(--line);
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+.label {
+  display: block;
+  font-size: 26rpx;
+  color: var(--ink-3);
+  margin-bottom: 16rpx;
+}
+
+.input {
+  height: 88rpx;
+  padding: 0 24rpx;
+  border-radius: 16rpx;
+  background: #f6f2ed;
+  font-size: 30rpx;
+  color: var(--ink);
+}
+
+.ph {
+  color: var(--ink-3);
+}
+
+.agree {
+  margin-top: 28rpx;
+}
+
+.agree-label {
+  display: flex;
+  align-items: flex-start;
+}
+
+.agree-text {
+  flex: 1;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* 注销按钮：实心红，与页面其它按钮拉开距离 */
+.btn-danger {
+  margin: 40rpx 32rpx 0;
+  height: 96rpx;
+  line-height: 96rpx;
+  border-radius: 999rpx;
+  background: var(--danger);
+  color: #fff;
+  font-size: 32rpx;
+  text-align: center;
+}
+
+.btn-danger.disabled {
+  background: #d8ccc4;
+}
+
+.foot {
+  display: block;
+  margin-top: 28rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--ink-3);
+}

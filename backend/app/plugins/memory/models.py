@@ -158,6 +158,75 @@ class MemoryMediaRead(SQLModel):
     url: str
 
 
+# ---- Direct media URLs (微信小程序) ---------------------------------------
+
+
+class MediaUrlsRequest(SQLModel):
+    """Batch request for headerless media URLs (see `MediaUrlsResponse`)."""
+
+    media_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
+class MediaUrlsResponse(SQLModel):
+    """Headerless (presigned) URLs for the requested media.
+
+    Keys are media ids as strings (JSON object keys are always strings).
+    Ids the caller may not see — or that don't exist — are simply absent, so the
+    client treats "no entry" as "no image" without needing an error list.
+    """
+
+    urls: dict[str, str] = {}
+    # All URLs in one batch expire together (signed at the same instant), so a
+    # single timestamp is enough for the client to cache and re-fetch.
+    expires_at: datetime
+
+
+# ---- Direct upload (COS 直传) ---------------------------------------------
+
+
+class MediaPresignRequest(SQLModel):
+    """Ask for a ticket to upload one attachment straight to object storage."""
+
+    # Declared MIME type. Pinned into the signed policy, so the client can't
+    # upload something else under the same ticket.
+    content_type: str = Field(max_length=64)
+    client_id: UUID | None = None
+
+
+class MediaPresignResponse(SQLModel):
+    """A presigned POST ticket: post `fields` + the file to `url`.
+
+    `fields` must precede the file part (COS stops reading at `file`). The
+    ticket is single-use in spirit but stateless on our side — commit is where
+    the row actually gets created, and it's idempotent by `media_id`.
+    """
+
+    media_id: UUID
+    key: str
+    url: str
+    fields: dict[str, str] = {}
+    file_field: str = "file"
+    max_bytes: int
+    expires_at: datetime
+
+
+class MediaCommitRequest(SQLModel):
+    """Record an object a client uploaded directly to object storage.
+
+    `key` is echoed back so the server can prove it matches the key it handed
+    out for this `media_id` — a client can't commit someone else's object.
+    """
+
+    media_id: UUID
+    key: str = Field(max_length=255)
+    content_type: str = Field(max_length=64)
+    duration_ms: int | None = Field(default=None, ge=0)
+    # Measured client-side (`wx.getImageInfo`); display-only, so trusting them
+    # costs nothing. Ignored for video.
+    width: int | None = Field(default=None, ge=0)
+    height: int | None = Field(default=None, ge=0)
+
+
 # ---- Comment -------------------------------------------------------------
 
 

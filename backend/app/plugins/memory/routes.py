@@ -10,7 +10,7 @@ raw-bytes endpoint streams via a plain Response since the body is binary.
 """
 
 import contextlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -26,9 +26,14 @@ from app.core.errors import AppError, ErrorCode
 from app.core.ids import new_uuid7
 from app.core.permissions import require_membership
 from app.core.response import ApiResponse, Meta, ok
-from app.core.storage import PresignableStorage, storage
+from app.core.storage import DirectUploadStorage, PresignableStorage, storage
 from app.plugins.memory.models import (
     VISIBILITY_VALUES,
+    MediaCommitRequest,
+    MediaPresignRequest,
+    MediaPresignResponse,
+    MediaUrlsRequest,
+    MediaUrlsResponse,
     Memory,
     MemoryComment,
     MemoryCommentCreate,
@@ -45,6 +50,8 @@ from app.plugins.memory.service import (
     decode_cursor,
     encode_cursor,
     member_map,
+    resolve_declared_media,
+    sniff_kind,
     to_comment_read,
     to_media_read,
     today,
@@ -61,6 +68,15 @@ router = APIRouter(
 # `limit` can't pull the whole table in one shot.
 TIMELINE_PAGE_DEFAULT = 20
 TIMELINE_PAGE_MAX = 50
+
+# Presigned-URL lifetime for the mini program's direct media links. One hour
+# covers a photo-browsing session; short enough that a leaked URL ages out.
+MEDIA_URL_TTL_SECONDS = 3600
+
+# How long a direct-upload ticket stays valid. Long enough to survive a slow
+# 4G video upload plus one retry, short enough that a leaked ticket is useless
+# within the hour.
+DIRECT_UPLOAD_TTL_SECONDS = 1800
 
 
 # ---- Loaders / guards -----------------------------------------------------
@@ -440,6 +456,168 @@ async def upload_media(
     return ok(to_media_read(media))
 
 
+# ---- Direct upload (COS 直传) ---------------------------------------------
+
+
+@router.post(
+    "/memories/{memory_id}/media/presign",
+    response_model=ApiResponse[MediaPresignResponse],
+)
+async def presign_media_upload(
+    family_id: UUID,
+    memory_id: UUID,
+    payload: MediaPresignRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[MediaPresignResponse]:
+    """Hand out a ticket to upload one attachment straight to COS (D2).
+
+    Stateless on purpose: nothing is written here, so a retry — or a ticket the
+    client never used — leaves no trace but an abandoned object in the bucket
+    (harmless, private, and never referenced by a row). Idempotency lives in
+    `commit_media_upload`, which keys off `media_id`.
+    """
+    await require_membership(session, current_user.id, family_id)
+    await _load_memory(session, family_id, memory_id)
+
+    content_type, kind, ext = resolve_declared_media(payload.content_type)
+    if not isinstance(storage, DirectUploadStorage):
+        raise AppError(
+            ErrorCode.STORAGE_NO_DIRECT_URL,
+            "当前部署不支持直传，请走普通上传",
+            status_code=501,
+        )
+
+    media_id = payload.client_id or new_uuid7()
+    key = build_storage_key(family_id, memory_id, media_id, ext)
+    cap = settings.memory_video_max_bytes if kind == "video" else settings.max_upload_bytes
+    ticket = await storage.presigned_post(
+        key,
+        content_type=content_type,
+        max_bytes=cap,
+        ttl_seconds=DIRECT_UPLOAD_TTL_SECONDS,
+    )
+    return ok(
+        MediaPresignResponse(
+            media_id=media_id,
+            key=key,
+            url=ticket.url,
+            fields=ticket.fields,
+            file_field=ticket.file_field,
+            max_bytes=ticket.max_bytes,
+            expires_at=ticket.expires_at,
+        )
+    )
+
+
+@router.post(
+    "/memories/{memory_id}/media/commit",
+    response_model=ApiResponse[MemoryMediaRead],
+    status_code=201,
+)
+async def commit_media_upload(
+    family_id: UUID,
+    memory_id: UUID,
+    payload: MediaCommitRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[MemoryMediaRead]:
+    """Turn an object the client uploaded straight to COS into a media row (D3).
+
+    Three checks stand in for the byte-level validation the proxied upload path
+    does, in the order they get cheaper to explain:
+
+    1. `key` must be exactly the key this `media_id` was given — otherwise a
+       client could commit an object minted for another family or memory.
+    2. The object must exist and fit the same cap the proxied path enforces.
+    3. Its leading bytes must not contradict the declared kind.
+    """
+    await require_membership(session, current_user.id, family_id)
+    memory = await _load_memory(session, family_id, memory_id)
+
+    content_type, kind, ext = resolve_declared_media(payload.content_type)
+    if not isinstance(storage, DirectUploadStorage):
+        raise AppError(
+            ErrorCode.STORAGE_NO_DIRECT_URL,
+            "当前部署不支持直传，请走普通上传",
+            status_code=501,
+        )
+    expected_key = build_storage_key(family_id, memory_id, payload.media_id, ext)
+    if payload.key != expected_key:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "上传凭证与目标不匹配",
+            status_code=400,
+            details={"expected": expected_key},
+        )
+
+    await _lock_client_id(session, payload.media_id)
+    existing = await session.get(MemoryMedia, payload.media_id)
+    if existing is not None:
+        if (
+            existing.family_id != family_id
+            or existing.memory_id != memory_id
+            or existing.created_by != current_user.id
+        ):
+            raise _client_id_conflict()
+        return ok(to_media_read(existing))
+
+    stat = await storage.stat(payload.key)
+    if stat is None:
+        raise AppError(
+            ErrorCode.DIRECT_UPLOAD_MISSING,
+            "文件还没上传成功，请重新上传",
+            status_code=400,
+        )
+
+    cap = settings.memory_video_max_bytes if kind == "video" else settings.max_upload_bytes
+    if stat.size_bytes > cap:
+        raise AppError(
+            ErrorCode.FILE_TOO_LARGE,
+            f"文件超过上限 {cap // (1024 * 1024)} MB",
+            status_code=413,
+            details={"max_bytes": cap, "kind": kind},
+        )
+
+    sniffed = sniff_kind(stat.head)
+    if sniffed is not None and sniffed != kind:
+        raise AppError(
+            ErrorCode.INVALID_IMAGE,
+            "文件内容与声明的类型不符",
+            status_code=400,
+            details={"declared": kind, "sniffed": sniffed},
+        )
+
+    max_order = (
+        await session.execute(
+            select(func.coalesce(func.max(MemoryMedia.sort_order), -1)).where(
+                MemoryMedia.memory_id == memory_id
+            )
+        )
+    ).scalar_one()
+
+    media = MemoryMedia(
+        id=payload.media_id,
+        memory_id=memory_id,
+        family_id=family_id,
+        kind=kind,
+        storage_key=payload.key,
+        content_type=content_type,
+        size_bytes=stat.size_bytes,
+        width=payload.width if kind == "photo" else None,
+        height=payload.height if kind == "photo" else None,
+        duration_ms=payload.duration_ms if kind == "video" else None,
+        sort_order=int(max_order) + 1,
+        created_by=current_user.id,
+    )
+    session.add(media)
+    memory.updated_at = datetime.now(UTC)
+    session.add(memory)
+    await session.commit()
+    await session.refresh(media)
+    return ok(to_media_read(media))
+
+
 @router.delete("/memories/{memory_id}/media/{media_id}", response_model=ApiResponse[dict])
 async def delete_media(
     family_id: UUID,
@@ -498,6 +676,67 @@ async def get_media_raw(
     except FileNotFoundError as exc:
         raise AppError(ErrorCode.INTERNAL, "媒体文件丢失", status_code=500) from exc
     return Response(content=data, media_type=media.content_type)
+
+
+# ---- Direct media URLs (微信小程序) -----------------------------------------
+
+
+@router.post("/media/urls", response_model=ApiResponse[MediaUrlsResponse])
+async def memory_media_urls(
+    family_id: UUID,
+    payload: MediaUrlsRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[MediaUrlsResponse]:
+    """Batch-mint headerless URLs for memory media.
+
+    The mini program's `<image>` component cannot send an `Authorization` header,
+    so `/raw` (which requires one, and 302s to COS) is unusable there. This
+    exchanges a batch of media ids for presigned COS URLs the component can load
+    directly.
+
+    Batched deliberately: a timeline page is 20 memories × ~6 media = ~120
+    images. One request per image would be a request storm; one request for the
+    whole page is a single round trip.
+
+    Membership-checked, and `private` memories are filtered to their author —
+    same rules as `/raw`, so this endpoint widens nothing.
+    """
+    await require_membership(session, current_user.id, family_id)
+
+    if not isinstance(storage, PresignableStorage):
+        # Local-disk deployments (dev/tests) can't mint signed URLs. Fail loudly
+        # rather than returning a URL that would 401 without a header — the
+        # client then degrades to a placeholder instead of showing a blank box.
+        raise AppError(
+            ErrorCode.STORAGE_NO_DIRECT_URL,
+            "当前存储后端不支持直链，请改用 /raw 端点",
+            status_code=501,
+        )
+
+    # Dedupe while preserving order — a client may repeat ids across memories.
+    wanted = list(dict.fromkeys(payload.media_ids))
+
+    stmt = (
+        select(MemoryMedia, Memory.visibility, Memory.created_by)
+        .join(Memory, MemoryMedia.memory_id == Memory.id)
+        .where(MemoryMedia.id.in_(wanted), MemoryMedia.family_id == family_id)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    urls: dict[str, str] = {}
+    issued_at = datetime.now(UTC)
+    for media, visibility, created_by in rows:
+        # A private memory's media is invisible to everyone but its author, same
+        # as the detail and /raw endpoints.
+        if visibility == "private" and created_by != current_user.id:
+            continue
+        urls[str(media.id)] = await storage.presigned_get_url(
+            media.storage_key, ttl_seconds=MEDIA_URL_TTL_SECONDS
+        )
+
+    expires_at = issued_at + timedelta(seconds=MEDIA_URL_TTL_SECONDS)
+    return ok(MediaUrlsResponse(urls=urls, expires_at=expires_at))
 
 
 # ---- Comments -------------------------------------------------------------

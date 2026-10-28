@@ -10,7 +10,7 @@ import base64
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -74,6 +74,64 @@ def validate_media(data: bytes) -> tuple[str, str, str, int | None, int | None]:
 def build_storage_key(family_id: UUID, memory_id: UUID, media_id: UUID, ext: str) -> str:
     """Namespace media by family then memory for easy cleanup boundaries."""
     return f"memory/{family_id}/{memory_id}/{media_id}.{ext}"
+
+
+# ---- Direct upload (COS 直传) --------------------------------------------
+
+
+# Client-declared MIME → (kind, ext). Direct uploads bypass `validate_media`
+# (the bytes never reach us), so the *declared* type is the only source for the
+# storage key's extension — hence the strict allow-list. The declared value is
+# still re-checked against the object's magic bytes at commit time.
+_DECLARED_MEDIA: dict[str, tuple[str, str]] = {
+    "image/jpeg": ("photo", "jpg"),
+    "image/png": ("photo", "png"),
+    "image/webp": ("photo", "webp"),
+    "image/gif": ("photo", "gif"),
+    "video/mp4": ("video", "mp4"),
+    "video/quicktime": ("video", "mov"),
+}
+
+
+def resolve_declared_media(content_type: str) -> tuple[str, str, str]:
+    """Map a client-declared MIME type to `(content_type, kind, ext)`.
+
+    Raises `AppError(INVALID_IMAGE)` for anything off the allow-list: unlike the
+    proxied upload path we can't fall back to sniffing the bytes, and an
+    unknown type would otherwise land in the storage key verbatim.
+    """
+    declared = (content_type or "").split(";")[0].strip().lower()
+    hit = _DECLARED_MEDIA.get(declared)
+    if hit is None:
+        raise AppError(
+            ErrorCode.INVALID_IMAGE,
+            f"不支持的文件类型：{declared or '未指定'}",
+            status_code=400,
+            details={"supported": sorted(_DECLARED_MEDIA)},
+        )
+    kind, ext = hit
+    return declared, kind, ext
+
+
+def sniff_kind(head: bytes) -> str | None:
+    """Classify a blob from its leading bytes; None when inconclusive.
+
+    The cheap stand-in for `validate_media` on the direct-upload path: we can't
+    decode a 100 MB video we never received, but 16 bytes is enough to catch the
+    case that actually matters — a payload whose real kind contradicts the
+    declared one (which would otherwise render as a broken attachment).
+    """
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        return "video"
+    if head.startswith(b"\xff\xd8\xff"):  # JPEG
+        return "photo"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "photo"
+    if head.startswith(b"GIF8"):
+        return "photo"
+    if head.startswith(b"RIFF") and len(head) >= 12 and head[8:12] == b"WEBP":
+        return "photo"
+    return None
 
 
 def build_media_url(family_id: UUID, memory_id: UUID, media_id: UUID) -> str:
@@ -267,3 +325,55 @@ __all__ = [
 # Re-exported for route convenience (avoids re-importing date/datetime there).
 def today() -> date:
     return datetime.now(UTC).date()
+
+
+async def erase_user_data(session: AsyncSession, user_id: UUID) -> list[str]:
+    """注销钩子：删除该用户在「回忆」里的全部数据，返回要删的存储对象 key。
+
+    删三样东西，且顺序不能换：
+
+    1. 他**创建**的回忆 —— 整条删除，连同下面的媒体与留言。注意：这些数据的
+       可见范围可能是「全家可见」，其他成员此前一直看得见；用户既然选了
+       「连内容一起删」，删掉就是预期行为（家庭相册会缺一段）。
+    2. 他**上传**但挂在别人回忆里的媒体 —— 行删掉，别人的那条回忆少几张图。
+    3. 他**写**在别人回忆下的留言。
+
+    实现上刻意用 bulk delete 并**显式删子表**，不依赖外键的 ON DELETE CASCADE：
+    生产是 Postgres（外键真实生效），但测试跑 SQLite，而 SQLite 的外键约束默认
+    是关闭的 —— 靠级联会让两个环境行为不一致，测出来的绿灯是假的。
+    """
+    keys: list[str] = []
+
+    # ① 他上传的媒体（无论挂在谁的回忆上）
+    uploaded = await session.execute(
+        select(MemoryMedia.storage_key).where(MemoryMedia.created_by == user_id)
+    )
+    keys.extend(uploaded.scalars().all())
+
+    # ② 他创建的回忆
+    own_ids = (
+        await session.execute(select(Memory.id).where(Memory.created_by == user_id))
+    ).scalars().all()
+
+    if own_ids:
+        # 这些回忆下的媒体 key 未必在 ① 里 —— 早年上传的行 created_by 可能是
+        # 空。宁可多收几个 key（删不存在的对象是幂等的），也不能漏删。
+        under_own = await session.execute(
+            select(MemoryMedia.storage_key).where(MemoryMedia.memory_id.in_(own_ids))
+        )
+        keys.extend(under_own.scalars().all())
+
+        await session.execute(
+            delete(MemoryComment).where(MemoryComment.memory_id.in_(own_ids))
+        )
+        await session.execute(
+            delete(MemoryMedia).where(MemoryMedia.memory_id.in_(own_ids))
+        )
+        await session.execute(delete(Memory).where(Memory.id.in_(own_ids)))
+
+    # ③ 剩下的（挂在别人回忆上的）
+    await session.execute(delete(MemoryMedia).where(MemoryMedia.created_by == user_id))
+    await session.execute(delete(MemoryComment).where(MemoryComment.created_by == user_id))
+
+    # 去重保序：① 与 ② 很可能收到同一个 key
+    return list(dict.fromkeys(keys))

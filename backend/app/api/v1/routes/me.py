@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import select
 from starlette.responses import RedirectResponse, Response
 
@@ -25,6 +25,7 @@ from app.models.family import FamilyRead
 from app.models.plugin import InstalledPlugin
 from app.models.user import UserRead, UserUpdate
 from app.plugins.views import InstalledPluginRead, to_installed_read
+from app.services import account as account_service
 from app.services import family as family_service
 from app.services import notification as notification_service
 from app.services import notification_prefs as notification_prefs_service
@@ -322,3 +323,34 @@ async def get_avatar_raw(
         media_type=current_user.avatar_content_type or "application/octet-stream",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
+
+
+class DeleteAccountRequest(BaseModel):
+    """注销账号。
+
+    `password` 必填是刻意的：这是不可逆操作，只有一个确认框的话，拿到已登录
+    手机的人（或会话被盗后）就能把整个账号清掉。
+    """
+
+    password: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/me/delete-account", response_model=ApiResponse[dict])
+async def delete_account(
+    payload: DeleteAccountRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> ApiResponse[dict]:
+    """永久注销当前账号。
+
+    合规要求（微信《常见拒绝情形》3.4.1 + PIPL 第 47 条）：注销后必须删除个人数据。
+    本端点按最彻底的一档执行：
+
+    - 删除你创建的全部内容（回忆、留言）和上传的媒体文件（COS 对象一并移除）
+    - 退出所有家庭；若你是主理人，主理人自动移交给资历最老的成员，无人则解散
+    - 清空手机号、密码、微信绑定、头像 —— 此后无法再登录，手机号可被重新注册
+    - 所有端（App + 小程序）的会话立即失效
+
+    返回统计（退出了几个家 / 移交了几次 / 删了多少对象），让用户知道删掉了什么。
+    """
+    return ok(await account_service.delete_account(session, current_user, payload.password))

@@ -141,6 +141,11 @@ User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ─�
 | `LAYOUT_CONFLICT` | 409 | 卡片位置冲突 |
 | `RATE_LIMIT` | 429 | 限流 |
 | `INTERNAL` | 500 | 服务器错误 |
+| `WECHAT_NOT_CONFIGURED` | 503 | 服务端未配置小程序 AppID / AppSecret（运维问题，不是用户的错） |
+| `WECHAT_CODE_INVALID` | 401 | `wx.login()` 的 code 无效 / 已过期 / 已被使用 |
+| `WECHAT_UPSTREAM` | 502 | 微信接口不可达或返回未知错误 |
+| `WECHAT_OPENID_BOUND` | 409 | 该微信身份已绑定到另一个 Wo 账号 |
+| `STORAGE_NO_DIRECT_URL` | 501 | 存储后端不能签发预签名直链（本地盘部署），小程序应降级为占位图 |
 
 ---
 
@@ -156,6 +161,71 @@ User ─┬─ Membership ──┬─ Family ──┬─ InstalledPlugin ─�
 | `POST` | `/auth/logout` | 失效当前 refresh token |
 | `GET` | `/me` | 当前用户信息 + 当前家庭 |
 | `PATCH` | `/me` | 改名 / 头像 emoji |
+
+#### 5.1.1 微信小程序账号互通
+
+配套小程序与 App 共用同一套账号与数据。小程序用 `wx.login()` 的一次性 `code`
+换微信身份（openid / unionid），再与该身份绑定的 Wo 账号签发**同一种**不透明
+Bearer 会话（见 4.3，会话带 `client=mp` 标记以便分端识别）。
+
+| Method | Path | 说明 |
+|--------|------|------|
+| `POST` | `/auth/wechat/login` | 静默登录。已绑定 → 直接返回 `{user, token}`；未绑定 → `{bound: false}` |
+| `POST` | `/auth/wechat/bind` | 手机号 + 密码登录（未知手机号按新账号注册）并绑定当前微信身份 |
+| `GET` | `/me/wechat` | 当前账号的微信绑定状态 `{bound, has_unionid}` |
+| `DELETE` | `/me/wechat` | 解绑，并撤销该账号下所有 `client=mp` 的会话 |
+
+#### 5.1.2 媒体直链（供小程序的 `<image>`）
+
+小程序的 `<image>` 组件**发不出自定义请求头**，所以所有需要 `Authorization`
+的 `/raw` 端点在小程序里都是空白。下面三个端点返回 COS 预签名 URL —— 自带签名、
+无需任何请求头的普通 https 链接，TTL 1 小时。
+
+鉴权口径与对应 `/raw` 端点完全一致（同样的成员校验、同样的 private 过滤），
+只是传输方式不同，可读范围没有扩大。
+
+| Method | Path | 说明 |
+|--------|------|------|
+| `POST` | `/families/{fid}/plugins/memory/media/urls` | 批量换回忆媒体直链。body `{"media_ids": [...]}`，返回 `{urls: {id: url}, expires_at}`。看不到的 id 直接缺席而非报错 |
+| `GET` | `/families/{fid}/members/{uid}/avatar-url` | 成员头像直链。未设头像 → 404（客户端回退 emoji） |
+| `GET` | `/me/avatar-url` | 自己的头像直链 |
+
+```jsonc
+// POST /families/{fid}/plugins/memory/media/urls
+// { "media_ids": ["019e6863-...", "019e6863-..."] }
+{
+  "success": true,
+  "data": {
+    "urls": { "019e6863-...": "https://<bucket>.cos.<region>.myqcloud.com/memory/...?q-signature=..." },
+    "expires_at": "2026-10-27T21:42:00Z"
+  }
+}
+```
+
+> ⚠️ 直链指向的是 **COS 域名，不是 API 域名**，客户端必须把它单独登记进
+> 合法域名白名单，否则接口能通但图片全白。
+> 存储后端不支持预签名时（本地盘部署）返回 501 `STORAGE_NO_DIRECT_URL`。
+
+```jsonc
+// POST /auth/wechat/login  { "code": "wx.login() 返回的 code" }
+// 已绑定
+{ "success": true, "data": { "bound": true, "user": { /* User */ }, "token": "..." } }
+// 未绑定 —— 客户端转去 /auth/wechat/bind
+{ "success": true, "data": { "bound": false, "user": null, "token": null } }
+
+// POST /auth/wechat/bind  { "code": "...", "phone": "138...", "password": "..." }
+{ "success": true, "data": { "user": { /* User */ }, "token": "...", "is_new": true } }
+```
+
+约束：
+
+- `code` 一次性且 5 分钟有效。`/auth/wechat/login` 消耗掉一个之后，
+  `/auth/wechat/bind` 必须重新 `wx.login()` 取新 code —— 服务端不保存中间 ticket。
+- 一个微信身份只能绑一个 Wo 账号（`users.wechat_openid` / `wechat_unionid` 唯一约束）。
+  重复绑定同一账号是幂等的；用**另一个**账号的凭据去绑返回 `WECHAT_OPENID_BOUND`。
+- 首登策略 A（手机号 + 密码后绑定）保证每个微信绑定用户都有密码，因此
+  `resolve_user_id` 中「必须有 password_hash」的校验无需放宽。若将来引入免密注册，
+  必须先改那里，否则会出现「登录成功但每个请求都 401」。
 
 ```jsonc
 // GET /me 响应

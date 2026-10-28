@@ -1,0 +1,45 @@
+<view class="page">
+  <!-- 后果先说清楚。不可逆操作最忌讳的是「点完才知道删了什么」。 -->
+  <view class="card danger">
+    <text class="danger-title">注销后无法恢复</text>
+    <text class="danger-sub">以下内容会被永久删除：</text>
+
+    <view class="line">· 你创建的全部回忆，以及其中的照片与视频</view>
+    <view class="line">· 你写在别人回忆下的全部留言</view>
+    <view class="line">· 你的头像、手机号、密码与微信绑定</view>
+    <view class="line">· 你会退出所属的全部家庭</view>
+
+    <text class="danger-note">
+      若你是某个家庭的主理人，主理人会自动移交给资历最老的成员；
+      若家里只有你一个人，这个家庭会被解散。
+    </text>
+  </view>
+
+  <view class="card">
+    <text class="label">请输入当前密码以确认身份</text>
+    <input
+      class="input"
+      type="text"
+      password="{{true}}"
+      placeholder="当前密码"
+      placeholder-class="ph"
+      value="{{password}}"
+      bindinput="onPassword"
+      disabled="{{submitting}}"
+    />
+
+    <checkbox-group class="agree" bindchange="onToggleAgree">
+      <label class="agree-label">
+        <checkbox value="yes" checked="{{agreed}}" />
+        <text class="agree-text">我已知悉上述内容会被永久删除，且无法恢复</text>
+      </label>
+    </checkbox-group>
+  </view>
+
+  <view
+    class="btn-danger submit {{submitting ? 'disabled' : ''}}"
+    bindtap="submit"
+  >{{submitting ? '正在注销…' : '永久注销账号'}}</view>
+
+  <text class="foot">注销后，App 端的登录状态也会同时失效</text>
+</view>
