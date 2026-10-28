@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "回忆",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
+  "onReachBottomDistance": 120,
+  "usingComponents": {}
+}

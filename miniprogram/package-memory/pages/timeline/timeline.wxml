@@ -1,0 +1,97 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">
+    <text class="state-text">加载中…</text>
+  </view>
+
+  <view wx:elif="{{error}}" class="state">
+    <text class="state-text">{{error}}</text>
+    <view class="btn-ghost retry" bindtap="onRetry">重试</view>
+  </view>
+
+  <view wx:elif="{{empty}}" class="state">
+    <text class="empty-title">还没有回忆</text>
+    <text class="empty-sub">记下第一段时光，App 里立刻就能看到</text>
+    <view class="btn-ghost empty-btn" bindtap="onCreate">记一段回忆</view>
+  </view>
+
+  <block wx:else>
+    <view wx:if="{{total}}" class="head">
+      <text class="head-text">共 {{total}} 条回忆</text>
+    </view>
+
+    <view
+      wx:for="{{groups}}"
+      wx:for-item="group"
+      wx:key="label"
+      class="month-block"
+    >
+      <view class="month">
+        <text class="month-label">{{group.label}}</text>
+        <text class="month-count">{{group.count}} 条</text>
+      </view>
+
+      <view
+        wx:for="{{group.items}}"
+        wx:for-item="item"
+        wx:key="id"
+        class="card"
+        data-id="{{item.id}}"
+        bindtap="openDetail"
+      >
+        <view class="card-head">
+          <view class="author">
+            <image
+              wx:if="{{item.authorAvatar}}"
+              class="avatar"
+              src="{{item.authorAvatar}}"
+              mode="aspectFill"
+            />
+            <text wx:else class="avatar-emoji">{{item.authorEmoji}}</text>
+            <text class="author-name">{{item.authorName}}</text>
+          </view>
+          <view class="date">
+            <text wx:if="{{item.private}}" class="lock">仅自己</text>
+            <text class="date-text">{{item.dateLabel}}</text>
+          </view>
+        </view>
+
+        <view class="title-row">
+          <text wx:if="{{item.mood}}" class="mood">{{item.mood}}</text>
+          <text class="title">{{item.title}}</text>
+        </view>
+
+        <view wx:if="{{item.body}}" class="body">{{item.body}}</view>
+
+        <view wx:if="{{item.photoCount}}" class="thumbs">
+          <image
+            wx:for="{{item.photos}}"
+            wx:for-item="photo"
+            wx:key="id"
+            class="thumb"
+            src="{{photo.url}}"
+            mode="aspectFill"
+            data-id="{{photo.id}}"
+            data-mid="{{item.id}}"
+            catch:tap="previewPhoto"
+          />
+          <view wx:if="{{item.extraCount}}" class="thumb thumb-more">
+            <text class="thumb-more-text">+{{item.extraCount}}</text>
+          </view>
+        </view>
+
+        <view class="meta">
+          <text wx:if="{{item.location}}" class="meta-item">{{item.location}}</text>
+          <text wx:if="{{item.videoCount}}" class="meta-item">{{item.videoCount}} 个视频</text>
+          <text wx:if="{{item.commentCount}}" class="meta-item">{{item.commentCount}} 条留言</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{loadingMore}}" class="tail">加载中…</view>
+    <view wx:elif="{{hasMore}}" class="tail tail-hint">上拉加载更多</view>
+    <view wx:else class="tail">已经到最后了</view>
+  </block>
+
+  <!-- 悬浮新建按钮：写回忆是最常做的事，不该让用户先找入口 -->
+  <view wx:if="{{!loading && !error}}" class="fab" bindtap="onCreate">＋</view>
+</view>

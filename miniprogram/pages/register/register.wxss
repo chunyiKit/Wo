@@ -1,0 +1,73 @@
+/* 注册页。结构与登录页（pages/bind）一致：同样的标题区、同样的字段卡片。
+   没用 @import 引登录页的样式 —— 小程序页面样式各自编译一份，直接引会让
+   两个页面互相绑死；这里宁愿复制，也不想改一处时必须同时改另一处。 */
+.page {
+  min-height: 100vh;
+  padding-top: 40rpx;
+}
+
+.head {
+  padding: 32rpx 48rpx 48rpx;
+}
+
+.title {
+  display: block;
+  font-size: 44rpx;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sub {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 28rpx;
+  color: var(--ink-3);
+  line-height: 1.7;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+}
+
+.divider {
+  height: 1rpx;
+  background: var(--line);
+  margin: 28rpx 0;
+}
+
+.input {
+  margin-top: 8rpx;
+  font-size: 34rpx;
+  color: var(--ink);
+  height: 56rpx;
+}
+
+.ph {
+  color: #c9c2b8;
+}
+
+.error {
+  margin: 0 48rpx 24rpx;
+  font-size: 28rpx;
+  color: var(--danger);
+}
+
+.submit {
+  margin: 16rpx 48rpx 0;
+}
+
+/* 底部「已经有账号？去登录」：一整行居中，只有后半段可点。
+   可点区域单独给足高度，避免用户在屏幕上戳不准那三个字。 */
+.switch {
+  margin-top: 28rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: var(--ink-3);
+}
+
+.switch-link {
+  display: inline-block;
+  padding: 8rpx 8rpx 16rpx;
+  color: var(--accent);
+}

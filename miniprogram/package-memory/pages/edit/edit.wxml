@@ -1,0 +1,140 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">
+    <text class="state-text">加载中…</text>
+  </view>
+
+  <block wx:else>
+    <!-- 媒体区：九宫格。已有媒体（服务端）+ 本地待上传，最后一格是添加入口 -->
+    <view class="section">
+      <view class="grid">
+        <view wx:for="{{media}}" wx:key="id" class="tile">
+          <image
+            wx:if="{{item.kind === 'photo' && item.url}}"
+            class="tile-img"
+            src="{{item.url}}"
+            mode="aspectFill"
+            data-id="{{item.id}}"
+            bindtap="previewExisting"
+          />
+          <view wx:elif="{{item.kind === 'video'}}" class="tile-video">
+            <text class="tile-video-icon">▶</text>
+            <text class="tile-video-text">视频</text>
+          </view>
+          <view wx:else class="tile-video">
+            <text class="tile-video-text">加载失败</text>
+          </view>
+          <view class="tile-del" data-id="{{item.id}}" catchtap="onRemoveExisting">×</view>
+        </view>
+
+        <view wx:for="{{pending}}" wx:key="key" class="tile">
+          <image
+            class="tile-img"
+            src="{{item.thumb}}"
+            mode="aspectFill"
+            data-key="{{item.key}}"
+            bindtap="previewPending"
+          />
+          <view wx:if="{{item.kind === 'video'}}" class="tile-badge">▶</view>
+          <view class="tile-del" data-key="{{item.key}}" catchtap="onRemovePending">×</view>
+        </view>
+
+        <view wx:if="{{canAddMedia}}" class="tile tile-add" bindtap="onAddMedia">
+          <text class="tile-add-plus">＋</text>
+          <text class="tile-add-text">照片 / 视频</text>
+        </view>
+      </view>
+      <text class="hint">最多 {{limits.mediaCount}} 个；单个照片 ≤ {{photoCap}}、视频 ≤ {{videoCap}}</text>
+    </view>
+
+    <!-- 正文：标题必填，正文字数上限与后端一致 -->
+    <view class="section">
+      <input
+        class="title-input"
+        value="{{title}}"
+        maxlength="{{limits.title}}"
+        placeholder="给这一刻起个标题"
+        placeholder-class="ph"
+        bindinput="onInputTitle"
+      />
+      <text class="counter counter-right">{{title.length}}/{{limits.title}}</text>
+
+      <textarea
+        class="body-input"
+        value="{{body}}"
+        maxlength="{{limits.body}}"
+        placeholder="今天发生了什么？"
+        placeholder-class="ph"
+        auto-height="{{true}}"
+        bindinput="onInputBody"
+      />
+      <text class="counter counter-right">{{body.length}}/{{limits.body}}</text>
+    </view>
+
+    <!-- 日期与地点 -->
+    <view class="section">
+      <picker mode="date" start="{{dateStart}}" end="{{dateEnd}}" value="{{eventDate}}" bindchange="onDateChange">
+        <view class="row">
+          <text class="row-label">日期</text>
+          <text class="row-value">{{dateLabel}}</text>
+          <text class="row-arrow">›</text>
+        </view>
+      </picker>
+
+      <view class="row row-plain">
+        <text class="row-label">📍</text>
+        <input
+          class="row-input"
+          value="{{location}}"
+          maxlength="{{limits.location}}"
+          placeholder="在哪里？（可选）"
+          placeholder-class="ph"
+          bindinput="onInputLocation"
+        />
+      </view>
+    </view>
+
+    <!-- 心情 -->
+    <view class="section">
+      <text class="section-title">心情</text>
+      <view class="chips">
+        <view
+          wx:for="{{moods}}"
+          wx:key="*this"
+          class="chip chip-mood {{mood === item ? 'chip-on' : ''}}"
+          data-v="{{item}}"
+          bindtap="onPickMood"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <!-- 可见范围：后端只认 family / private / couple -->
+    <view class="section">
+      <text class="section-title">谁可以看到</text>
+      <view class="chips">
+        <view
+          wx:for="{{visibilities}}"
+          wx:key="value"
+          class="chip chip-wide {{visibility === item.value ? 'chip-on' : ''}}"
+          data-v="{{item.value}}"
+          bindtap="onPickVisibility"
+        >{{item.icon}} {{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="foot-space"></view>
+  </block>
+
+  <!-- 保存条：固定在底部，标题没填时不可点（对齐 App 的 canSave） -->
+  <view wx:if="{{!loading}}" class="footer">
+    <view class="btn-primary {{canSave ? '' : 'disabled'}}" bindtap="onSave">保存</view>
+  </view>
+
+  <!-- 保存中：盖一层遮罩，避免用户在上传视频途中手滑点别的 -->
+  <view wx:if="{{saving}}" class="mask">
+    <view class="mask-box">
+      <view wx:if="{{progress.total}}" class="mask-title">正在上传 {{progress.done}}/{{progress.total}}</view>
+      <view wx:else class="mask-title">正在保存…</view>
+      <text class="mask-sub">请不要退出小程序</text>
+    </view>
+  </view>
+</view>

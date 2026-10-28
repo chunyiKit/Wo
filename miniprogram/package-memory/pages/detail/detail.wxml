@@ -1,0 +1,128 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">
+    <text class="state-text">加载中…</text>
+  </view>
+
+  <view wx:elif="{{error}}" class="state">
+    <text class="state-text">{{error}}</text>
+    <view class="btn-ghost retry" bindtap="onRetry">重试</view>
+  </view>
+
+  <block wx:else>
+    <swiper
+      wx:if="{{photos.length > 1}}"
+      class="gallery"
+      indicator-dots="{{true}}"
+      indicator-color="rgba(255,255,255,0.5)"
+      indicator-active-color="#a85d2d"
+      circular="{{false}}"
+    >
+      <swiper-item wx:for="{{photos}}" wx:key="id">
+        <image
+          class="gallery-img"
+          src="{{item.url}}"
+          mode="aspectFill"
+          data-id="{{item.id}}"
+          bindtap="openGallery"
+        />
+      </swiper-item>
+    </swiper>
+
+    <image
+      wx:elif="{{photos.length === 1}}"
+      class="gallery gallery-single"
+      src="{{photos[0].url}}"
+      mode="widthFix"
+      data-id="{{photos[0].id}}"
+      bindtap="openGallery"
+    />
+
+    <view class="content">
+      <view class="head">
+        <view class="author">
+          <image
+            wx:if="{{authorAvatar}}"
+            class="avatar"
+            src="{{authorAvatar}}"
+            mode="aspectFill"
+          />
+          <text wx:else class="avatar-emoji">{{authorEmoji}}</text>
+          <view class="author-text">
+            <text class="author-name">{{authorName}}</text>
+            <text class="date">{{fullDate}}</text>
+          </view>
+        </view>
+        <text wx:if="{{private}}" class="lock">仅自己可见</text>
+      </view>
+
+      <view class="title-row">
+        <text wx:if="{{mood}}" class="mood">{{mood}}</text>
+        <text class="title">{{title}}</text>
+      </view>
+
+      <view wx:if="{{body}}" class="body">{{body}}</view>
+
+      <view class="meta">
+        <text wx:if="{{location}}" class="meta-item">📍 {{location}}</text>
+        <text wx:if="{{videoCount}}" class="meta-item">{{videoCount}} 个视频</text>
+      </view>
+
+      <!-- 视频没有封面（后端不转码），单独给一个入口 -->
+      <view wx:if="{{videoCount}}" class="video-entry" data-id="{{videos[0].id}}" bindtap="openGallery">
+        <text class="video-entry-icon">▶</text>
+        <text class="video-entry-text">观看视频</text>
+      </view>
+    </view>
+
+    <view class="comments">
+      <view class="comments-head">
+        <text class="comments-title">留言</text>
+        <text class="comments-count">{{commentCount}}</text>
+      </view>
+
+      <view wx:if="{{!comments.length}}" class="no-comment">
+        <text>还没有留言，说点什么吧</text>
+      </view>
+
+      <view wx:for="{{comments}}" wx:key="id" class="comment">
+        <image
+          wx:if="{{item.authorAvatar}}"
+          class="comment-avatar"
+          src="{{item.authorAvatar}}"
+          mode="aspectFill"
+        />
+        <text wx:else class="comment-avatar comment-avatar-emoji">{{item.authorEmoji}}</text>
+        <view class="comment-body">
+          <text class="comment-author">{{item.authorName}}</text>
+          <text class="comment-text">{{item.body}}</text>
+        </view>
+        <!-- 后端只让删自己的留言（403），所以入口也只给自己的 -->
+        <view wx:if="{{item.mine}}" class="comment-del" data-id="{{item.id}}" catchtap="onDeleteComment">删除</view>
+      </view>
+    </view>
+
+    <view class="actions">
+      <view class="btn-ghost action" bindtap="onEdit">编辑</view>
+      <view class="btn-danger-text action" bindtap="onDelete">删除回忆</view>
+    </view>
+  </block>
+
+  <!-- 留言输入：固定在底部，字数上限与后端一致 -->
+  <view wx:if="{{!loading && !error}}" class="composer">
+    <textarea
+      class="composer-input"
+      value="{{draft}}"
+      maxlength="{{limits.comment}}"
+      placeholder="留个言…"
+      placeholder-class="composer-ph"
+      auto-height="{{true}}"
+      show-confirm-bar="{{false}}"
+      cursor-spacing="16"
+      fixed="{{true}}"
+      bindinput="onCommentInput"
+    />
+    <view class="composer-send {{draft && !sending ? '' : 'composer-send-off'}}" bindtap="onSendComment">
+      {{sending ? '发送中' : '发送'}}
+    </view>
+  </view>
+</view>

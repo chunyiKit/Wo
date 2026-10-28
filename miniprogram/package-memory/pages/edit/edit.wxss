@@ -1,0 +1,287 @@
+/* 新建 / 编辑回忆。视觉沿用详情页的暖调（#f8f1e7 系），但这是表单页：
+   容器感要弱一点，输入区尽量留白。 */
+
+.page {
+  min-height: 100vh;
+  padding-bottom: 0;
+  box-sizing: border-box;
+  background: #f8f1e7;
+}
+
+.state {
+  padding: 120rpx 32rpx;
+  text-align: center;
+}
+
+.state-text {
+  font-size: 28rpx;
+  color: #736052;
+}
+
+.section {
+  margin: 24rpx 32rpx;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 4rpx rgba(42, 30, 20, 0.04), 0 12rpx 40rpx rgba(42, 30, 20, 0.06);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+  color: #9a8878;
+}
+
+/* ---- 媒体九宫格 ---- */
+
+/* 三列靠负外边距算出来（每格 198 + 右边距 18 = 216，216 × 3 = 648；
+   卡片内容宽 630，容器右侧 -18 后正好放满三列）。
+   不用 :nth-child —— WXSS 只保证支持 class / id / element 这类选择器。 */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: -18rpx;
+}
+
+.tile {
+  position: relative;
+  width: 198rpx;
+  height: 198rpx;
+  margin: 0 18rpx 18rpx 0;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: #f1e7db;
+}
+
+.tile-img {
+  width: 100%;
+  height: 100%;
+}
+
+.tile-video {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.tile-video-icon {
+  font-size: 40rpx;
+  color: #a3927f;
+}
+
+.tile-video-text {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #a3927f;
+}
+
+.tile-badge {
+  position: absolute;
+  left: 8rpx;
+  bottom: 8rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.tile-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44rpx;
+  height: 44rpx;
+  line-height: 40rpx;
+  text-align: center;
+  border-bottom-left-radius: 16rpx;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 32rpx;
+}
+
+.tile-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx dashed #d9cabb;
+  background: #fdfaf6;
+}
+
+.tile-add-plus {
+  font-size: 44rpx;
+  line-height: 44rpx;
+  color: #a3927f;
+}
+
+.tile-add-text {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #a3927f;
+}
+
+.hint {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #b3a494;
+}
+
+/* ---- 正文输入 ---- */
+
+.title-input {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #302219;
+}
+
+.body-input {
+  width: 100%;
+  margin-top: 20rpx;
+  min-height: 160rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #302219;
+}
+
+.ph {
+  color: #c3b6a6;
+}
+
+.counter {
+  display: block;
+  font-size: 22rpx;
+  color: #c3b6a6;
+}
+
+.counter-right {
+  text-align: right;
+}
+
+/* ---- 日期 / 地点行 ---- */
+
+.row {
+  display: flex;
+  align-items: center;
+  min-height: 72rpx;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
+  background: #fdf6ee;
+}
+
+.row-plain {
+  margin-top: 16rpx;
+}
+
+.row-label {
+  width: 90rpx;
+  font-size: 26rpx;
+  color: #9a8878;
+}
+
+.row-value {
+  flex: 1;
+  font-size: 28rpx;
+  color: #302219;
+}
+
+.row-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #302219;
+}
+
+.row-arrow {
+  color: #c3b6a6;
+  font-size: 32rpx;
+}
+
+/* ---- chips ---- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.chip {
+  margin: 0 16rpx 16rpx 0;
+  padding: 0 24rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 999rpx;
+  background: #fdf6ee;
+  border: 2rpx solid transparent;
+  font-size: 26rpx;
+  color: #6b5a49;
+}
+
+.chip-mood {
+  width: 68rpx;
+  padding: 0;
+  text-align: center;
+  font-size: 34rpx;
+}
+
+.chip-wide {
+  padding: 0 28rpx;
+}
+
+.chip-on {
+  border-color: #c4703a;
+  background: #f6e8de;
+  color: #8a4a24;
+}
+
+/* ---- 底部保存条 ---- */
+
+.foot-space {
+  height: 180rpx;
+}
+
+.footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: rgba(248, 241, 231, 0.96);
+  border-top: 1rpx solid #ece2d5;
+}
+
+/* ---- 保存中遮罩 ---- */
+
+.mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(48, 34, 25, 0.35);
+}
+
+.mask-box {
+  padding: 40rpx 56rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  text-align: center;
+}
+
+.mask-title {
+  font-size: 30rpx;
+  color: #302219;
+}
+
+.mask-sub {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #9a8878;
+}

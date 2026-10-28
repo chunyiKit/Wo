@@ -1,0 +1,306 @@
+.page {
+  min-height: 100vh;
+  /* 底部留够空间：固定留言条会盖住最后一屏内容 */
+  padding-bottom: 220rpx;
+  box-sizing: border-box;
+  background: #f8f1e7;
+}
+
+.state {
+  padding: 120rpx 32rpx;
+  text-align: center;
+}
+
+.state-text {
+  font-size: 28rpx;
+  color: #736052;
+}
+
+.retry {
+  margin: 32rpx auto 0;
+  max-width: 240rpx;
+}
+
+.gallery {
+  width: 100%;
+  height: 560rpx;
+  background: #efe4d6;
+}
+
+.gallery-img {
+  width: 100%;
+  height: 560rpx;
+}
+
+.gallery-single {
+  height: auto;
+  min-height: 400rpx;
+}
+
+.content {
+  padding: 32rpx;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.author {
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #f1e7db;
+}
+
+.avatar-emoji {
+  width: 64rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  border-radius: 50%;
+  background: #f1e7db;
+  font-size: 32rpx;
+}
+
+.author-text {
+  display: flex;
+  flex-direction: column;
+  margin-left: 16rpx;
+}
+
+.author-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #302219;
+}
+
+.date {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #9a8878;
+}
+
+.lock {
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #f1e7db;
+  font-size: 22rpx;
+  color: #8a6f52;
+}
+
+.title-row {
+  display: flex;
+  align-items: baseline;
+  margin-top: 28rpx;
+}
+
+.mood {
+  margin-right: 12rpx;
+  font-size: 36rpx;
+}
+
+.title {
+  flex: 1;
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #302219;
+  line-height: 1.5;
+}
+
+.body {
+  margin-top: 20rpx;
+  font-size: 28rpx;
+  line-height: 1.8;
+  color: #5f4c3d;
+  white-space: pre-wrap;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 24rpx;
+}
+
+.meta-item {
+  margin-right: 20rpx;
+  font-size: 24rpx;
+  color: #9a8878;
+}
+
+.comments {
+  margin: 8rpx 32rpx 0;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 4rpx rgba(42, 30, 20, 0.04), 0 12rpx 40rpx rgba(42, 30, 20, 0.06);
+}
+
+.comments-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f1e7db;
+}
+
+.comments-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #302219;
+}
+
+.comments-count {
+  font-size: 24rpx;
+  color: #9a8878;
+}
+
+.no-comment {
+  padding: 32rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #b3a494;
+}
+
+.comment {
+  display: flex;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f8f1e7;
+}
+
+.comment:last-child {
+  border-bottom: none;
+}
+
+.comment-avatar {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: #f1e7db;
+  flex-shrink: 0;
+}
+
+.comment-avatar-emoji {
+  line-height: 56rpx;
+  text-align: center;
+  font-size: 28rpx;
+}
+
+.comment-body {
+  display: flex;
+  flex-direction: column;
+  margin-left: 16rpx;
+  flex: 1;
+}
+
+.comment-author {
+  font-size: 24rpx;
+  color: #8a6f52;
+}
+
+.comment-text {
+  margin-top: 6rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #302219;
+}
+
+/* ---- P3 写：视频入口 / 留言删除 / 操作条 / 底部留言输入 ---- */
+
+.video-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24rpx;
+  height: 96rpx;
+  border-radius: 16rpx;
+  background: #302219;
+}
+
+.video-entry-icon {
+  margin-right: 12rpx;
+  font-size: 28rpx;
+  color: #fff;
+}
+
+.video-entry-text {
+  font-size: 28rpx;
+  color: #fff;
+}
+
+.comment-del {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 0 8rpx;
+  font-size: 24rpx;
+  color: #c0492b;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  margin: 24rpx 32rpx 0;
+}
+
+.action {
+  flex: 1;
+  margin: 0 8rpx;
+}
+
+.actions .btn-ghost {
+  line-height: 80rpx;
+  height: 80rpx;
+}
+
+.actions .btn-danger-text {
+  line-height: 80rpx;
+  height: 80rpx;
+}
+
+.composer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1rpx solid #f1e7db;
+}
+
+.composer-input {
+  flex: 1;
+  max-height: 160rpx;
+  padding: 12rpx 20rpx;
+  border-radius: 20rpx;
+  background: #f8f1e7;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: #302219;
+}
+
+.composer-ph {
+  color: #c3b6a6;
+}
+
+.composer-send {
+  margin-left: 16rpx;
+  padding: 0 28rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 999rpx;
+  background: #c4703a;
+  color: #fff;
+  font-size: 28rpx;
+}
+
+.composer-send-off {
+  background: #ddd7cf;
+}
