@@ -66,6 +66,7 @@ void main(){
   test('portable restore uses new IDs and inert files; missing media remains incomplete and restricted',()async{
     final v=await vector();final parent=await Directory.systemTemp.createTemp('wo-synthetic-portable-');addTearDown(()=>parent.delete(recursive:true));
     final result=await PortableArchive(TestCrypto()).restoreToNewDirectory(Stream.value(unhex(v['portable'] as String)),parent,expectedFamily:'family');
+    expect(result.sourceFamilyId,'family');expect(result.manifest.entries.length,2);
     expect(result.newFamilyId,isNot('family'));expect(result.newDeviceId,isNotEmpty);expect(result.recordsApplied,false);expect(result.restricted,true);
     expect(result.missing['missing-photo'],'source_unavailable');expect(result.declaredBytesComplete,false);expect(result.fullDeviceComplete,false);
     expect(result.files['records']!.newId,isNot('records'));expect(await result.files['records']!.file.exists(),true);

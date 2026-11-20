@@ -47,8 +47,9 @@ class PortableRecoveredFile {
   final String newId;final File file;final PortableEntry entry;
 }
 class PortableRestore {
-  PortableRestore._(this.directory,this.newFamilyId,this.newDeviceId,this.files,this.missing,this.unverifiedOriginals);
-  final Directory directory;final String newFamilyId,newDeviceId;
+  PortableRestore._(this.directory,this.manifest,this.newFamilyId,this.newDeviceId,this.files,this.missing,this.unverifiedOriginals);
+  final Directory directory;final PortableManifest manifest;final String newFamilyId,newDeviceId;
+  String get sourceFamilyId=>manifest.familyId;
   final Map<String,PortableRecoveredFile> files;final Map<String,String> missing,unverifiedOriginals;
   bool get declaredBytesComplete=>missing.isEmpty&&unverifiedOriginals.isEmpty;
   bool get recordsApplied=>false;
@@ -112,7 +113,7 @@ class PortableArchive {
         'restricted':true,'full_device_complete':false,'missing':missing,'unverified_originals':unverified,
         'files':{for(final e in files.entries)e.key:{'new_id':e.value.newId,'kind':e.value.entry.kind,'size':e.value.entry.size,'sha256':e.value.entry.sha256,'source_exact':e.value.entry.sourceExact}}
       }),flush:true);
-      return PortableRestore._(stage,family,device,Map.unmodifiable(files),Map.unmodifiable(missing),Map.unmodifiable(unverified));
+      return PortableRestore._(stage,manifest,family,device,Map.unmodifiable(files),Map.unmodifiable(missing),Map.unmodifiable(unverified));
     }catch(_){if(stage!=null)await stage.delete(recursive:true);rethrow;}
     finally{await reader.close();}
   }
