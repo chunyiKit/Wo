@@ -82,7 +82,7 @@ class LocalApi implements LocalBackend {
     if(row==null) _fail('NOT_FOUND','家庭不存在',404);
     final member=await store.get(fid,_col(fid,'members'),store.deviceId);
     return {...row!,'member_count':(await store.list(fid,_col(fid,'members'))).where((m)=>m['status']=='active'&&m['family_id']==fid&&m['user_id']==m['id']).length,
-      'pet_count':(await store.list(fid,_col(fid,'pets'))).where((row)=>row['family_id']==fid&&row['archived_at']==null).length,'my_role':member?['role']??'member','my_unread_count':0};
+      'pet_count':(await store.list(fid,_col(fid,'pets'))).where((row)=>row['family_id']==fid&&row['archived_at']==null).length,'my_role':member?['role']??'member','my_unread_count':(await _notifications()).where((row)=>row['family_id']==fid&&row['is_read']!=true).length};
   }
   Future<Json> _installed(String fid,Json row) async {
     await _joined(fid);

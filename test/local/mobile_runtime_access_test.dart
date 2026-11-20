@@ -114,4 +114,16 @@ void main() {
       expect((await bootstrap(apiB))['current_family'], isNotNull);
     }
   });
+  test('家庭未读计数从当前设备的本地通知与已读状态派生',()async{
+    final api=apiA,target=apiA.familyId!;
+    await a.patch(target,'/families/$target/notifications','synthetic-notification',{'type':'synthetic','title':'合成提醒','body':'合成正文','icon_emoji':'🔔','created_by':a.deviceId,'created_at':'2026-11-20T00:00:00Z','read_by':<String>[],'status':'pending_local_delivery','recipient_ids':[a.deviceId],'source_plugin':'chore','source_id':'synthetic'});
+    final first=await bootstrap(api);
+    expect((first['current_family'] as Map)['my_unread_count'],1);expect(first['unread_count'],1);
+    await transfer(a,b);
+    expect((await bootstrap(apiB))['unread_count'],0);
+    await api.request('PATCH','/notifications/synthetic-notification/read');
+    final second=await bootstrap(api);
+    expect((second['current_family'] as Map)['my_unread_count'],0);expect(second['unread_count'],0);
+  });
+
 }
