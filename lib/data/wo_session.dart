@@ -45,6 +45,7 @@ class WoSession extends ChangeNotifier {
   bool _loading = false;
   Object? _error;
   int _authGeneration = 0;
+  int _loadRequest = 0;
   bool _authBusy = false;
   bool _disposed = false;
 
@@ -246,15 +247,16 @@ class WoSession extends ChangeNotifier {
   /// 拉取首屏聚合数据。
   Future<void> load() async {
     final generation = _authGeneration;
+    final request = ++_loadRequest;
     _loading = true;
     _error = null;
     notifyListeners();
     try {
       final data = await api.bootstrap();
-      if (_disposed || generation != _authGeneration) return;
+      if (_disposed || generation != _authGeneration || request != _loadRequest) return;
       _bootstrap = data;
     } catch (e) {
-      if (_disposed || generation != _authGeneration) return;
+      if (_disposed || generation != _authGeneration || request != _loadRequest) return;
       // 令牌失效/过期（含旧版本遗留的非会话令牌）→ 清登录态，让路由回登录页。
       if (e is ApiException &&
           (e.statusCode == 401 || e.code == 'UNAUTHORIZED')) {
@@ -263,7 +265,7 @@ class WoSession extends ChangeNotifier {
       }
       _error = e;
     } finally {
-      if (!_disposed && generation == _authGeneration) {
+      if (!_disposed && generation == _authGeneration && request == _loadRequest) {
         _loading = false;
         notifyListeners();
       }

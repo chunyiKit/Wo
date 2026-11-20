@@ -39,7 +39,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('wo-retire-sub-');
     store = await LocalStore.open(factory: databaseFactoryFfi, path: '${directory.path}/local.sqlite');
     clock = DateTime(2026, 11, 1, 12); routes = RetirementSubscriptionRoutes(store, now: () => clock);
-    await member(store); await install('retirement');
+    await member(store); await install('retirement'); await install('subscription');
   });
   tearDown(() async { await store.close(); await directory.delete(recursive: true); });
 
@@ -112,6 +112,23 @@ void main() {
     final summary = await accounting.request('GET', fid, ['accounting', 'summary'], query: {'year': 2023, 'month': 2});
     expect((summary!.data as Map)['month_total'], '9.99');
     expect(RetirementSubscriptionRoutes.advanceDue('2024-02-29', 'yearly'), '2025-02-28');
+  });
+
+  test('禁用或卸载订阅后不推进账期、不生成费用，重新启用仍按原账期处理', () async {
+    await install('accounting');
+    final sub = await row('POST', ['subscription', 'subscriptions'], body: {'name': '服务', 'amount': '9.99', 'next_due': '2026-11-01'});
+    final path = ['subscription', 'subscriptions', sub['id'] as String];
+    await store.patch(fid, '/families/$fid/installed', 'subscription', {'enabled': false});
+    await routes.processDue(fid);
+    expect((await row('GET', path))['next_due'], '2026-11-01');
+    expect(await store.list(fid, '/families/$fid/plugins/accounting/transactions'), isEmpty);
+    await store.patch(fid, '/families/$fid/installed', 'subscription', {}, delete: true);
+    await routes.processDue(fid);
+    expect((await row('GET', path))['next_due'], '2026-11-01');
+    expect(await store.list(fid, '/families/$fid/plugins/subscription/charges'), isEmpty);
+    await install('subscription'); await routes.processDue(fid);
+    expect((await row('GET', path))['next_due'], '2026-12-01');
+    expect(await store.list(fid, '/families/$fid/plugins/accounting/transactions'), hasLength(1));
   });
 
   test('订阅预提醒仅排队、暂停不处理、client_id重试不重复', () async {

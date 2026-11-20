@@ -26,6 +26,7 @@ class _MessagesPageState extends State<MessagesPage> {
   List<WoNotification>? _items; // null = 首次加载未完成
   Object? _error;
   WoSession? _session;
+  int _request = 0;
 
   @override
   void initState() {
@@ -47,6 +48,7 @@ class _MessagesPageState extends State<MessagesPage> {
 
   @override
   void dispose() {
+    _request++;
     _session?.messagesRefreshSignal.removeListener(_onRefreshSignal);
     super.dispose();
   }
@@ -57,24 +59,26 @@ class _MessagesPageState extends State<MessagesPage> {
 
   /// 首次加载：失败则进入错误态（带重试）。
   Future<void> _firstLoad() async {
+    final request = ++_request;
     try {
       final data = await WoScope.api(context).notifications();
-      if (mounted) {
+      if (mounted && request == _request) {
         setState(() {
           _items = data;
           _error = null;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e);
+      if (mounted && request == _request) setState(() => _error = e);
     }
   }
 
   /// 后台刷新：保留当前列表，拉到新数据再替换（不闪 loading）。顺带刷新角标。
   Future<void> _reload() async {
+    final request = ++_request;
     try {
       final data = await WoScope.api(context).notifications();
-      if (mounted) {
+      if (mounted && request == _request) {
         setState(() {
           _items = data;
           _error = null;
@@ -82,9 +86,9 @@ class _MessagesPageState extends State<MessagesPage> {
       }
     } catch (e) {
       // 已有数据时刷新失败就保留旧列表，不打断浏览；首屏还没数据才显示错误态。
-      if (_items == null && mounted) setState(() => _error = e);
+      if (_items == null && mounted && request == _request) setState(() => _error = e);
     }
-    if (mounted) await WoScope.of(context).refresh();
+    if (mounted && request == _request) await WoScope.of(context).refresh();
   }
 
   Future<void> _markRead(WoNotification n) async {
@@ -143,6 +147,7 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 
   void _onDeleted(WoNotification n) {
+    _request++; // 使删除前已在途的列表读取失效，避免已移除行重新出现。
     setState(() => _items?.removeWhere((x) => x.id == n.id));
     // 删掉的可能是未读，刷新角标。
     WoScope.of(context).refresh();

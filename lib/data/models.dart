@@ -453,6 +453,7 @@ class WoNotification {
     required this.iconEmoji,
     this.deeplink,
     this.readAt,
+    this.read = false,
     this.createdAt,
   });
 
@@ -464,9 +465,10 @@ class WoNotification {
   final String iconEmoji;
   final String? deeplink;
   final DateTime? readAt;
+  final bool read;
   final DateTime? createdAt;
 
-  bool get isRead => readAt != null;
+  bool get isRead => read || readAt != null;
 
   factory WoNotification.fromJson(Map<String, dynamic> j) => WoNotification(
         id: j['id'] as String,
@@ -477,6 +479,7 @@ class WoNotification {
         iconEmoji: j['icon_emoji'] as String? ?? '🔔',
         deeplink: j['deeplink'] as String?,
         readAt: _parseDate(j['read_at']),
+        read: j['is_read'] == true,
         createdAt: _parseDate(j['created_at']),
       );
 }

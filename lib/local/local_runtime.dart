@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../data/api_client.dart';
 import 'local_api.dart';
 import 'local_privacy.dart';
+import 'local_foreground_reminders.dart';
 import 'local_store.dart';
 import 'local_media_repository.dart';
 import 'plugins/memory_routes.dart';
@@ -64,18 +65,36 @@ class LocalRuntime {
   static Future<LocalRuntime>? _opening;
   static Future<LocalRuntime> initialize() => _opening ??= _open();
   void changed(){changes.value++;}
-  Future<void> _merged()async{await api.initialize();changed();}
+  Future<void> _merged()async{try{await api.initialize();}finally{changed();}}
+  int _foregroundEpoch=0,_reminderJobs=0;Timer? _foregroundReminderTimer;
+  Future<void> _reminderPass=Future<void>.value();
   Future<void> foreground(bool active)async{
-    try{
+    final epoch=++_foregroundEpoch;_foregroundReminderTimer?.cancel();_foregroundReminderTimer=null;
     if(active){
-      await sync.start();
-      var added=0;
-      for(final fid in await api.families){
-        try{added+=await MovieChoreAnniversaryRoutes(store).requestDueAnniversaryReminders(fid);added+=await CalendarRoutes(store).requestDueReminders(fid);added+=await PlantRoutes(store).requestDueReminders(fid);added+=await RetirementSubscriptionRoutes(store).processDue(fid);added+=await PetRoutes(store).requestDueReminders(fid);}catch(_){/*提醒失败不阻断本地记录*/}
-      }
-      if(added>0)changed();
-    }else{await sync.stop();}
-    }catch(_){/*辅助任务不能造成未处理异步异常；资料读取错误由页面本地读取展示。*/}
+      // 同步启动的网络/权限失败或等待不能跳过本地提醒。
+      final transport=()async{try{await sync.start();}catch(_){}}();
+      String localDay(){final now=DateTime.now();return '${now.year}-${now.month}-${now.day}';}
+      var financeDay=localDay();
+      void enqueue(bool includeFinance){_reminderJobs++;
+      _reminderPass=_reminderPass.then((_)async{
+        try{
+        if(epoch!=_foregroundEpoch)return;
+        try{
+          final changedRecords=await LocalForegroundReminders(store).run(await api.families,
+            isActive:()=>epoch==_foregroundEpoch,includeFinance:includeFinance);
+          if(changedRecords)changed();
+        }catch(_){/*辅助任务失败由后续前台重试；不造成未处理异步异常。*/}
+      }finally{_reminderJobs--;}
+      });}
+      enqueue(true);
+      _foregroundReminderTimer=Timer.periodic(const Duration(minutes:1),(_){
+        if(epoch!=_foregroundEpoch||_reminderJobs>0)return;
+        final day=localDay(),includeFinance=day!=financeDay;if(includeFinance)financeDay=day;
+        // 普通前台轮询不重复推进财务账期；只在进入前台或跨本地日期补算财务。
+        enqueue(includeFinance);
+      });
+      await Future.wait<void>([transport,_reminderPass]);
+    }else{try{await sync.stop();}catch(_){}}
   }
   static Future<LocalRuntime> _open() async {
     await LocalPrivacy.prepare();

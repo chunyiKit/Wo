@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../data/api_client.dart';
 import 'local_backend.dart';
@@ -140,17 +141,35 @@ class LocalApi implements LocalBackend {
     for(final fid in await families){
       try{await _joined(fid);}on ApiException{continue;}
       for(final row in await store.list(fid,_col(fid,'notifications'))){
-        if(row['recipient_ids'] is List && !(row['recipient_ids'] as List).contains(store.deviceId))continue;
+        final recipients=row['recipient_ids'];
+        if(recipients is! List || recipients.any((id)=>id is! String || id.isEmpty) || !recipients.contains(store.deviceId))continue;
         if(await store.privateValue('notification-hidden:$fid:${row['id']}')==true)continue;
-        result.add({...row,'family_id':fid,'is_read':await store.privateValue('notification-read:$fid:${row['id']}')==true,'read_at':await store.privateValue('notification-read:$fid:${row['id']}')==true?_stamp:null,'extras':{'delivery_status':row['status']??'pending_local_delivery'}});
+        final marker=await store.privateValue('notification-read:$fid:${row['id']}');
+        final readAt=_notificationReadAt(marker);
+        result.add({...row,'family_id':fid,'is_read':marker==true||readAt!=null,'read_at':readAt,'extras':{'delivery_status':row['status']??'pending_local_delivery'}});
       }
     }
     result.sort((a,b)=>'${b['created_at']}'.compareTo('${a['created_at']}'));return result;
   }
+  // 旧版true保留已读，但没有真实时间时不伪造read_at。
+  String? _notificationReadAt(Object? marker)=>marker is String&&DateTime.tryParse(marker)!=null?marker:null;
+  Future<int> _markNotificationsRead(List<Json> rows)=>store.db.transaction((tx)async{
+    final stamp=_stamp;var marked=0;
+    for(final row in rows){
+      final key='private:notification-read:${row['family_id']}:${row['id']}';
+      final existing=await tx.query('meta',columns:['value'],where:'key=?',whereArgs:[key]);
+      final marker=existing.isEmpty?null:jsonDecode(existing.single['value'] as String);
+      if(marker==true||_notificationReadAt(marker)!=null)continue;
+      await tx.rawInsert('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)',[key,jsonEncode(stamp)]);
+      marked++;
+    }
+    return marked;
+  });
   Future<void> _notificationAction(String id,{required bool hide})async{
     final rows=(await _notifications()).where((row)=>row['id']==id).toList();
     if(rows.length!=1)_fail('NOT_FOUND','通知不存在或标识有冲突',404);
-    await store.setPrivate('${hide?'notification-hidden':'notification-read'}:${rows.single['family_id']}:$id',true);
+    if(hide){await store.setPrivate('notification-hidden:${rows.single['family_id']}:$id',true);}
+    else{await _markNotificationsRead(rows);}
   }
   Future<List<Json>> _installedList(String fid) async => [for(final row in await store.list(fid,_col(fid,'installed'))) await _installed(fid,row)];
   Future<Json> _bootstrap() async => {'user':await self,'current_family':familyId==null?null:await _family(familyId!),
@@ -193,7 +212,7 @@ class LocalApi implements LocalBackend {
       result=(await _notifications()).take(limit).toList();
     }
     else if(path=='/notifications/read-all' && method=='POST'){
-      final rows=await _notifications();for(final row in rows)await store.setPrivate('notification-read:${row['family_id']}:${row['id']}',true);result={'marked':rows.length};
+      final rows=await _notifications();result={'marked':await _markNotificationsRead(rows)};
     }
     else if(parts.length==3&&parts[0]=='notifications'&&parts[2]=='read'&&method=='PATCH'){await _notificationAction(parts[1],hide:false);result=null;}
     else if(parts.length==2&&parts[0]=='notifications'&&method=='DELETE'){await _notificationAction(parts[1],hide:true);result=null;}

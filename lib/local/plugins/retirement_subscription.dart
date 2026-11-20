@@ -601,6 +601,7 @@ class RetirementSubscriptionRoutes {
     var touched = 0;
     await store.batchComputed((tx) async {
       await _member(tx, fid);
+      if (!await _installed(tx, fid, 'subscription', enabled: true)) return <Json>[];
       final raw = await _doc(tx, fid, col(fid, 'subscription', 'subscriptions'), sourceId);
       if (raw == null) return <Json>[];
       final entry = _entry(raw);
