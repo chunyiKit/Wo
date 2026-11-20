@@ -68,7 +68,13 @@ class OrdinaryAttachmentSyncAdapter {
     final prefix='/families/$scope/';if(!collection.startsWith(prefix))_bad();final suffix=collection.substring(prefix.length);
     if(suffix=='plugins/pet/records'){
       final member=await _member(scope,actor,read:read),fields={...?previous,...Json.from(op['fields'] as Map)};
-      PetRoutes.validateRecordSync(_data(fields),familyId:scope,id:id,actor:actor,previous:previous==null?null:_data(previous),owner:member['role']=='owner',deletion:op['kind']=='delete');return;
+      PetRoutes.validateRecordSync(_data(fields),familyId:scope,id:id,actor:actor,previous:previous==null?null:_data(previous),owner:member['role']=='owner',deletion:op['kind']=='delete');
+      // 归档宠物仍有有效历史；未知/墓碑父对象不能成为新记录事实源。删除孤儿仍可显式清理。
+      if(op['kind']!='delete'){
+        final pet=await read(scope,'/families/$scope/pets',fields['pet_id'] as String);
+        if(pet==null||pet['_deleted']==true||pet['family_id']!=scope)_bad();
+      }
+      return;
     }
     if(!isCollection(suffix))return;
     final fields=Json.from(op['fields'] as Map),candidate={...?previous,...fields};

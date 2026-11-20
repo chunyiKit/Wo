@@ -38,6 +38,8 @@ class SourceBoundaries(unittest.TestCase):
         self.assertIn('e.value>10',ADAPTER)
         self.assertIn("r['space']!=fid||r['collection']!=collection",ADAPTER)
         self.assertIn('PetRoutes.validateRecordSync',ADAPTER)
+        self.assertIn("read(scope,'/families/$scope/pets',fields['pet_id'] as String)",ADAPTER)
+        self.assertIn("pet==null||pet['_deleted']==true||pet['family_id']!=scope",ADAPTER)
         self.assertIn('fields.length!=AttachmentDescriptor.syncFields.length',ADAPTER)
         self.assertIn('actor!=d.authorDeviceId',ADAPTER)
     def test_sqlite_limit_failure_rolls_back_operations_clock_and_files_metadata(self):
