@@ -12,7 +12,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
-        android:label="窝"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/wo_backup_rules"
+        android:dataExtractionRules="@xml/wo_data_extraction_rules"
+        android:label="${WO_APP_LABEL}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"

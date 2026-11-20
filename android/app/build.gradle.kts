@@ -4,6 +4,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// 仅显式测试构建启用隔离包名。非法值失败，避免拼错旗标后产生生产包。
+val woRebuildTestSetting = providers.environmentVariable("WO_REBUILD_TEST_APP").orNull
+require(woRebuildTestSetting == null || woRebuildTestSetting in setOf("0", "1")) {
+    "WO_REBUILD_TEST_APP 只接受 0 或 1；测试构建必须明确设为 1"
+}
+val woRebuildTestApp = woRebuildTestSetting == "1"
+val woApplicationId = "io.github.chunyikit.wo" + if (woRebuildTestApp) ".rebuild" else ""
+
 android {
     namespace = "io.github.chunyikit.wo"
     compileSdk = flutter.compileSdkVersion
@@ -25,17 +33,24 @@ android {
 
         // 极光推送占位符：被 jpush_flutter 合并进来的 manifest meta-data 引用。
         // AppKey 必须与极光控制台、后端 JPUSH_APP_KEY 一致；包名已注册为 applicationId。
-        manifestPlaceholders["JPUSH_PKGNAME"] = "io.github.chunyikit.wo"
+        manifestPlaceholders["JPUSH_PKGNAME"] = woApplicationId
+        manifestPlaceholders["WO_APP_LABEL"] = if (woRebuildTestApp) "窝·本地测试" else "窝"
         manifestPlaceholders["JPUSH_APPKEY"] = "c7b049b2dae09a723655dc8e"
         manifestPlaceholders["JPUSH_CHANNEL"] = "default_developer"
 
         // 声明只要 64 位 ARM。真正剔除其它架构 .so 的是下方 packaging 块。
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += if (woRebuildTestApp) setOf("arm64-v8a", "x86_64") else setOf("arm64-v8a")
         }
     }
 
     buildTypes {
+        configureEach {
+            if (woRebuildTestApp) {
+                applicationIdSuffix = ".rebuild"
+                versionNameSuffix = "-local-test"
+            }
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
@@ -53,7 +68,7 @@ android {
     // 注意：2017 年前的纯 32 位老机型将无法安装。
     packaging {
         jniLibs {
-            excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")
+            excludes += if (woRebuildTestApp) setOf("**/armeabi-v7a/**", "**/x86/**") else setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")
         }
     }
 }
