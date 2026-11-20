@@ -2,12 +2,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../local/backup/backup_models.dart';
 import '../../local/backup/mobile_backup_controller.dart';
+import '../../local/backup/recovery_workspace.dart';
+import 'recovery_library_page.dart';
 import '../../theme/wo_tokens.dart';
 import '../../widgets/wo_card.dart';
 
 class LocalBackupPage extends StatefulWidget {
-  const LocalBackupPage({super.key,required this.controller});
+  const LocalBackupPage({super.key,required this.controller,this.recoveryStore,this.recoveryBackupControllerFor});
   final MobileBackupController controller;
+  final Future<RecoveryWorkspaceStore> Function()? recoveryStore;
+  final Future<MobileBackupController> Function(String)? recoveryBackupControllerFor;
   @override State<LocalBackupPage> createState()=>_LocalBackupPageState();
 }
 class _LocalBackupPageState extends State<LocalBackupPage> {
@@ -38,6 +42,13 @@ class _LocalBackupPageState extends State<LocalBackupPage> {
           FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('我已另存到安全位置'))]));
       if(saved==true)await _perform(c.acknowledgeRecoveryKeySaved);
     }catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content:Text(_errorText(c.error))));}
+  }
+  Future<void> _openRecoveryLibrary()async{
+    final factory=widget.recoveryStore;if(factory==null)return;
+    await _perform(()async{final store=await factory();if(!mounted)return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>RecoveryLibraryPage(
+        store:store,pendingRestore:c.lastRestore,backupControllerFor:widget.recoveryBackupControllerFor)));
+    });
   }
   Future<void> _import()async{final value=_importKey.text.trim();_importKey.clear();await _perform(()=>c.importRecoveryKey(value));}
   Future<void> _discardUpload()async{
@@ -128,6 +139,8 @@ class _LocalBackupPageState extends State<LocalBackupPage> {
           const Text('已生成新文件和身份。记录仍是惰性归档，没有写入现有数据库；不会沿用旧照片权限、URI 或设备身份。'),
           const Text('受限内容继续保持受限，不自动恢复伴侣绑定或改成全家可见。'),
           if(!result.declaredBytesComplete)const Text('声明内容仍不完整。已有缩略图和缺件声明保留，缺原件不冒充完整。'),
+          const Text('此入口只处理持钥验证的加密归档内部条目；外层公开备份文件尚未纳入资料库。缺少原操作或撤权证明时，禁止恢复为正常家庭业务库。'),
+          if(widget.recoveryStore!=null)OutlinedButton(onPressed:c.busy?null:_openRecoveryLibrary,child:const Text('预览并确认保存为私有只读资料库')),
         ]),
       ])));
   }
@@ -157,6 +170,10 @@ String _errorText(BackupException? error){
     'finish_or_discard_pending_job'=>'请先完成或明确放弃当前上传/下载任务，再更换电脑。',
     'discard_previous_download_first'=>'请先清理上一次下载缓存，再选择另一份归档。',
     'paired_family_is_restore_only'=>'当前配对家庭与本机家庭不同，只可用于取回归档。',
+    'pending_upload_binding_changed'=>'续传与当前身份、家庭、电脑或密钥不匹配，已停止；请使用原授权配置处理原任务。',
+    'pending_upload_not_ready'=>'上次冻结尚未完成；请显式放弃这次任务，再生成新的备份。',
+    'pending_upload_source_changed'=>'续传来源已损坏或改变，未上传；请显式放弃这次任务。',
+    'pending_upload_authentication_failed'=>'本机续传记录认证失败，未恢复任务或发送资料。',
     'source_changed'=>'冻结来源已改变，未作为成功备份提交。请放弃这次续传后重新准备。',
     'private_acl_unavailable'=>'此平台的私有恢复目录尚未通过权限校验，已停止写入明文。',
     _=>'操作未完成，资料仍保留在本机。请核对配置、网络与原件权限后显式重试。',

@@ -23,6 +23,7 @@ import 'transport/native_local.dart';
 import 'backup/mobile_backup_controller.dart';
 import 'backup/local_backup_snapshot.dart';
 import 'backup/backup_models.dart';
+import 'backup/recovery_workspace.dart';
 
 class LocalRuntime {
   LocalRuntime._(this.store,this.api,this.crypto,this.registry,this.media,this.memories,this.services,this.plants,this.travels,this.travelSync);
@@ -49,6 +50,16 @@ class LocalRuntime {
       try{await controller.load();return controller;}catch(_){_backupControllers.remove(fid);rethrow;}
     });
   }
+  Future<RecoveryWorkspaceStore>? _recoveryLibrary;
+  Future<RecoveryWorkspaceStore> get recoveryLibrary=>_recoveryLibrary??=RecoveryWorkspaceStore.openNative(crypto:crypto,schemas:syncSchemas,commentFields:LocalIncrementalStrategy.commentFields,validateFields:LocalIncrementalStrategy.validatePortableFields);
+  final _recoveryBackupControllers=<String,Future<MobileBackupController>>{};
+  Future<MobileBackupController> recoveryBackupController(String workspaceId)=>_recoveryBackupControllers.putIfAbsent(workspaceId,()async{
+    final library=await recoveryLibrary,workspace=await library.get(workspaceId);
+    // Explicit fresh pairing is required; no old phone token/identity is imported.
+    final controller=MobileBackupController.native(familyId:workspace.sourceFamilyId,deviceId:workspace.ownerDeviceId,
+      preferences:library.preferences(workspaceId),snapshotProvider:()=>library.snapshot(workspaceId));
+    try{await controller.load();return controller;}catch(_){_recoveryBackupControllers.remove(workspaceId);rethrow;}
+  });
   static LocalRuntime? instance;
   static Future<LocalRuntime>? _opening;
   static Future<LocalRuntime> initialize() => _opening ??= _open();

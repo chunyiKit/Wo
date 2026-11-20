@@ -46,7 +46,7 @@ class SyncSettingsContract(unittest.TestCase):
     def test_settings_initializes_backup_only_when_requested_and_catches_safely(self):
         opener = self.settings.split('Future<void> _openBackup(', 1)[1]
         self.assertIn('await runtime.backupController', opener)
-        self.assertLess(opener.index('await runtime.backupController'), opener.index('LocalBackupPage(controller: controller)'))
+        self.assertLess(opener.index('await runtime.backupController'), opener.index('LocalBackupPage(controller: controller'))
         self.assertIn('if (!context.mounted) return;', opener)
         self.assertIn('catch (_)', opener)
         self.assertNotIn('print(', opener)

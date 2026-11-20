@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/wo_session.dart';
 import '../../local/local_runtime.dart';
 import '../settings/local_backup_page.dart';
+import '../settings/recovery_library_page.dart';
 import 'local_sync_page.dart';
 import 'local_services_page.dart';
 import '../auth/recovery_page.dart';
@@ -36,6 +37,12 @@ class SettingsPage extends StatelessWidget {
               subtitle: const Text('配对电脑、原件完整性和受限加密归档'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openBackup(context),
+            ),
+            if (session.api.isLocal && LocalRuntime.instance != null) WoListTile(
+              title: const Text('私有恢复资料库'),
+              subtitle: const Text('独立只读历史与自有原件，不参与家庭同步'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openRecoveryLibrary(context),
             ),
             if (session.api.isLocal && LocalRuntime.instance != null) WoListTile(
               title: const Text('本机可选服务'),
@@ -116,7 +123,7 @@ Future<void> _openBackup(BuildContext context) async {
     final controller = await runtime.backupController;
     if (!context.mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => LocalBackupPage(controller: controller),
+      builder: (_) => LocalBackupPage(controller: controller,recoveryStore:()=>runtime.recoveryLibrary,recoveryBackupControllerFor:runtime.recoveryBackupController),
     ));
   } catch (_) {
     if (!context.mounted) return;
@@ -124,4 +131,11 @@ Future<void> _openBackup(BuildContext context) async {
       WoSnackBar(content: const Text('本机备份模块尚未就绪，现有资料仍保留在本机')),
     );
   }
+}
+
+Future<void> _openRecoveryLibrary(BuildContext context)async{
+  final runtime=LocalRuntime.instance;if(runtime==null)return;
+  try{final store=await runtime.recoveryLibrary;if(!context.mounted)return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>RecoveryLibraryPage(store:store,backupControllerFor:runtime.recoveryBackupController)));
+  }catch(_){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content:const Text('私有恢复资料库尚未就绪；现有资料未更改')));}
 }
