@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../data/api_client.dart';
 import 'local_backend.dart';
 import 'local_store.dart';
+import 'local_notification_preferences.dart';
 import 'plugin_catalog.dart';
 import 'plugins/recipe_expiry.dart';
 import 'plugins/memory_routes.dart';
@@ -18,10 +19,10 @@ import '../services/external_services.dart';
 
 /// 本地业务边界；未实现的路由明确失败，绝不静默退回远端写入。
 class LocalApi implements LocalBackend {
-  LocalApi(this.store, {DateTime Function()? now,this.memories,this.catalogue,this.travels,this.onMutated}) : now = now ?? DateTime.now;
+  LocalApi(this.store, {DateTime Function()? now,this.memories,this.catalogue,this.travels,this.chats,this.pets,this.onMutated}) : now = now ?? DateTime.now;
   final MemoryRoutes? memories;
   final MovieCatalogueClient? catalogue;
-  final TravelRoutes? travels;
+  final TravelRoutes? travels;final ChatRoutes? chats;final PetRoutes? pets;
   final void Function()? onMutated;
   final LocalStore store;
   final DateTime Function() now;
@@ -171,6 +172,27 @@ class LocalApi implements LocalBackend {
     if(hide){await store.setPrivate('notification-hidden:${rows.single['family_id']}:$id',true);}
     else{await _markNotificationsRead(rows);}
   }
+  Future<LocalNotificationPreferences> _notificationPreferences()async{
+    try{return LocalNotificationPreferences.fromPrivateValue(await store.privateValue(LocalNotificationPreferences.privateKey));}
+    on FormatException{return LocalNotificationPreferences.disabled;}
+  }
+  Future<Json> _updateNotificationPreferences(Json data)async{
+    if(data.isEmpty||data.keys.any((key)=>!{'push_enabled','sources'}.contains(key))||
+      data.containsKey('push_enabled')&&data['push_enabled'] is! bool)_fail('VALIDATION_ERROR','本机提醒开关格式无效');
+    final sources=data['sources'];
+    if(data.containsKey('sources')&&(sources is! Map||sources.keys.any((key)=>key!='expiry')||sources.values.any((value)=>value is! bool)))
+      _fail('VALIDATION_ERROR','本机仅支持到期物品站内来源开关');
+    return store.db.transaction((tx)async{
+      const key='private:${LocalNotificationPreferences.privateKey}';
+      final rows=await tx.query('meta',columns:['value'],where:'key=?',whereArgs:[key]);
+      Object? raw;try{raw=rows.isEmpty?null:jsonDecode(rows.single['value'] as String);}on FormatException{raw=false;}
+      final current=LocalNotificationPreferences.fromPrivateValue(raw);
+      final next=LocalNotificationPreferences(enabled:data['push_enabled'] as bool? ?? current.enabled,
+        expirySourceEnabled:sources is Map?sources['expiry'] as bool? ?? current.expirySourceEnabled:current.expirySourceEnabled);
+      await tx.rawInsert('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)',[key,jsonEncode(next.toPrivateValue())]);
+      return next.toApiJson();
+    });
+  }
   Future<List<Json>> _installedList(String fid) async => [for(final row in await store.list(fid,_col(fid,'installed'))) await _installed(fid,row)];
   Future<Json> _bootstrap() async => {'user':await self,'current_family':familyId==null?null:await _family(familyId!),
     'families':[for(final id in await families)await _family(id)],'installed_plugins':familyId==null?[]:await _installedList(familyId!),'unread_count':(await _notifications()).where((r)=>r['is_read']!=true).length};
@@ -216,10 +238,8 @@ class LocalApi implements LocalBackend {
     }
     else if(parts.length==3&&parts[0]=='notifications'&&parts[2]=='read'&&method=='PATCH'){await _notificationAction(parts[1],hide:false);result=null;}
     else if(parts.length==2&&parts[0]=='notifications'&&method=='DELETE'){await _notificationAction(parts[1],hide:true);result=null;}
-    else if(path=='/me/notification-preferences' && method=='GET') result=await store.privateValue('notification-preferences')??{'push_enabled':false,'sources':[]};
-    else if(path=='/me/notification-preferences' && method=='PATCH') {
-      _fail('LOCAL_MODULE_PENDING','本机系统提醒尚未接入，未修改通知开关',501);
-    }
+    else if(path=='/me/notification-preferences' && method=='GET') result=(await _notificationPreferences()).toApiJson();
+    else if(path=='/me/notification-preferences' && method=='PATCH') result=await _updateNotificationPreferences(data);
     else if(parts.length>=2 && parts[0]=='families') {
       final fid=parts[1];await _joined(fid);
       if(parts.length==2 && method=='GET') result=await _family(fid);
@@ -233,7 +253,7 @@ class LocalApi implements LocalBackend {
         familyId=fid;await store.setPrivate('current-family',fid);result=await _family(fid);
       }
       else if(parts.length>=3&&parts[2]=='pets'){
-        final handled=await PetRoutes(store,now:now).request(method,fid,parts.sublist(2),body:data,query:q);
+        final handled=await (pets??PetRoutes(store,now:now)).request(method,fid,parts.sublist(2),body:data,query:q);
         if(handled==null)_fail('LOCAL_MODULE_PENDING','本地宠物入口尚未支持该操作',501);return handled!;
       }
       else if(parts.length==3 && parts[2]=='members' && method=='GET') result=await store.list(fid,_col(fid,'members'));
@@ -281,10 +301,10 @@ class LocalApi implements LocalBackend {
         final tail=parts.sublist(3);
         final handled=await memories?.request(method,fid,tail,body:data,query:q)
           ??await travels?.request(method,fid,tail,body:data,query:q)
-          ??await PetRoutes(store,now:now).request(method,fid,tail,body:data,query:q)
+          ??await (pets??PetRoutes(store,now:now)).request(method,fid,tail,body:data,query:q)
           ??await StockAccountingRoutes(store,now:now).request(method,fid,tail,body:data,query:q)
           ??await MovieChoreAnniversaryRoutes(store,catalogue:catalogue,now:now).request(method,fid,tail,body:data,query:q)
-          ??await ChatRoutes(store,now:now).request(method,fid,tail,body:data,query:q)
+          ??await (chats??ChatRoutes(store,now:now)).request(method,fid,tail,body:data,query:q)
           ??await CalendarRoutes(store,now:now).request(method,fid,tail,body:data,query:q)
           ??await PlantRoutes(store,now:now).request(method,fid,tail,body:data,query:q)
           ??await RetirementSubscriptionRoutes(store,now:now).request(method,fid,tail,body:data,query:q)

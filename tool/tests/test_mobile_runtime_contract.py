@@ -164,7 +164,9 @@ class MobileRuntimeContract(unittest.TestCase):
             self.assertIn("'pending_local_delivery'", self.plugins[name])
             self.assertNotRegex(self.plugins[name], r"'status'\s*:\s*'(sent|delivered)'")
         prefs = self.api.split("path=='/me/notification-preferences' && method=='PATCH'", 1)[1].split('else if(', 1)[0]
-        self.assertIn('LOCAL_MODULE_PENDING', prefs)
+        self.assertIn('_updateNotificationPreferences(data)', prefs)
+        preference_source = (ROOT / 'lib/local/local_notification_preferences.dart').read_text()
+        self.assertIn("'system_push_supported':false", preference_source)
 
     def test_local_member_guard_binds_both_family_and_identity(self):
         joined = body(self.api, 'Future<void> _joined(')

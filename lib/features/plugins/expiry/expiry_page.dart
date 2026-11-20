@@ -293,8 +293,10 @@ class _Empty extends StatelessWidget {
             Text('还没有记录', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
             Text(
-              '把身份证、护照、驾照、车险、年检、合同这些会到期的事情记下来，'
-              '到期前自动提醒全家，别再错过续期。',
+              WoScope.api(context).isLocal
+                  ? '把需要续期的事情记在本机。App 在前台检查到期规则并生成本地消息；当前不投递系统通知。'
+                  : '把身份证、护照、驾照、车险、年检、合同这些会到期的事情记下来，'
+                    '到期前自动提醒全家，别再错过续期。',
               style: t.bodyMedium?.copyWith(color: wo.fgMid),
               textAlign: TextAlign.center,
             ),
@@ -499,7 +501,11 @@ class _ExpiryEditPageState extends State<ExpiryEditPage> {
                 activeColor: wo.expiry,
                 title: const Text('到期前提醒'),
                 subtitle: Text(
-                  _notify ? '提醒全家提前安排续期' : '开启后会在到期前推送通知',
+                  WoScope.api(context).isLocal
+                      ? _notify
+                          ? 'App 前台检查后生成本机消息；当前不投递系统通知'
+                          : '关闭仅暂停到期前消息；过期消息仍保留，暂停此项可全部停止'
+                      : _notify ? '提醒全家提前安排续期' : '开启后会在到期前推送通知',
                   style: t.labelSmall?.copyWith(color: wo.fgMid),
                 ),
                 onChanged: (v) => setState(() => _notify = v),

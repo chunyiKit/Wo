@@ -4,6 +4,7 @@ import 'plugins/calendar_routes.dart';
 import 'plugins/plant_routes.dart';
 import 'plugins/retirement_subscription.dart';
 import 'plugins/pet_routes.dart';
+import 'plugins/recipe_expiry.dart';
 
 typedef DueReminderProcessor = Future<int> Function(String familyId);
 
@@ -16,12 +17,13 @@ class LocalForegroundReminders {
       'plant': PlantRoutes(store, now: now).requestDueReminders,
       'finance': RetirementSubscriptionRoutes(store, now: now).processDue,
       'pet': PetRoutes(store, now: now).requestDueReminders,
+      'expiry': RecipeExpiryRoutes(store, now: now).requestDueExpiryReminders,
     };
   final LocalStore store;
   final Map<String, DueReminderProcessor> _processors;
   static const _plugins = <String, Set<String>>{
     'anniversary': {'anniversary'}, 'calendar': {'calendar'}, 'plant': {'plant'},
-    'finance': {'retirement', 'subscription'}, 'pet': {'pet'},
+    'finance': {'retirement', 'subscription'}, 'pet': {'pet'}, 'expiry': {'expiry'},
   };
   Future<int> _revision() async => (await store.db.rawQuery(
     'SELECT COALESCE(MAX(revision),0) AS revision FROM changes')).single['revision'] as int;

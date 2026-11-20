@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
 import '../../data/api_client.dart';
 import '../local_backend.dart';
+import '../local_notification_preferences.dart';
 import '../local_store.dart';
 
 /// 菜谱与到期记录的本地业务契约。封面媒体尚未接入，绝不退回云端写入。
@@ -392,4 +394,75 @@ class RecipeExpiryRoutes {
     if (fields.isNotEmpty) await _save(fid, col, tail[2], fields);
     return (data: _expiryRead(await _load(fid, col, tail[2])), meta: null);
   }
+  /// 仅创建前台可读消息请求，不调用原生调度，也不自动续期。
+  /// 与安装开关、成员状态及通知墓碑的读取在同一SQLite事务内完成。
+  Future<int> requestDueExpiryReminders(String fid) async {
+    await _requireMember(fid);
+    final now = _now();
+    final today = DateTime.utc(now.year, now.month, now.day);
+    final stamp = now.toUtc().toIso8601String();
+    final changes = await store.batchComputed((tx) async {
+      Future<List<Json>> documents(String collection) async => [
+        for (final row in await tx.query('documents', columns: ['id', 'data'],
+          where: 'space=? AND collection=? AND deleted=0', whereArgs: [fid, collection]))
+          {...Json.from(jsonDecode(row['data'] as String) as Map), 'id': row['id']},
+      ];
+      final members = await documents('/families/$fid/members');
+      bool activeMember(Json member) => member['id'] is String &&
+        _ids.hasMatch(member['id'] as String) && member['family_id'] == fid &&
+        member['user_id'] == member['id'] && member['status'] == 'active';
+      if (!members.any((m) => activeMember(m) && m['id'] == store.deviceId)) {
+        throw ApiException('FORBIDDEN', '本机成员身份已失效，未生成到期消息', statusCode: 403);
+      }
+      final preferenceRows = await tx.query('meta', columns: ['value'],
+        where: 'key=?', whereArgs: ['private:${LocalNotificationPreferences.privateKey}']);
+      dynamic rawPreferences;
+      if (preferenceRows.isNotEmpty) {
+        try { rawPreferences = jsonDecode(preferenceRows.single['value'] as String); }
+        catch (_) { return <Json>[]; } // 损坏配置不能回落为默认开启。
+      }
+      if (!LocalNotificationPreferences.fromPrivateValue(rawPreferences).expiryEnabled) return <Json>[];
+      final installed = await documents('/families/$fid/installed');
+      if (!installed.any((row) => row['plugin_id'] == 'expiry' && row['enabled'] == true)) return <Json>[];
+      // 每设备只生成自己的本机消息；不让不同actor共用不可变作者的通知ID。
+      final recipients = <String>[store.deviceId];
+      final items = await documents('/families/$fid/plugins/expiry/items');
+      items.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
+      final requests = <Json>[];
+      for (final row in items) {
+        if (row['family_id'] != fid || row['active'] != true) continue;
+        String due, name, emoji; int ahead; bool enabled;
+        try {
+          due = _date(row['expire_on']); name = _text(row['name'], '名称', 40);
+          emoji = _text(row['emoji'], '图标', 16);
+          ahead = _integer(row['notify_days_before'], '提前天数', 0, 365);
+          enabled = _boolean(row['notify_enabled'], '到期前提醒');
+        } on ApiException { continue; }
+        final parsed = DateTime.parse(due);
+        final delta = DateTime.utc(parsed.year, parsed.month, parsed.day).difference(today).inDays;
+        // 基线开关仅指“到期前提醒”；active=false才暂停预提醒和过期提醒。
+        final overdue = delta < 0;
+        if (!overdue && (!enabled || delta > ahead)) continue;
+        final type = overdue ? 'expiry_expired' : 'expiry_due';
+        final id = _uuid.v5(_tagNamespace, 'expiry:$fid:${row['id']}:$due:$type:${store.deviceId}');
+        final previous = await tx.query('documents', columns: ['id'],
+          where: 'space=? AND collection=? AND id=?',
+          whereArgs: [fid, '/families/$fid/notifications', id], limit: 1);
+        // 读过、隐藏过或已删除的同轮次通知均不重建，不把墓碑ID复用。
+        if (previous.isNotEmpty) continue;
+        final when = delta == 0 ? '今天' : '$delta 天后';
+        requests.add({'space': fid, 'collection': '/families/$fid/notifications', 'id': id,
+          'fields': {'type': type, 'title': overdue ? '「$name」已过期' : '「$name」$when到期',
+            'body': overdue ? '已过期 ${-delta} 天，记得尽快续期 📄' : '记得提前安排续期 📄',
+            'icon_emoji': emoji, 'created_by': store.deviceId, 'created_at': stamp,
+            'read_by': <String>[], 'status': 'pending_local_delivery', 'recipient_ids': recipients,
+            'source_plugin': 'expiry', 'source_id': row['id'], 'source_occurrence': due}});
+        // 每批保持LocalStore事务上限；余项在下一次前台检查继续，已生成项不再占名额。
+        if (requests.length == 256) break;
+      }
+      return requests;
+    });
+    return changes.length;
+  }
+
 }

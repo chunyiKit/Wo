@@ -7,7 +7,7 @@ import '../../theme/wo_tokens.dart';
 
 /// 通知偏好：通知总开关 + 各来源（家庭动态 / 有通知机制的插件）单独开关。
 ///
-/// 同时控制 App 内新消息和系统推送，已有历史消息保留。
+/// 本地模式只管理已支持的站内来源，不代表系统推送；已有历史消息保留。
 class NotificationPrefsPage extends StatefulWidget {
   const NotificationPrefsPage({super.key});
 
@@ -18,6 +18,7 @@ class NotificationPrefsPage extends StatefulWidget {
 class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
   NotificationPreferences? _prefs;
   Object? _loadError;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -37,8 +38,8 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
 
   Future<void> _setPushEnabled(bool value) async {
     final prev = _prefs;
-    if (prev == null) return;
-    // 乐观更新：只改这一个开关，其它开关与总开关保持原样、不禁用。
+    if (prev == null || _saving) return;
+    // 乐观更新；本机保存期间串行切换，避免旧失败回滚覆盖新状态。
     setState(() {
       _prefs = NotificationPreferences(
         pushEnabled: value,
@@ -55,7 +56,7 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
 
   Future<void> _setSource(NotificationSource source, bool value) async {
     final prev = _prefs;
-    if (prev == null) return;
+    if (prev == null || _saving) return;
     setState(() {
       _prefs = NotificationPreferences(
         pushEnabled: prev.pushEnabled,
@@ -91,6 +92,8 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
     required VoidCallback rollback,
   }) async {
     final messenger = ScaffoldMessenger.of(context);
+    final local = WoScope.api(context).isLocal;
+    if (local) setState(() => _saving = true);
     try {
       await action();
     } catch (e) {
@@ -101,6 +104,8 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
         _ => '保存失败，请稍后再试',
       };
       messenger.showSnackBar(WoSnackBar(content: Text(msg)));
+    } finally {
+      if (mounted && local) setState(() => _saving = false);
     }
   }
 
@@ -108,15 +113,16 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
+    final local = WoScope.api(context).isLocal;
 
     return WoScaffold(
-      appBar: WoAppBar(title: const Text('通知偏好')),
+      appBar: WoAppBar(title: Text(local ? '本机站内提醒' : '通知偏好')),
       body: SafeArea(
         top: false,
         child: Builder(
           builder: (context) {
             if (_loadError != null) {
-              return _ErrorRetry(onRetry: _load);
+              return _ErrorRetry(onRetry: _load, local: local);
             }
             final prefs = _prefs;
             if (prefs == null) {
@@ -127,10 +133,10 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
                 const SizedBox(height: WoTokens.space2),
                 WoSwitchListTile(
                   secondary: const Icon(Icons.notifications_active_outlined),
-                  title: const Text('接收通知'),
-                  subtitle: const Text('同时控制 App 内新消息和手机系统推送'),
+                  title: Text(local ? '接收本机站内提醒' : '接收通知'),
+                  subtitle: Text(local ? '当前仅控制到期物品的新站内提醒，不控制系统推送' : '同时控制 App 内新消息和手机系统推送'),
                   value: prefs.pushEnabled,
-                  onChanged: _setPushEnabled,
+                  onChanged: _saving ? null : _setPushEnabled,
                 ),
                 const Divider(height: 1),
                 Padding(
@@ -155,12 +161,12 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
                     // 总开关关掉时，各来源开关一并失效（变灰）。
                     value: prefs.pushEnabled && s.enabled,
                     onChanged:
-                        prefs.pushEnabled ? (v) => _setSource(s, v) : null,
+                        prefs.pushEnabled && !_saving ? (v) => _setSource(s, v) : null,
                   ),
                 Padding(
                   padding: const EdgeInsets.all(WoTokens.space5),
                   child: Text(
-                    '关闭某项后，将不再收到该来源的 App 内新消息和手机系统推送。已有历史消息保留。',
+                    local ? '仅保存在这台设备。关闭后不再生成新的到期站内提醒；已有消息、已读和隐藏历史保留。其它成员设备的设置不受影响。系统后台通知尚未接入。' : '关闭某项后，将不再收到该来源的 App 内新消息和手机系统推送。已有历史消息保留。',
                     style: t.bodySmall?.copyWith(color: wo.fgMid),
                   ),
                 ),
@@ -174,8 +180,9 @@ class _NotificationPrefsPageState extends State<NotificationPrefsPage> {
 }
 
 class _ErrorRetry extends StatelessWidget {
-  const _ErrorRetry({required this.onRetry});
+  const _ErrorRetry({required this.onRetry, this.local = false});
   final VoidCallback onRetry;
+  final bool local;
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +196,7 @@ class _ErrorRetry extends StatelessWidget {
           children: [
             Text('加载失败', style: t.titleMedium),
             const SizedBox(height: WoTokens.space2),
-            Text('请检查网络后重试。', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+            Text(local ? '本机设置读取失败，请重试。' : '请检查网络后重试。', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
             const SizedBox(height: WoTokens.space4),
             WoFilledButton(onPressed: onRetry, child: const Text('重试')),
           ],
