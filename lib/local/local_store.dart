@@ -88,9 +88,13 @@ class LocalStore {
       (await batch([{'space':space,'collection':collection,'id':id,'fields':fields,'delete':delete}])).single;
 
   /// 多文档业务和非秘密本机索引原子提交；失败不留下半家庭或计数间隙。
-  Future<List<Json>> batch(List<Json> changes, {Json privateUpdates = const {}}) async {
-    if (changes.length > 256) throw const FormatException('本地批次过大');
-    return db.transaction((tx) async {
+  Future<List<Json>> batch(List<Json> changes,{Json privateUpdates=const{}})=>
+      db.transaction((tx)=>_commitChanges(tx,changes,privateUpdates));
+  /// 账目/库存的读取校验和事件日志在同一事务；builder内只能使用给定tx。
+  Future<List<Json>> batchComputed(Future<List<Json>> Function(DatabaseExecutor tx) build)=>
+      db.transaction((tx)async=>_commitChanges(tx,await build(tx),const{}));
+  Future<List<Json>> _commitChanges(Transaction tx,List<Json> changes,Json privateUpdates)async{
+    if(changes.length>256)throw const FormatException('本地批次过大');
       final result = <Json>[];
       final scopes = <String>{};
       var batchBytes = 2;
@@ -111,7 +115,6 @@ class LocalStore {
       for (final scope in scopes) { await _advance(tx, scope, {deviceId}); }
       for (final entry in privateUpdates.entries) { await _writeMeta(tx, 'private:${entry.key}', entry.value); }
       return result;
-    });
   }
 
   static bool _newer(Json old, Json op) =>
@@ -199,6 +202,12 @@ class LocalStore {
     return result;
   }
 
+  /// 默认安全同步只转发本机作者日志；不把未经本机验证的第三方actor当中继发送。
+  Future<List<Json>> exportOwnSince(String space,int after,{int limit=64,int maxBytes=maxOperationBytes+1024})async{
+    if(!_identifier.hasMatch(space)||after<0||after>_maxInt||limit<1||limit>256||maxBytes<maxOperationBytes||maxBytes>maxBatchBytes)throw const FormatException('本机增量范围无效');
+    final rows=await db.query('operations',columns:['payload'],where:'space=? AND actor=? AND sequence>?',whereArgs:[space,deviceId,after],orderBy:'sequence',limit:limit);
+    final result=<Json>[];var bytes=2;for(final row in rows){final payload=row['payload'] as String;final size=utf8.encode(payload).length+1;if(bytes+size>maxBytes)break;bytes+=size;result.add(Map<String,dynamic>.from(jsonDecode(payload) as Map));}return result;
+  }
   Future<Json?> get(String space, String collection, String id) async {
     _location(space,collection,id);
     final rows = await db.query('documents', where: 'space=? AND collection=? AND id=? AND deleted=0', whereArgs: [space,collection,id]);
