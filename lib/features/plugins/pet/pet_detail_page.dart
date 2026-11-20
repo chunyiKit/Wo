@@ -62,12 +62,13 @@ class _PetDetailPageState extends State<PetDetailPage> {
   }
 
   Future<void> _editRecord([PetRecord? record]) async {
-    final changed = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => PetRecordEditPage(petId: widget.petId, record: record),
       ),
     );
-    if (changed == true) await _refreshSilently();
+    // 记录已保存但附件失败、或只删除附件后返回，也要就地刷新已有列表。
+    if (mounted) await _refreshSilently();
   }
 
   Future<void> _complete(PetCarePlan plan) async {

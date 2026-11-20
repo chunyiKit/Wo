@@ -42,8 +42,10 @@ class LocalChatContract(unittest.TestCase):
         self.assertIn('if (WoScope.api(context).isLocal) return const LocalChatPage();', self.entry)
         self.assertNotIn('ChatSyncService', self.page.split('class LocalChatPage', 1)[1])
         self.assertNotIn('uploadFile(', self.page)
-        self.assertNotIn('File(', self.page)
-        self.assertIn('本地聊天图片和文件附件尚未接入', self.page)
+        self.assertNotRegex(self.page, r'(?<![A-Za-z0-9_.])File\(')
+        self.assertIn('routes.selectAttachment(', self.page)
+        self.assertIn('chat_image_copy', self.page)
+        self.assertIn('暂不支持聊天视频', self.page)
         self.assertIn('回忆原件不会作为聊天附件发送', self.routes)
 
     def test_snapshot_and_stable_ids_cover_backfill_and_existing_row_updates(self):

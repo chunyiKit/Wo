@@ -25,12 +25,17 @@ import 'backup/mobile_backup_controller.dart';
 import 'backup/local_backup_snapshot.dart';
 import 'backup/backup_models.dart';
 import 'backup/recovery_workspace.dart';
+import 'attachments/ordinary_attachment_store.dart';
+import 'sync/ordinary_attachment_sync.dart';
 
 class LocalRuntime {
-  LocalRuntime._(this.store,this.api,this.crypto,this.registry,this.media,this.memories,this.services,this.plants,this.travels,this.travelSync);
+  LocalRuntime._(this.store,this.api,this.crypto,this.registry,this.media,this.memories,this.services,this.plants,this.travels,this.travelSync,this.chats,this.pets,this.ordinary,this._attachmentProvider);
   final LocalStore store;final LocalApi api;final NativeCrypto crypto;
   final PeerRegistry registry;final LocalMediaRepository media;final MemoryRoutes memories;
   final LocalServiceSettings services;final PlantRoutes plants;final TravelRoutes travels;final TravelSyncAdapter travelSync;
+  final ChatRoutes chats;final PetRoutes pets;final OrdinaryAttachmentSyncAdapter ordinary;
+  final Future<OrdinaryAttachmentStore> Function() _attachmentProvider;
+  Future<OrdinaryAttachmentStore> get attachments=>_attachmentProvider();
   final ValueNotifier<int> changes=ValueNotifier<int>(0);
   late final LocalSyncCoordinator sync;
   final _backupControllers=<String,Future<MobileBackupController>>{};
@@ -47,7 +52,7 @@ class LocalRuntime {
     return _backupControllers.putIfAbsent(fid,()async{
       final controller=MobileBackupController.native(familyId:fid,deviceId:store.deviceId,
         preferences:SqliteBackupPreferences(store,fid),snapshotProvider:()=>LocalBackupSnapshots(
-          store:store,media:media,memories:memories,crypto:crypto,schemas:syncSchemas,travel:travelSync).create(fid));
+          store:store,media:media,memories:memories,crypto:crypto,schemas:syncSchemas,travel:travelSync,ordinary:ordinary).create(fid));
       try{await controller.load();return controller;}catch(_){_backupControllers.remove(fid);rethrow;}
     });
   }
@@ -110,13 +115,20 @@ class LocalRuntime {
       final plants=PlantRoutes(store,currentWeather:()=>services.weatherClient().current());
       final travels=TravelRoutes(store,media:media,memories:memories,imageClient:services.imageClient());
       final travelSync=TravelSyncAdapter(travels);
+      Future<OrdinaryAttachmentStore>? attachmentOpening;
+      Future<OrdinaryAttachmentStore> attachmentProvider()=>attachmentOpening??=()async{
+        try{return await OrdinaryAttachmentStore.open(crypto:crypto);}
+        catch(_){attachmentOpening=null;rethrow;}
+      }();
+      final chats=ChatRoutes(store,attachmentStore:attachmentProvider),pets=PetRoutes(store,attachmentStore:attachmentProvider);
+      final ordinary=OrdinaryAttachmentSyncAdapter(store,registry,attachmentProvider);
       LocalRuntime? runtime;
-      final api=LocalApi(store,memories:memories,catalogue:services.movieClient(),travels:travels,onMutated:()=>runtime?.changed());await api.initialize();
+      final api=LocalApi(store,memories:memories,catalogue:services.movieClient(),travels:travels,chats:chats,pets:pets,onMutated:()=>runtime?.changed());await api.initialize();
       for(final fid in await api.families){await travels.recoverInterrupted(fid);}
-      final ready=LocalRuntime._(store,api,crypto,registry,media,memories,services,plants,travels,travelSync);
+      final ready=LocalRuntime._(store,api,crypto,registry,media,memories,services,plants,travels,travelSync,chats,pets,ordinary,attachmentProvider);
       runtime=ready;
       ready.sync=LocalSyncCoordinator(store:store,registry:registry,crypto:crypto,discovery:NativeDiscovery(),
-        strategy:LocalIncrementalStrategy(store,registry,media,additionalSchemas:ready.syncSchemas,travel:travelSync),
+        strategy:LocalIncrementalStrategy(store,registry,media,additionalSchemas:ready.syncSchemas,travel:travelSync,ordinary:ordinary),
         onChanged:ready._merged);
       ApiClient.localBackend=api;
       return instance=ready;

@@ -98,7 +98,7 @@ class SyncConnectionUsability(unittest.TestCase):
             finalizer = connection.split('finally{', 1)[1]
             self.assertIn('if(dirty&&_alive(epoch))', finalizer)
             self.assertIn('try{await onChanged?.call();}catch(_){}', finalizer)
-            self.assertLess(connection.index('await onChanged?.call();dirty=false'), connection.index('已完成本轮授权增量合并'))
+            self.assertLess(connection.index('await onChanged?.call();dirty=false'), connection.index('已完成本轮授权增量；附件状态以本机文件校验为准'))
         for signature, end in (('Future<void> coupleConsent(', 'Future<void> revoke('),
                                ('Future<void> revoke(', '@override void dispose(')):
             mutation = self.coordinator.split(signature, 1)[1].split(end, 1)[0]

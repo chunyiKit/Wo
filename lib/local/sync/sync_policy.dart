@@ -9,6 +9,8 @@ import 'strict_json.dart';
 import 'peer_registry.dart';
 import 'sync_wire.dart';
 import 'travel_sync_adapter.dart';
+import 'ordinary_attachment_sync.dart';
+import '../attachments/attachment_descriptor.dart';
 
 /// 集合适配与连接分离。未知业务集合明确失败，不降级发送原始SQLite或设备引用。
 abstract interface class IncrementalSyncStrategy {
@@ -16,10 +18,14 @@ abstract interface class IncrementalSyncStrategy {
   Future<Map<String,dynamic>> delta(PeerLink peer,Map<String,dynamic> remoteState);
   Future<void> apply(PeerLink peer,Map<String,dynamic> delta);
 }
-class LocalIncrementalStrategy implements IncrementalSyncStrategy {
-  LocalIncrementalStrategy(this.store,this.registry,this.media,{this.additionalSchemas=const{},this.travel});
+class LocalIncrementalStrategy implements IncrementalSyncStrategy, OrdinaryAttachmentTransferStrategy {
+  LocalIncrementalStrategy(this.store,this.registry,this.media,{this.additionalSchemas=const{},this.travel,this.ordinary});
   final LocalStore store;final PeerRegistry registry;final LocalMediaRepository media;
-  final Map<String,Set<String>> additionalSchemas;final TravelSyncAdapter? travel;
+  final Map<String,Set<String>> additionalSchemas;final TravelSyncAdapter? travel;final OrdinaryAttachmentSyncAdapter? ordinary;
+  @override bool get attachmentTransferEnabled=>ordinary!=null;
+  @override Future<Json> attachmentRequest(PeerLink peer)=>ordinary!.request(peer);
+  @override Future<Json> attachmentReply(PeerLink peer,Json request)=>ordinary!.reply(peer,request);
+  @override Future<bool> receiveAttachmentReply(PeerLink peer,Json reply)=>ordinary!.receive(peer,reply);
   final _missingCursor=<String,int>{};
   static const baseSchemas=<String,Set<String>>{
     'family':{'name','slogan','emoji','background_url','created_at'},
@@ -445,13 +451,20 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       _fields(fields,{'family_id','label','emoji','created_at'},{});
       if(fields['family_id']!=familyId||!_text(fields['label'],20)||!_text(fields['emoji'],16)||!_timestamp(fields['created_at']))_badEmbedded();
     }else if(suffix=='plugins/chat/messages'){
-      _fields(fields,{'family_id','created_by','client_id','kind','body','created_at'},{});
+      _fields(fields,{'family_id','created_by','client_id','kind','body','created_at'},fields['kind']=='text'?{}:{'attachment_id'});
+      if(fields['kind']!='text'&&(fields.length!=7||!AttachmentDescriptor.validId('${fields['attachment_id']}')))_badEmbedded();
       if(fields['family_id']!=familyId||fields['created_by'] is! String||!syncId(fields['created_by'] as String)||
-          fields['client_id'] is! String||!syncId(fields['client_id'] as String)||fields['kind']!='text'||
-          !_text(fields['body'],2000)||!_timestamp(fields['created_at'])||
+          fields['client_id'] is! String||!syncId(fields['client_id'] as String)||!{'text','image','file'}.contains(fields['kind'])||
+          (fields['kind']=='text'?!_text(fields['body'],2000):fields['body']!='')||!_timestamp(fields['created_at'])||
           id!=StockAccountingRoutes.uuid.v5(StockAccountingRoutes.namespace,'wo-chat-v1:$familyId:${fields['created_by']}:${fields['client_id']}'))_badEmbedded();
+      if(deletion&&actor!=null&&fields['created_by']!=actor)_badEmbedded();
       if(previous==null){if(actor!=null&&fields['created_by']!=actor)_badEmbedded();}
       else if(fields.keys.any((k)=>fields[k]!=previous[k])){_badEmbedded();}
+    }else if(OrdinaryAttachmentSyncAdapter.isCollection(suffix)){
+      final descriptor=AttachmentDescriptor.fromJson({'id':id,...fields});
+      if(descriptor.familyId!=familyId||OrdinaryAttachmentSyncAdapter.collections[descriptor.plugin]!=suffix)_badEmbedded();
+      if(previous!=null&&!descriptor.same(AttachmentDescriptor.fromJson({'id':id,...previous})))_badEmbedded();
+      if(!deletion&&actor!=null&&descriptor.authorDeviceId!=actor)_badEmbedded();
     }else if(suffix=='plugins/chat/status'){
       _fields(fields,{'family_id','created_by','emoji','text','updated_at'},{});
       if(fields['family_id']!=familyId||fields['created_by']!=id||actor!=null&&actor!=id||
@@ -510,7 +523,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       for(final op in rows){if(ops.length>=64||wireBytes({'t':'delta','ops':[...ops,op],'thumbs':thumbs,'more':true}).length>syncMaxPlainBytes){more=true;break;}
         final suffix=_suffix(scope,op['collection'] as String),schema=_schema(suffix),fields=Map<String,dynamic>.from(op['fields'] as Map);
         if(fields.keys.any((k)=>!schema.contains(k)))throw const FormatException('出口包含未经适配的字段');
-        if(suffix=='plugins/chat/messages'&&op['kind']=='patch')_fields(fields,{'family_id','created_by','client_id','kind','body','created_at'},{});
+        if(suffix=='plugins/chat/messages'&&op['kind']=='patch')_fields(fields,{'family_id','created_by','client_id','kind','body','created_at'},fields['kind']=='text'?{}:{'attachment_id'});
         for(final key in ['avatar_url','background_url','cover_url']){if(fields[key]!=null)throw const FormatException('本机媒体不得在拒收前泄漏');}
         if(suffix=='plugins/memory/memories'&&fields.containsKey('visibility')&&fields['visibility']!=(scope==peer.familyId?'family':'couple'))throw const FormatException('出口回忆范围无效');
         final existingRows=await store.db.query('documents',columns:['data'],where:'space=? AND collection=? AND id=?',whereArgs:[scope,op['collection'],op['id']]);
@@ -518,6 +531,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
         final complete=<String,dynamic>{...?previous,...fields};
         final verified=suffix=='plugins/accounting/transactions'&&op['kind']=='patch'?await _automaticSource(peer.familyId,scope,op['id'] as String,complete,previous,store.deviceId,op['clock'] as int,{}):(initial:false,priorOrigin:false);
         validatePortableFields(familyId:peer.familyId,suffix:suffix,id:op['id'] as String,fields:complete,previous:previous,actor:store.deviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);
+        if(OrdinaryAttachmentSyncAdapter.isCollection(suffix)||suffix=='plugins/pet/records'){if(ordinary==null)throw const FormatException('普通附件与宠物记录尚无安全适配');await ordinary!.validateOp(op,read:ordinary!.lookup,previous:previous);}
         if(suffix.startsWith('plugins/travel/')){if(travel==null)throw const FormatException('旅行尚无安全同步适配');await travel!.validateOp(op,lookup:travel!.lookup,previous:previous);}
         ops.add(op);
         if(((op['collection'] as String).endsWith('/plugins/memory/media')||(op['collection'] as String).endsWith('/plugins/travel/media'))&&op['kind']=='patch'){final fields=op['fields'] as Map;if(fields['thumbnail_sha256'] is String)await addThumb(scope,op['id'] as String,fields['thumbnail_sha256'] as String);}
@@ -536,9 +550,9 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     // 最终shadow仅用于交叉文档约束；每个原操作仍必须通过下面完整身份/来源校验才允许提交。
     final finalView=<String,Json>{},mediaBindings=<String,String>{};
     Future<Json?> finalLookup(String scope,String collection,String id)async{
-      final key='$scope|$collection|$id';return finalView[key]??(travel==null?null:await travel!.lookup(scope,collection,id));
+      final key='$scope|$collection|$id';return finalView[key]??(ordinary!=null?await ordinary!.lookup(scope,collection,id):travel==null?null:await travel!.lookup(scope,collection,id));
     }
-    if(travel!=null){for(final raw in value['ops'] as List){
+    if(travel!=null||ordinary!=null){for(final raw in value['ops'] as List){
       if(raw is! Map)throw const FormatException('同步操作不是对象');final op=Json.from(raw);
       final scope=op['space'],collection=op['collection'],id=op['id'],fields=op['fields'];
       if(scope is! String||!allowed.contains(scope)||collection is! String||id is! String||!syncId(id)||fields is! Map||!['patch','delete'].contains(op['kind']))throw const FormatException('交叉文档视图字段无效');
@@ -555,7 +569,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       final suffix=_suffix(scope,collection);if(scope!=peer.familyId&&!suffix.startsWith('plugins/memory/'))throw const FormatException('伴侣空间只接受明确回忆适配');
       final fields=Map<String,dynamic>.from(op['fields'] as Map),schema=_schema(suffix);if(fields.keys.any((k)=>!schema.contains(k))||op['kind']=='delete'&&fields.isNotEmpty)throw const FormatException('同步业务字段无效');_noOriginal(fields);
       if(wireBytes(op).length>LocalStore.maxOperationBytes)throw const FormatException('单个操作过大');
-      if(suffix=='plugins/chat/messages'&&op['kind']=='patch')_fields(fields,{'family_id','created_by','client_id','kind','body','created_at'},{});
+      if(suffix=='plugins/chat/messages'&&op['kind']=='patch')_fields(fields,{'family_id','created_by','client_id','kind','body','created_at'},fields['kind']=='text'?{}:{'attachment_id'});
       final old=await row(scope,collection,id);final merged=<String,dynamic>{...?old,...fields,'id':id};
       if(suffix=='family'&&(peer.remoteRole!='owner'||id!=peer.familyId))throw const FormatException('家庭资料需要主理人授权');
       if(suffix=='members'){
@@ -590,6 +604,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       final previous=old==null?null:(<String,dynamic>{...old}..remove('id'));
       final verified=suffix=='plugins/accounting/transactions'&&op['kind']=='patch'?await _automaticSource(peer.familyId,scope,id,embedded,previous,peer.remoteDeviceId,op['clock'] as int,pendingProofs):(initial:false,priorOrigin:false);
       validatePortableFields(familyId:peer.familyId,suffix:suffix,id:id,fields:embedded,previous:previous,actor:peer.remoteDeviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);
+      if(OrdinaryAttachmentSyncAdapter.isCollection(suffix)||suffix=='plugins/pet/records'){if(ordinary==null)throw const FormatException('普通附件与宠物记录尚无安全适配');await ordinary!.validateOp(op,read:finalLookup,previous:previous);}
       if(suffix.startsWith('plugins/travel/')){if(travel==null)throw const FormatException('旅行尚无安全同步适配');await travel!.validateOp(op,lookup:finalLookup,previous:previous);}
       if(suffix=='plugins/subscription/charges'&&op['kind']=='patch')pendingProofs['$scope|$id|${op['actor']}']=op;
       if(suffix=='plugins/accounting/transactions'&&op['kind']=='patch')pendingProofs['entry|$scope|$id|${op['actor']}|${op['sequence']}']=op;
@@ -617,7 +632,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       }else{throw const FormatException('缩略图缺少授权描述');}
     }
     final current=await _allowed(peer);if(grouped.keys.any((scope)=>!current.contains(scope))||incoming.any((t)=>!current.contains(t.scope)))throw const FormatException('合并前同步授权已变化');
-    for(final entry in grouped.entries){await store.merge(entry.key,entry.value);}
+    for(final entry in grouped.entries){await store.merge(entry.key,entry.value,validateAfterMerge:ordinary==null?null:(tx)=>ordinary!.validateMerged(tx,entry.key,entry.value));}
     // 文件失败不伪报完成；下轮有界轮转独立请求缺图，不依赖已经推进的操作游标。
     for(final t in incoming){if(t.travel){await travel!.receiveThumbnail(t.scope,t.id,t.bytes,t.hash);}else{await media.receiveThumbnail(t.scope,t.id,t.hash,t.bytes);}}
 

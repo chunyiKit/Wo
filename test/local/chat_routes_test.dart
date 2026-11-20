@@ -122,7 +122,7 @@ void main() {
     await b.patch(fid, '/families/$fid/members', b.deviceId, {'status': 'revoked'});
     await expectLater(routesB.snapshot(fid), error(403));
   });
-  test('未知字段和附件明确拒绝，原件路径不会借聊天进入日志', () async {
+  test('未知字段和旧raw附件端点明确拒绝，原件路径不会借聊天进入日志', () async {
     await expectLater(call(routesA, 'POST', ['messages'], body: {'client_id': 'bad', 'body': 'x', 'file_path': '/private/original'}), error(400));
     await expectLater(call(routesA, 'POST', ['messages', 'image']), error(501));
     await expectLater(call(routesA, 'GET', ['messages', 'id', 'image', 'raw']), error(501));
@@ -199,6 +199,57 @@ void main() {
     final saved = await routesA.commitPending(fid, 'rollback');
     expect(saved['client_id'], 'rollback'); expect((await routesA.localSnapshot(fid)).length, 1);
     expect((await routesA.localSnapshot(fid)).single['local_pending'], false);
+  });
+
+  test('附件元数据分包到达只更新稳定行，缺少字节不虚报送达', () async {
+    const client = 'image-copy';
+    final id = ChatRoutes.messageId(fid, a.deviceId, client);
+    final attachment = ChatRoutes.attachmentId(fid, a.deviceId, client);
+    await a.patch(fid, '/families/$fid/plugins/chat/messages', id, {
+      'family_id': fid, 'created_by': a.deviceId, 'client_id': client, 'kind': 'image', 'body': '',
+      'created_at': clock.toIso8601String(), 'attachment_id': attachment,
+    });
+    final missing = (await routesA.localSnapshot(fid)).single;
+    expect(missing['id'], id); expect(missing['attachment'], isNull);
+    await a.patch(fid, '/families/$fid/plugins/chat/attachments', attachment, {
+      'family_id': fid, 'plugin': 'chat', 'parent_id': id, 'author_device_id': a.deviceId,
+      'purpose': 'chat_image_copy', 'kind': 'image', 'display_name': 'chat.jpg',
+      'content_type': 'image/jpeg', 'size': 123, 'sha256': 'a' * 64, 'created_at': clock.toIso8601String(),
+    });
+    final arrived = (await routesA.localSnapshot(fid)).single;
+    expect(arrived['id'], id); expect(arrived['kind'], 'image');
+    expect(arrived['attachment_status'], 'missing_local'); expect(arrived['delivery_status'], 'saved_local');
+    expect((arrived['attachment'] as Map)['id'], attachment); expect(await routesA.attachmentFile(fid, id), isNull);
+    expect(LocalStore.canonical(arrived), isNot(contains('source_uri')));
+  });
+  test('本人撤回附件同事务墓碑两集合，其他作者不能撤回', () async {
+    const client = 'ordinary-file';
+    final id = ChatRoutes.messageId(fid, a.deviceId, client), attachment = ChatRoutes.attachmentId(fid, a.deviceId, client);
+    await a.batch([
+      {'space': fid, 'collection': '/families/$fid/plugins/chat/messages', 'id': id, 'fields': {
+        'family_id': fid, 'created_by': a.deviceId, 'client_id': client, 'kind': 'file', 'body': '',
+        'created_at': clock.toIso8601String(), 'attachment_id': attachment}},
+      {'space': fid, 'collection': '/families/$fid/plugins/chat/attachments', 'id': attachment, 'fields': {
+        'family_id': fid, 'plugin': 'chat', 'parent_id': id, 'author_device_id': a.deviceId,
+        'purpose': 'chat_file_copy', 'kind': 'file', 'display_name': 'note.txt', 'content_type': 'text/plain',
+        'size': 10, 'sha256': 'b' * 64, 'created_at': clock.toIso8601String()}},
+    ]);
+    await transfer(a, b); await expectLater(call(routesB, 'DELETE', ['messages', id]), error(403));
+    final withdrawn = (await call(routesA, 'DELETE', ['messages', id])).data as Map;
+    expect(withdrawn['retracted'], true); expect(withdrawn['attachment'], isNull);
+    final rows = await a.db.query('documents', where: 'id IN (?,?)', whereArgs: [id, attachment]);
+    expect(rows.length, 2); expect(rows.every((row) => row['deleted'] == 1), true);
+    await transfer(a, b); expect((await routesB.localSnapshot(fid)).single['retracted'], true);
+  });
+  test('typed附件发送必须有本机冻结草稿，不能借JSON伪造外部文件', () async {
+    const client = 'forged-source'; final id = ChatRoutes.messageId(fid, a.deviceId, client);
+    await expectLater(call(routesA, 'POST', ['messages'], body: {'client_id': client, 'body': '', 'attachment': {
+      'id': ChatRoutes.attachmentId(fid, a.deviceId, client), 'family_id': fid, 'plugin': 'chat',
+      'parent_id': id, 'author_device_id': a.deviceId, 'purpose': 'chat_file_copy', 'kind': 'file',
+      'display_name': 'note.txt', 'content_type': 'text/plain', 'size': 10, 'sha256': 'b' * 64,
+      'created_at': clock.toIso8601String(),
+    }}), error(409));
+    expect(await routesA.snapshot(fid), isEmpty);
   });
 
 }

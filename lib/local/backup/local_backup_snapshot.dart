@@ -7,6 +7,7 @@ import '../local_media_repository.dart';
 import '../plugins/memory_routes.dart';
 import '../sync/sync_policy.dart';
 import '../sync/travel_sync_adapter.dart';
+import '../sync/ordinary_attachment_sync.dart';
 import '../transport/native_local.dart';
 import 'backup_models.dart';
 import 'mobile_backup_controller.dart';
@@ -25,9 +26,9 @@ class SqliteBackupPreferences implements BackupPreferencesStore {
 /// 记录全部受限加密，恢复后也不会据此自动授予旧成员或伴侣身份。
 class LocalBackupSnapshots {
   LocalBackupSnapshots({required this.store,required this.media,required this.memories,
-    required this.crypto,required this.schemas,this.travel});
+    required this.crypto,required this.schemas,this.travel,this.ordinary});
   final LocalStore store;final LocalMediaRepository media;final MemoryRoutes memories;
-  final NativeCrypto crypto;final Map<String,Set<String>> schemas;final TravelSyncAdapter? travel;
+  final NativeCrypto crypto;final Map<String,Set<String>> schemas;final TravelSyncAdapter? travel;final OrdinaryAttachmentSyncAdapter? ordinary;
   Future<BackupSnapshot> create(String familyId)async{
     final member=await store.get(familyId,'/families/$familyId/members',store.deviceId);
     if(member==null||member['status']!='active'||member['family_id']!=familyId||member['user_id']!=store.deviceId)throw const BackupException('family_authorization_required');
@@ -92,6 +93,7 @@ class LocalBackupSnapshots {
         sources.add(await media.prepareBackupSource(id,privacy:privacy,kindIfMissing:row['kind'] as String));
       }
       if(travel!=null){sources.addAll(await travel!.backupSources(familyId));}
+      if(ordinary!=null){sources.addAll(await ordinary!.backupSources(familyId));}
       return BackupSnapshot(sources:sources,omittedScopes:omitted,coverageNotes:[
         '仅备份当前本机身份可见的记录；记录始终加密，未导入旧身份与伴侣权限。',
         '原件仅在本机可读且原生确认保真时包含；其它设备原件、失效授权或离线云端文件会明确缺件。',

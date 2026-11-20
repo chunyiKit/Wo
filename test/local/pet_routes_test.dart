@@ -7,6 +7,7 @@ import 'package:wo/data/models.dart';
 import 'package:wo/local/local_backend.dart';
 import 'package:wo/local/local_store.dart';
 import 'package:wo/local/plugins/pet_routes.dart';
+import 'package:wo/local/attachments/attachment_descriptor.dart';
 
 void main(){
   sqfliteFfiInit();const fid='pet-family';late Directory dir;late LocalStore store;late PetRoutes routes;late DateTime clock;
@@ -75,10 +76,10 @@ void main(){
     await expectLater(record(pid,tid,extra:{'created_by':'other-member'}),error(400));await expectLater(record(pid,tid,extra:{'follow_up':{'plan_id':p['id'],'next_due_date':'2026-03-01'}}),error(403));expect(await store.vector(fid),before);
     await expectLater(call('GET',['pets'],family:'other-family'),error(403));expect(await routes.request('GET',fid,['pet','unknown']),isNull);
   });
-  test('宠物照片和附件明确待接，不产生伪上传或删除',()async{
+  test('宠物照片及旧上传明确待接，不伪造不存在附件删除',()async{
     final pid=(await pet())['id'] as String,tid=(await types()).first['id'] as String,r=await record(pid,tid),rid=r['id'] as String,before=await store.vector(fid);
     await expectLater(call('POST',['pets',pid,'photo']),error(501));await expectLater(call('DELETE',['pets',pid,'photo']),error(501));
-    await expectLater(call('POST',['pet','records',rid,'attachments']),error(501));await expectLater(call('DELETE',['pet','records',rid,'attachments','attachment']),error(501));expect(await store.vector(fid),before);
+    await expectLater(call('POST',['pet','records',rid,'attachments']),error(501));await expectLater(call('DELETE',['pet','records',rid,'attachments','attachment']),error(404));expect(await store.vector(fid),before);
   });
   test('故障注入完成事务全回滚，重试一次成功',()async{
     final pid=(await pet())['id'] as String,tid=(await types()).first['id'] as String,p=await plan(pid,tid),id=p['id'] as String,before=await store.vector(fid);
@@ -102,6 +103,43 @@ void main(){
       final toPeer=await store.exportSince(fid,await peer.vector(fid)),toLocal=await peer.exportSince(fid,await store.vector(fid));await peer.merge(fid,toPeer);await store.merge(fid,toLocal);
       final a=await store.list(fid,'/families/$fid/plugins/pet/records'),b=await peer.list(fid,'/families/$fid/plugins/pet/records');expect(a,hasLength(1));expect(LocalStore.canonical(a),LocalStore.canonical(b));
     }finally{await peer.close();}
+  });
+
+  // 以下为准备好的源码测试；本轮禁止SDK执行，未声称已经运行。
+  test('普通附件描述可读但不伪造URL，成员读/作者或owner删并留墓碑',()async{
+    final pid=(await pet())['id'] as String,tid=(await types()).first['id'] as String,rid=(await record(pid,tid))['id'] as String;
+    final id='a_${List.filled(32,'1').join()}',author=store.deviceId;
+    final descriptor=AttachmentDescriptor(id:id,binding:AttachmentBinding(familyId:fid,plugin:'pet',parentId:rid,authorDeviceId:author),
+      purpose:'pet_file_copy',kind:'file',displayName:'synthetic-report.pdf',contentType:'application/pdf',size:6,sha256:List.filled(64,'2').join(),createdAt:'2026-01-31T12:00:00.000Z');
+    final fields=Json.from(descriptor.toJson())..remove('id');await store.patch(fid,'/families/$fid/plugins/pet/attachments',id,fields);
+    final result=PetRecord.fromJson(await object('GET',['pet','pets',pid,'records',rid]));expect(result.attachments.single.url,isEmpty);
+    await store.patch(fid,'/families/$fid/plugins/pet/records',rid,{'created_by':'other-member'});await member(store.deviceId);
+    expect((await routes.listAttachments(fid,rid)).single.id,id);
+    await expectLater(routes.deleteAttachment(fid,rid,id),error(403));expect(await store.get(fid,'/families/$fid/plugins/pet/attachments',id),isNotNull);
+    await member(store.deviceId,role:'owner');await routes.deleteAttachment(fid,rid,id);
+    expect(await store.get(fid,'/families/$fid/plugins/pet/attachments',id),isNull);expect(await store.revision(fid,'/families/$fid/plugins/pet/attachments',id),greaterThan(0));
+  });
+  test('父记录删除原子删除附件描述；归档不冒充删除附件；撤权不可读',()async{
+    final pid=(await pet())['id'] as String,tid=(await types()).first['id'] as String,rid=(await record(pid,tid))['id'] as String;
+    final id='a_${List.filled(32,'3').join()}',descriptor=AttachmentDescriptor(id:id,binding:AttachmentBinding(familyId:fid,plugin:'pet',parentId:rid,authorDeviceId:store.deviceId),
+      purpose:'pet_file_copy',kind:'file',displayName:'synthetic.txt',contentType:'text/plain',size:3,sha256:List.filled(64,'4').join(),createdAt:'2026-01-31T12:00:00.000Z');
+    await store.patch(fid,'/families/$fid/plugins/pet/attachments',id,Json.from(descriptor.toJson())..remove('id'));
+    await store.patch(fid,'/families/$fid/pets',pid,{'archived_at':'2026-01-31T12:00:00.000Z'});
+    expect((await routes.listAttachments(fid,rid)).single.id,id);await expectLater(call('DELETE',['pet','pets',pid,'records',rid]),error(404));
+    await store.patch(fid,'/families/$fid/pets',pid,{'archived_at':null});await call('DELETE',['pet','pets',pid,'records',rid]);
+    expect(await store.get(fid,'/families/$fid/plugins/pet/attachments',id),isNull);await expectLater(routes.listAttachments(fid,rid),error(404));
+    await store.patch(fid,'/families/$fid/members',store.deviceId,{'status':'revoked'});await expectLater(routes.listAttachments(fid,rid),error(403));
+  });
+  test('十件上限在触碰原生选择之前拒绝，未知admin不能提升权限',()async{
+    final pid=(await pet())['id'] as String,tid=(await types()).first['id'] as String,rid=(await record(pid,tid))['id'] as String;
+    for(var i=0;i<10;i++){
+      final id='a_${i.toRadixString(16).padLeft(32,'0')}',descriptor=AttachmentDescriptor(id:id,binding:AttachmentBinding(familyId:fid,plugin:'pet',parentId:rid,authorDeviceId:store.deviceId),
+        purpose:'pet_file_copy',kind:'file',displayName:'synthetic-$i.txt',contentType:'text/plain',size:3,sha256:List.filled(64,'5').join(),createdAt:'2026-01-31T12:00:00.000Z');
+      await store.patch(fid,'/families/$fid/plugins/pet/attachments',id,Json.from(descriptor.toJson())..remove('id'));
+    }
+    var opened=false;final withStore=PetRoutes(store,attachmentStore:()async{opened=true;throw StateError('synthetic-provider-must-remain-lazy');});
+    await expectLater(withStore.addAttachment(fid,rid,AttachmentSelectionMetadata(token:'11111111-2222-4333-8444-555555555555',purpose:'pet_file_copy',displayName:'synthetic.txt',contentType:'text/plain',size:3,kind:'file')),error(400));expect(opened,isFalse);
+    await member(store.deviceId,role:'admin');await expectLater(routes.listAttachments(fid,rid),error(403));
   });
 
 }

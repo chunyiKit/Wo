@@ -1,15 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:sqflite/sqflite.dart';
 
 import 'package:uuid/uuid.dart';
 
 import '../../data/api_client.dart';
 import '../local_backend.dart';
 import '../local_store.dart';
+import '../attachments/attachment_descriptor.dart';
+import '../attachments/ordinary_attachment_store.dart';
 
 /// 宠物身份不是家庭成员，不参与鉴权；档案/计划/记录均以本机SQLite为事实源。
 class PetRoutes {
-  PetRoutes(this.store,{DateTime Function()? now}):_now=now??DateTime.now;
+  PetRoutes(this.store,{this.attachments,this.attachmentStore,DateTime Function()? now}):_now=now??DateTime.now;
+  final OrdinaryAttachmentStore? attachments;
+  final Future<OrdinaryAttachmentStore> Function()? attachmentStore;
   final LocalStore store;
   final DateTime Function() _now;
   static const _uuid=Uuid(),_namespace='6ba7b811-9dad-11d1-80b4-00c04fd430c8';
@@ -21,6 +28,7 @@ class PetRoutes {
     'plugins/pet/settings':{'seeded'},
     'plugins/pet/plans':{'family_id','pet_id','record_type_id','name','note','recurrence_unit','recurrence_interval','next_due_date','active','created_by','created_at','updated_at'},
     'plugins/pet/records':{'family_id','pet_id','record_type_id','type_name_snapshot','type_emoji_snapshot','data_kind_snapshot','name','note','occurred_on','next_due_date','weight_grams','plan_id','scheduled_due_date','created_by','created_at','updated_at'},
+    'plugins/pet/attachments': AttachmentDescriptor.syncFields,
     'notifications':{'type','title','body','icon_emoji','created_by','created_at','read_by','status','recipient_ids','source_plugin','source_id','source_occurrence'},
   };
   static final _id=RegExp(r'^[A-Za-z0-9_-]{1,100}$');
@@ -30,7 +38,7 @@ class PetRoutes {
   DateTime get _today{final n=_now();return DateTime.utc(n.year,n.month,n.day);}
   static Never _fail(int status,String message)=>throw ApiException(switch(status){403=>'FORBIDDEN',404=>'NOT_FOUND',405=>'METHOD_NOT_ALLOWED',409=>'CONFLICT',501=>'FEATURE_UNAVAILABLE',_=>'VALIDATION_ERROR'},message,statusCode:status);
   static void _only(Json map,Set<String> fields){if(map.keys.any((key)=>!fields.contains(key)))_fail(400,'包含未知或只读字段');}
-  static void _identifier(String id){if(!_id.hasMatch(id))_fail(400,'标识无效');}
+  static void _identifier(String id){if(!_id.hasMatch(id)||_id.firstMatch(id)!.end!=id.length)_fail(400,'标识无效');}
   static String _text(Object? value,int max){if(value is! String||value.trim().isEmpty||value.runes.length>max)_fail(400,'名称为空或过长');return value.trim();}
   static String? _optional(Object? value,int max){if(value==null)return null;if(value is! String||value.runes.length>max)_fail(400,'文本无效或过长');return value;}
   static bool _bool(Object? value){if(value is! bool)_fail(400,'开关必须是true/false');return value;}
@@ -38,9 +46,9 @@ class PetRoutes {
   static bool? _filter(Object? value){if(value==null)return null;if(value is bool)return value;if(value is String&&['true','false'].contains(value.toLowerCase()))return value.toLowerCase()=='true';_fail(400,'筛选无效');}
   static String day(DateTime d)=>[d.year.toString().padLeft(4,'0'),d.month.toString().padLeft(2,'0'),d.day.toString().padLeft(2,'0')].join('-');
   static String _date(Object? value){if(value is! String||!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value))_fail(400,'日期必须为YYYY-MM-DD');final d=DateTime.tryParse(value);if(d==null||d.year<1||d.year>9999||day(d)!=value)_fail(400,'日期不存在');return value;}
-  Future<Json> _member(String fid)async{_identifier(fid);final m=await store.get(fid,'/families/$fid/members',store.deviceId);if(m==null||m['status']!='active'||m['family_id']!=fid||m['user_id']!=store.deviceId)_fail(403,'本机没有有效家庭成员身份');return m;}
-  static void _admin(Json member){if(!['owner','admin'].contains(member['role']))_fail(403,'只有家庭管理员可以管理宠物档案和记录类型');}
-  Future<void> _creator(String fid,Json row)async{final m=await _member(fid);if(!['owner','admin'].contains(m['role'])&&row['created_by']!=store.deviceId)_fail(403,'只能修改自己创建的内容');}
+  Future<Json> _member(String fid)async{_identifier(fid);final m=await store.get(fid,'/families/$fid/members',store.deviceId);if(m==null||m['status']!='active'||m['family_id']!=fid||m['user_id']!=store.deviceId||!{'owner','member'}.contains(m['role']))_fail(403,'本机没有有效家庭成员身份');return m;}
+  static void _admin(Json member){if(member['role']!='owner')_fail(403,'只有家庭管理员可以管理宠物档案和记录类型');}
+  Future<void> _creator(String fid,Json row)async{final m=await _member(fid);if(m['role']!='owner'&&row['created_by']!=store.deviceId)_fail(403,'只能修改自己创建的内容');}
   Future<T> _serial<T>(String fid,Future<T> Function() action){final queues=_queues[store]??=<String,Future<void>>{},done=Completer<T>();queues[fid]=(queues[fid]??Future<void>.value()).then((_)async{try{done.complete(await action());}catch(e,s){done.completeError(e,s);}});return done.future;}
   Future<List<Json>> _rows(String fid,String name)async=>[for(final row in await store.list(fid,_col(fid,name)))if(row['family_id']==fid)row];
   Future<Json> _load(String fid,String name,String id,{String? petId,bool archived=false})async{_identifier(id);final row=await store.get(fid,_col(fid,name),id);if(row==null||row['family_id']!=fid||petId!=null&&row['pet_id']!=petId||name=='pets'&&!archived&&row['archived_at']!=null)_fail(404,'宠物资料不存在');return row;}
@@ -175,7 +183,7 @@ class PetRoutes {
       'plan_id':plan!=null&&plan['family_id']==fid&&plan['pet_id']==row['pet_id']?planId:null,
       'scheduled_due_date':row['scheduled_due_date'],'created_by':row['created_by'],'created_at':row['created_at'],'updated_at':row['updated_at'],
       'creator_name':valid?creator?['display_name']:null,'creator_emoji':valid?creator?['avatar_emoji']:null,'creator_avatar_url':valid?creator?['avatar_url']:null,
-      'attachments':<Json>[],'attachments_pending':true};
+      'attachments':[for(final d in await listAttachments(fid,row['id'] as String))_attachmentRead(d)],'attachments_pending':attachments==null&&attachmentStore==null};
   }
   Future<Json> _recordValues(String fid,Json body,{Json? old})async{
     final create=old==null,fields=<String,dynamic>{};
@@ -238,7 +246,7 @@ class PetRoutes {
   Future<LocalResult> _recordRequest(String verb,String fid,String petId,List<String> tail,Json body,Json query)async{
     if(tail.length==4){if(verb=='GET')return _page(fid,petId,query);_only(query,<String>{});if(verb!='POST')_fail(405,'记录列表不支持该方法');return(data:await _createRecord(fid,petId,body),meta:null);}
     _only(query,<String>{});final row=await _load(fid,'records',tail[4],petId:petId);if(verb=='GET')return(data:await _recordRead(fid,row),meta:null);await _creator(fid,row);
-    if(verb=='DELETE'){_only(body,<String>{});await store.patch(fid,_col(fid,'records'),tail[4],{},delete:true);return(data:null,meta:null);}
+    if(verb=='DELETE'){_only(body,<String>{});await _deleteRecordWithAttachments(fid,petId,tail[4]);return(data:null,meta:null);}
     if(verb!='PATCH')_fail(405,'记录修改需要PATCH');final fields=await _recordValues(fid,body,old:row);if(fields.isNotEmpty)await store.patch(fid,_col(fid,'records'),tail[4],{...fields,'updated_at':_stamp});return(data:await _recordRead(fid,await _load(fid,'records',tail[4],petId:petId)),meta:null);
   }
   Json _weight(Json row)=>{'record_id':row['id'],'occurred_on':row['occurred_on'],'weight_kg':((row['weight_grams'] as int)/1000).toStringAsFixed(3)};
@@ -251,8 +259,10 @@ class PetRoutes {
     if(tail[0]=='pets')return _identity(verb,fid,tail,body,query);
     if(tail[1]=='record-types')return _types(verb,fid,tail,body,query);
     if(tail[1]=='records'){
-      _only(query,<String>{});final record=await _load(fid,'records',tail[2]);await _load(fid,'pets',record['pet_id'] as String);
-      if(verb!='GET')await _creator(fid,record);_fail(501,'宠物记录附件本地文件适配尚未接入，未上传或假删文件');
+      _only(query,<String>{});_only(body,<String>{});
+      if(verb=='GET'&&tail.length==4)return(data:[for(final d in await listAttachments(fid,tail[2]))_attachmentRead(d)],meta:null);
+      if(verb=='DELETE'&&tail.length==5){await _deleteAttachment(fid,tail[2],tail[4]);return(data:null,meta:null);}
+      _fail(501,'本机附件请使用独立文件选择与校验入口；未上传到旧后端');
     }
     if(tail.length==2){
       _only(query,<String>{});if(verb!='GET')_fail(405,'宠物日常列表只支持GET');final pets=(await _rows(fid,'pets')).where((p)=>p['archived_at']==null).toList(),items=<Json>[];
@@ -266,6 +276,153 @@ class PetRoutes {
     if(tail[3]=='plans')return _planRequest(verb,fid,tail[2],tail,body,query);
     if(tail[3]=='records')return _recordRequest(verb,fid,tail[2],tail,body,query);
     _only(query,<String>{});if(verb!='GET')_fail(405,'体重曲线只支持GET');return(data:await _weights(fid,tail[2]),meta:null);
+  }
+  /// 只验证当前有来源的操作；previous必须是同步管道实际前序状态，不能补造历史来源。
+  static void validateRecordSync(Json fields,{required String familyId,required String id,required String actor,
+      Json? previous,required bool owner,bool deletion=false}){
+    Never bad()=>throw const FormatException('宠物记录字段、作者或不可变绑定无效');
+    bool identifier(Object? value)=>value is String&&_id.hasMatch(value)&&_id.firstMatch(value)!.end==value.length;
+    bool text(Object? value,int max,{bool nullable=false})=>value==null?nullable:value is String&&value.trim().isNotEmpty&&value.runes.length<=max;
+    bool date(Object? value,{bool nullable=false}){
+      if(value==null)return nullable;if(value is! String||!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value))return false;
+      final parsed=DateTime.tryParse(value);return parsed!=null&&parsed.year>=1&&parsed.year<=9999&&day(parsed)==value;
+    }
+    bool stamp(Object? value){if(value is! String||value.length>64)return false;final parsed=DateTime.tryParse(value);return parsed!=null&&parsed.isUtc;}
+    if(!identifier(familyId)||!identifier(id)||!identifier(actor))bad();
+    if(previous!=null){
+      if(previous['family_id']!=familyId||!identifier(previous['created_by'])||!identifier(previous['pet_id'])||
+          previous['created_by']!=actor&&!owner)bad();
+    }else if(deletion){bad();}
+    if(deletion)return;
+    final allowed=syncFields['plugins/pet/records']!;
+    if(fields.length!=allowed.length||!allowed.every(fields.containsKey)||fields.keys.any((k)=>!allowed.contains(k))||
+        fields['family_id']!=familyId||!identifier(fields['pet_id'])||!identifier(fields['created_by'])||
+        fields['record_type_id']!=null&&!identifier(fields['record_type_id'])||fields['plan_id']!=null&&!identifier(fields['plan_id'])||
+        !text(fields['type_name_snapshot'],32)||!text(fields['type_emoji_snapshot'],16)||!{'general','weight'}.contains(fields['data_kind_snapshot'])||
+        !text(fields['name'],80)||fields['note']!=null&&(fields['note'] is! String||(fields['note'] as String).runes.length>2000)||
+        !date(fields['occurred_on'])||!date(fields['next_due_date'],nullable:true)||!date(fields['scheduled_due_date'],nullable:true)||
+        !stamp(fields['created_at'])||!stamp(fields['updated_at']))bad();
+    final grams=fields['weight_grams'];
+    if(fields['data_kind_snapshot']=='weight'?(grams is! int||grams<1||grams>1000000):grams!=null)bad();
+    if(previous==null){if(fields['created_by']!=actor)bad();}
+    else{for(final key in ['family_id','pet_id','created_by','created_at','plan_id','scheduled_due_date']){if(fields[key]!=previous[key])bad();}}
+    if(fields['scheduled_due_date']!=null){
+      if(fields['plan_id']==null||id!=_uuid.v5(_namespace,'pet-completion:$familyId:${fields['pet_id']}:${fields['plan_id']}:${fields['scheduled_due_date']}'))bad();
+    }
+  }
+  // 普通附件只保存独立副本；媒体原件、旧URI及恢复资料库都不参与此入口。
+  static const maxAttachments=10;
+  Future<OrdinaryAttachmentStore> _fileStore()async{
+    if(attachments!=null)return attachments!;final load=attachmentStore;
+    if(load==null)throw ApiException('FEATURE_UNAVAILABLE','本机附件存储尚未就绪',statusCode:501);return load();
+  }
+  static AttachmentBinding _binding(AttachmentDescriptor d)=>AttachmentBinding(familyId:d.familyId,plugin:'pet',parentId:d.parentId,authorDeviceId:d.authorDeviceId);
+  static Json _attachmentRead(AttachmentDescriptor d)=>{'id':d.id,'original_filename':d.displayName,'content_type':d.contentType,'size_bytes':d.size,'url':''};
+  Future<Json> _attachmentParent(String fid,String recordId)async{
+    await _member(fid);final record=await _load(fid,'records',recordId);
+    // 旧附件API只要求record存在；宠物归档不删除历史附件，也不授予新成员权限。
+    await _load(fid,'pets',record['pet_id'] as String,archived:true);return record;
+  }
+  AttachmentDescriptor _descriptor(Json row,String fid,String recordId){
+    final d=AttachmentDescriptor.fromJson(row);
+    if(d.familyId!=fid||d.plugin!='pet'||d.parentId!=recordId||!{'pet_image_copy','pet_file_copy'}.contains(d.purpose))_fail(409,'附件绑定无效');return d;
+  }
+  Future<List<AttachmentDescriptor>> listAttachments(String fid,String recordId)async{
+    await _attachmentParent(fid,recordId);final rows=await _rows(fid,'attachments');
+    final found=[for(final row in rows)if(row['parent_id']==recordId)_descriptor(row,fid,recordId)];
+    found.sort((a,b){final time=a.createdAt.compareTo(b.createdAt);return time!=0?time:a.id.compareTo(b.id);});return List.unmodifiable(found);
+  }
+  Future<AttachmentSelectionMetadata?> pickAttachment(String fid,{required String purpose})async{
+    await _member(fid);if(!{'pet_image_copy','pet_file_copy'}.contains(purpose))_fail(400,'附件用途无效');return (await _fileStore()).pick(purpose:purpose);
+  }
+  Future<Json?> _txRow(DatabaseExecutor tx,String fid,String name,String id)async{
+    final rows=await tx.query('documents',where:'space=? AND collection=? AND id=?',whereArgs:[fid,_col(fid,name),id]);
+    if(rows.isEmpty||rows.single['deleted']==1)return null;return {...Json.from(jsonDecode(rows.single['data'] as String) as Map),'id':id};
+  }
+  Future<Json> _txParent(DatabaseExecutor tx,String fid,String recordId,{required bool write})async{
+    final memberRows=await tx.query('documents',where:'space=? AND collection=? AND id=? AND deleted=0',whereArgs:[fid,'/families/$fid/members',store.deviceId]);
+    final member=memberRows.isEmpty?null:Json.from(jsonDecode(memberRows.single['data'] as String) as Map);
+    if(member==null||member['status']!='active'||member['family_id']!=fid||member['user_id']!=store.deviceId||!{'owner','member'}.contains(member['role']))_fail(403,'本机没有有效家庭成员身份');
+    final record=await _txRow(tx,fid,'records',recordId);
+    if(record==null||record['family_id']!=fid)_fail(404,'宠物记录不存在或已删除');
+    final pet=await _txRow(tx,fid,'pets',record['pet_id'] as String);if(pet==null||pet['family_id']!=fid)_fail(404,'宠物资料不存在');
+    if(write&&member['role']!='owner'&&record['created_by']!=store.deviceId)_fail(403,'只能修改自己记录的附件');return record;
+  }
+  Future<List<AttachmentDescriptor>> _txAttachments(DatabaseExecutor tx,String fid,String recordId)async{
+    final rows=await tx.query('documents',where:'space=? AND collection=? AND deleted=0',whereArgs:[fid,_col(fid,'attachments')]);
+    return [for(final raw in rows)if((jsonDecode(raw['data'] as String) as Map)['parent_id']==recordId)
+      _descriptor({...Json.from(jsonDecode(raw['data'] as String) as Map),'id':raw['id']},fid,recordId)];
+  }
+  static String _selectionId(String fid,String recordId,String token)=>'a_${_uuid.v5(_namespace,'pet-attachment:$fid:$recordId:$token').replaceAll('-','')}';
+  Future<AttachmentDescriptor> addAttachment(String fid,String recordId,AttachmentSelectionMetadata selection)=>_serial(fid,()async{
+    final parent=await _attachmentParent(fid,recordId);await _creator(fid,parent);
+    if(!{'pet_image_copy','pet_file_copy'}.contains(selection.purpose))_fail(400,'附件用途无效');
+    final id=_selectionId(fid,recordId,selection.token);
+    final old=await store.get(fid,_col(fid,'attachments'),id);
+    if(old==null&&await store.revision(fid,_col(fid,'attachments'),id)>0)_fail(409,'附件已删除，不能重试复活');
+    if(old==null&&(await listAttachments(fid,recordId)).length>=maxAttachments)_fail(400,'每条记录最多10个附件');
+    final binding=AttachmentBinding(familyId:fid,plugin:'pet',parentId:recordId,authorDeviceId:store.deviceId);
+    final asset=await (await _fileStore()).importSelection(selectionToken:selection.token,purpose:selection.purpose,binding:binding,attachmentId:id);
+    final descriptor=asset.descriptor;
+    if(descriptor.id!=id||descriptor.familyId!=fid||descriptor.plugin!='pet'||descriptor.parentId!=recordId||descriptor.authorDeviceId!=store.deviceId)_fail(409,'附件副本绑定不一致');
+    try{
+      await store.batchComputed((tx)async{
+        await _txParent(tx,fid,recordId,write:true);
+        final existing=await tx.query('documents',where:'space=? AND collection=? AND id=?',whereArgs:[fid,_col(fid,'attachments'),id]);
+        if(existing.isNotEmpty){
+          if(existing.single['deleted']==1)_fail(409,'附件已删除，不能重试复活');
+          final expected=Json.from(descriptor.toJson())..remove('id');
+          if(LocalStore.canonical(Json.from(jsonDecode(existing.single['data'] as String) as Map))!=LocalStore.canonical(expected))_fail(409,'附件描述不可变');return <Json>[];
+        }
+        if((await _txAttachments(tx,fid,recordId)).length>=maxAttachments)_fail(400,'每条记录最多10个附件');
+        final fields=Json.from(descriptor.toJson())..remove('id');return [_change(fid,'attachments',id,fields)];
+      });
+      return descriptor;
+    }catch(_){
+      // 事务故障保留同一已校验副本供稳定ID重试；无业务描述时绝不能被同步/备份导出。
+      // 父已删除或撤权后只清本机未发布副本，不删除用户源文件。
+      if(await store.get(fid,_col(fid,'attachments'),id)==null){
+        var authorized=true;try{await _creator(fid,await _attachmentParent(fid,recordId));}catch(_){authorized=false;}
+        if(!authorized){try{await (await _fileStore()).deleteLocal(binding,id);}catch(_){}}
+      }rethrow;
+    }
+  });
+  /// 仅当前本机权限；peer来源仍必须由同步adapter单独验证，不能据此恢复旧身份。
+  Future<AttachmentDescriptor> authorizeAttachment(String fid,String recordId,String id,{bool write=false})async{
+    final parent=await _attachmentParent(fid,recordId);if(write)await _creator(fid,parent);
+    return _descriptor(await _load(fid,'attachments',id),fid,recordId);
+  }
+  Future<void> releaseAttachmentSelection(String token,{String? familyId,String? recordId})async{
+    final files=await _fileStore();
+    try{if(familyId!=null&&recordId!=null){
+      _identifier(familyId);_identifier(recordId);final id=_selectionId(familyId,recordId,token);
+      if(await store.get(familyId,_col(familyId,'attachments'),id)==null){
+        final binding=AttachmentBinding(familyId:familyId,plugin:'pet',parentId:recordId,authorDeviceId:store.deviceId);
+        if(await files.get(binding,id)!=null)await files.deleteLocal(binding,id);
+      }
+    }}finally{await files.releaseSelection(token);}
+  }
+  Future<File?> attachmentFile(String fid,String recordId,String id)async{
+    final descriptor=await authorizeAttachment(fid,recordId,id);
+    final files=await _fileStore();final asset=await files.get(_binding(descriptor),id);
+    if(asset==null||!asset.available){await authorizeAttachment(fid,recordId,id);return null;}
+    if(!asset.descriptor.same(descriptor))_fail(409,'附件本机副本与业务描述不一致');
+    final file=await files.verifiedFile(_binding(descriptor),id);
+    await authorizeAttachment(fid,recordId,id);return file;
+  }
+  Future<void> deleteAttachment(String fid,String recordId,String id)=>_serial(fid,()=>_deleteAttachment(fid,recordId,id));
+  Future<void> _deleteAttachment(String fid,String recordId,String id)async{
+    AttachmentDescriptor? deleted;
+    await store.batchComputed((tx)async{await _txParent(tx,fid,recordId,write:true);final row=await _txRow(tx,fid,'attachments',id);
+      if(row==null)_fail(404,'附件不存在或已删除');deleted=_descriptor(row,fid,recordId);return [_change(fid,'attachments',id,{},delete:true)];});
+    if((attachments!=null||attachmentStore!=null)&&deleted!=null){try{await (await _fileStore()).deleteLocal(_binding(deleted!),id);}catch(_){/*墓碑已提交，缺件/暂存清理由文件层报告。*/}}
+  }
+  Future<void> _deleteRecordWithAttachments(String fid,String petId,String recordId)async{
+    final deleted=<AttachmentDescriptor>[];
+    await store.batchComputed((tx)async{final record=await _txParent(tx,fid,recordId,write:true);
+      final pet=await _txRow(tx,fid,'pets',petId);if(record['pet_id']!=petId||pet==null||pet['archived_at']!=null)_fail(404,'宠物已归档或记录不属于该宠物');
+      deleted.addAll(await _txAttachments(tx,fid,recordId));return [_change(fid,'records',recordId,{},delete:true),for(final d in deleted)_change(fid,'attachments',d.id,{},delete:true)];});
+    if(attachments!=null||attachmentStore!=null){for(final d in deleted){try{await (await _fileStore()).deleteLocal(_binding(d),d.id);}catch(_){}}}
   }
   /// 仅生成可重试本地通知请求；不会伪称系统通知已投递，也不代替用户完成计划。
   Future<int> requestDueReminders(String fid)async{await _member(fid);return _serial(fid,()async{

@@ -6,6 +6,7 @@ import '../transport/native_local.dart';
 import 'peer_registry.dart';
 import 'sync_policy.dart';
 import 'sync_wire.dart';
+import 'ordinary_attachment_sync.dart';
 
 /// 前台发现/连接只是传输适配；身份/范围由registry、业务增量由strategy决定。
 class LocalSyncCoordinator extends ChangeNotifier {
@@ -191,7 +192,7 @@ class LocalSyncCoordinator extends ChangeNotifier {
       final changed=await _clientRounds(channel,epoch,(){dirty=true;});_check(epoch);
       final joined=await _joinIfReady(peer,epoch);_check(epoch);
       if((changed||joined||dirty)&&_alive(epoch)){await onChanged?.call();dirty=false;}
-      _lastContact[peer.id]=DateTime.now().toUtc();_message('已完成本轮授权增量合并',epoch);
+      _lastContact[peer.id]=DateTime.now().toUtc();_message('已完成本轮授权增量；附件状态以本机文件校验为准',epoch);
     }catch(_){if(lease==null||identical(_sessions[peer.id]?.token,lease))_message('同步未完成，将保留本机记录并在前台重试',epoch);}
     finally{
       budget?.cancel();_releaseSession(peer.id,lease);
@@ -214,24 +215,28 @@ class LocalSyncCoordinator extends ChangeNotifier {
       final changed=await _serverRounds(channel,epoch,(){dirty=true;});_check(epoch);
       final joined=await _joinIfReady(channel.link,epoch);_check(epoch);
       if((changed||joined||dirty)&&_alive(epoch)){await onChanged?.call();dirty=false;}
-      _lastContact[channel.link.id]=DateTime.now().toUtc();_message('已完成本轮授权增量合并',epoch);
+      _lastContact[channel.link.id]=DateTime.now().toUtc();_message('已完成本轮授权增量；附件状态以本机文件校验为准',epoch);
     }catch(_){if(lease==null||identical(_sessions[channel?.link.id]?.token,lease))_message('未接受未认证或不完整的同步请求',epoch);}
     finally{budget.cancel();if(channel!=null)_releaseSession(channel.link.id,lease);try{if(channel!=null){await channel.close();}else{await frames.close();}}catch(_){}socket.destroy();_sockets.remove(socket);if(dirty&&_alive(epoch)){try{await onChanged?.call();}catch(_){}}}
   }
-  Future<void> _offers(SecureSyncChannel channel,int epoch,void Function() touched)async{
+  Future<bool> _offers(SecureSyncChannel channel,int epoch,void Function() touched)async{
     _check(epoch);final peer=channel.link;
     await registry.scopes(peer);_check(epoch);
     final local=(await registry.links()).where((p)=>p.id==peer.id&&p.active).firstOrNull;_check(epoch);
     if(local==null)throw const FormatException('配对已撤销');
-    if(channel.client){await channel.send({'t':'offer','couple':local.coupleLocal});_check(epoch);}
+    final ordinary=strategy is OrdinaryAttachmentTransferStrategy&&(strategy as OrdinaryAttachmentTransferStrategy).attachmentTransferEnabled;
+    final ownOffer={'t':'offer','couple':local.coupleLocal,if(ordinary)'ordinary_attachments':1};
+    if(channel.client){await channel.send(ownOffer);_check(epoch);}
     final offer=await channel.receive();_check(epoch);
-    if(offer.length!=2||offer['t']!='offer'||offer['couple'] is! bool)throw const FormatException('受限范围确认无效');
+    if((offer.length!=2&&offer.length!=3)||offer.keys.any((k)=>!{'t','couple','ordinary_attachments'}.contains(k))||offer['t']!='offer'||offer['couple'] is! bool||offer.containsKey('ordinary_attachments')&&(offer['ordinary_attachments'] is! int||offer['ordinary_attachments']!=1))throw const FormatException('受限范围确认无效');
+    if(ordinary!=offer.containsKey('ordinary_attachments'))throw const FormatException('两端普通附件同步版本不一致，请核对相同版本');
     if(local.coupleRemote!=offer['couple'])touched();
     await registry.coupleConsent(peer.id,remote:offer['couple'] as bool);_check(epoch);
-    if(!channel.client){await channel.send({'t':'offer','couple':local.coupleLocal});_check(epoch);}
+    if(!channel.client){await channel.send(ownOffer);_check(epoch);}
+    return ordinary;
   }
   Future<bool> _clientRounds(SecureSyncChannel channel,int epoch,void Function() touched)async{
-    var changed=false;await _offers(channel,epoch,touched);
+    var changed=false;final ordinary=await _offers(channel,epoch,touched);
     for(var round=0;round<16;round++){
       _check(epoch);final local=await strategy.state(channel.link);_check(epoch);await channel.send(local);_check(epoch);
       final remote=await channel.receive();_check(epoch);
@@ -240,12 +245,14 @@ class LocalSyncCoordinator extends ChangeNotifier {
       if((incoming['ops'] as List).isNotEmpty||(incoming['thumbs'] as List).isNotEmpty)touched();
       _check(epoch);await strategy.apply(channel.link,incoming);_check(epoch);
       changed=changed||(incoming['ops'] as List).isNotEmpty||(incoming['thumbs'] as List).isNotEmpty;
-      final again=round<15&&(outgoing['more']==true||incoming['more']==true);
+      var fileMore=false;
+      if(ordinary){final result=await _ordinaryRound(channel,epoch,true,touched);changed=changed||result.changed;fileMore=result.more;}
+      final again=round<15&&(outgoing['more']==true||incoming['more']==true||fileMore);
       await channel.send({'t':'ack','again':again});_check(epoch);if(!again)break;
     }return changed;
   }
   Future<bool> _serverRounds(SecureSyncChannel channel,int epoch,void Function() touched)async{
-    var changed=false;await _offers(channel,epoch,touched);
+    var changed=false;final ordinary=await _offers(channel,epoch,touched);
     for(var round=0;round<16;round++){
       _check(epoch);final remote=await channel.receive();_check(epoch);
       final local=await strategy.state(channel.link);_check(epoch);await channel.send(local);_check(epoch);
@@ -254,8 +261,27 @@ class LocalSyncCoordinator extends ChangeNotifier {
       _check(epoch);await strategy.apply(channel.link,incoming);_check(epoch);
       changed=changed||(incoming['ops'] as List).isNotEmpty||(incoming['thumbs'] as List).isNotEmpty;
       final outgoing=await strategy.delta(channel.link,remote);_check(epoch);await channel.send(outgoing);_check(epoch);
+      if(ordinary){final result=await _ordinaryRound(channel,epoch,false,touched);changed=changed||result.changed;}
       final ack=await channel.receive();_check(epoch);if(ack.length!=2||ack['t']!='ack'||ack['again'] is! bool)throw const FormatException('增量确认无效');if(ack['again']!=true)break;
     }return changed;
+  }
+  Future<({bool changed,bool more})> _ordinaryRound(SecureSyncChannel channel,int epoch,bool client,void Function() touched)async{
+    final transfer=strategy as OrdinaryAttachmentTransferStrategy;var changed=false,more=false;
+    Future<void> receiveChunks()async{
+      final frame=await channel.receive();_check(epoch);
+      if(frame['chunks'] is List&&(frame['chunks'] as List).isNotEmpty)touched();changed=await transfer.receiveAttachmentReply(channel.link,frame)||changed;_check(epoch);more=more||frame['more']==true;
+    }
+    Future<void> sendChunks()async{
+      final request=await channel.receive();_check(epoch);final reply=await transfer.attachmentReply(channel.link,request);_check(epoch);
+      await channel.send(reply);_check(epoch);more=more||reply['more']==true;
+    }
+    if(client){
+      final request=await transfer.attachmentRequest(channel.link);_check(epoch);await channel.send(request);_check(epoch);
+      await receiveChunks();await sendChunks();
+    }else{
+      await sendChunks();final request=await transfer.attachmentRequest(channel.link);_check(epoch);await channel.send(request);_check(epoch);await receiveChunks();
+    }
+    return (changed:changed,more:more);
   }
   Future<bool> _joinIfReady(PeerLink peer,int epoch)async{
     _check(epoch);if(await store.privateValue('sync-pending-family:${peer.id}')!=true)return false;_check(epoch);

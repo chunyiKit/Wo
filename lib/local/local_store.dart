@@ -162,7 +162,7 @@ class LocalStore {
     await _writeMeta(tx, 'vector:$space', vector);
   }
 
-  Future<int> merge(String space, List<Json> input) async {
+  Future<int> merge(String space, List<Json> input,{Future<void> Function(DatabaseExecutor tx)? validateAfterMerge}) async {
     if (!_identifier.hasMatch(space) || input.length > 256) throw const FormatException('空间无效或批次过大');
     final ops = input.map((v) => _operation(space,v)).toList();
     if (utf8.encode(canonical(ops)).length > maxBatchBytes) throw const FormatException('批次字节过大');
@@ -178,6 +178,7 @@ class LocalStore {
         if ((op['clock'] as int) > clock) clock = op['clock'] as int;
         actors.add(op['actor'] as String);
       }
+      if(validateAfterMerge!=null)await validateAfterMerge(tx);
       await _writeMeta(tx, 'clock:$space', clock);
       await _advance(tx, space, actors);
       return accepted;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/api_client.dart';
 import '../../../data/wo_session.dart';
 import '../../../local/local_runtime.dart';
+import '../../../local/attachments/attachment_descriptor.dart';
 import '../../../local/local_store.dart';
 import '../../../local/plugins/chat_routes.dart';
 import '../../../theme/wo_tokens.dart';
@@ -48,7 +50,7 @@ class _LocalChatPageState extends State<LocalChatPage> with WidgetsBindingObserv
     WidgetsBinding.instance.addObserver(this);
     _runtime = LocalRuntime.instance;
     if (_runtime != null) {
-      _routes = ChatRoutes(_runtime!.store);
+      _routes = _runtime!.chats;
       _runtime!.changes.addListener(_changed);
     }
   }
@@ -173,6 +175,47 @@ class _LocalChatPageState extends State<LocalChatPage> with WidgetsBindingObserv
       if (_current(family, generation)) await _load();
     }
   }
+  Future<void> _sendAttachment() async {
+    final family = _family, routes = _routes, generation = _generation;
+    if (_sending || !_authorized || family == null || routes == null) return;
+    final purpose = await showWoDialog<String>(context: context, builder: (dialog) => WoAlertDialog(
+      title: const Text('发送聊天附件'),
+      content: const Text('图片将生成去除元数据的聊天副本；普通文件最多20MiB。附件供当前家庭成员读取；回忆原照、原视频及其本机引用不会从这里转发。暂不支持聊天视频。'),
+      actions: [
+        WoTextButton(onPressed: () => Navigator.pop(dialog), child: const Text('取消')),
+        WoTextButton(onPressed: () => Navigator.pop(dialog, 'chat_file_copy'), child: const Text('普通文件')),
+        WoFilledButton(onPressed: () => Navigator.pop(dialog, 'chat_image_copy'), child: const Text('图片副本')),
+      ],
+    ));
+    if (purpose == null || !_current(family, generation)) return;
+    final client = const Uuid().v4();
+    setState(() => _sending = true);
+    try {
+      final staged = await routes.selectAttachment(family, clientId: client, purpose: purpose, confirm: (selected) async {
+        if (!_current(family, generation)) return false;
+        final yes = await showWoDialog<bool>(context: context, builder: (dialog) => WoAlertDialog(
+          title: const Text('保存并发送此附件？'),
+          content: Text('${safeAttachmentDisplayName(selected.displayName)}\n${_attachmentSize(selected.size)}\n先保存至本机，再由前台局域网同步；元数据保存不等于其他手机已收到字节。'),
+          actions: [
+            WoTextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('取消')),
+            WoFilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('保存并发送')),
+          ],
+        ));
+        return yes == true && _current(family, generation);
+      });
+      if (staged == null) return;
+      _runtime?.changed();
+      if (!_current(family, generation)) return;
+      final commit = routes.commitPending(family, client);
+      unawaited(_load(scroll: true)); await commit;
+    } on ApiException catch (e) { if (_current(family, generation)) _toast(e.message); }
+    catch (_) { if (_current(family, generation)) _toast('附件未能完成本机提交；已落盘的待发送行可重试，未上传至旧服务'); }
+    finally {
+      _runtime?.changed();
+      if (mounted) setState(() => _sending = false);
+      if (_current(family, generation)) await _load();
+    }
+  }
   Future<void> _retryPending(Json message) async {
     final family = _family, routes = _routes, generation = _generation;
     if (_sending || family == null || routes == null || message['local_pending'] != true) return;
@@ -255,8 +298,9 @@ class _LocalChatPageState extends State<LocalChatPage> with WidgetsBindingObserv
           padding: const EdgeInsets.symmetric(horizontal: WoTokens.space3, vertical: WoTokens.space2),
           decoration: BoxDecoration(color: mine ? context.wo.accentSoft : context.wo.bgTint,
             borderRadius: BorderRadius.circular(18), border: Border.all(color: context.wo.hairline)),
-          child: Text(withdrawn ? '此消息已撤回' : message['body'] as String? ?? '',
-            style: TextStyle(color: withdrawn ? context.wo.fgDim : context.wo.fg, fontStyle: withdrawn ? FontStyle.italic : FontStyle.normal)),
+          child: withdrawn || message['kind'] == 'text' ? Text(withdrawn ? '此消息已撤回' : message['body'] as String? ?? '',
+            style: TextStyle(color: withdrawn ? context.wo.fgDim : context.wo.fg, fontStyle: withdrawn ? FontStyle.italic : FontStyle.normal)) :
+            _LocalChatAttachment(key: ValueKey('attachment:${message['id']}'), family: _family!, routes: _routes!, message: message),
         )),
       if (mine && !withdrawn) Text(pending ? (committing ? '正在提交本机' : '本机待发送 · 点按重试') : '已保存本机',
         style: Theme.of(context).textTheme.labelSmall?.copyWith(color: pending && !committing ? context.wo.danger : context.wo.fgDim)),
@@ -297,7 +341,7 @@ class _LocalChatPageState extends State<LocalChatPage> with WidgetsBindingObserv
       if (_error != null && _items != null) Text(_error!, style: Theme.of(context).textTheme.labelSmall),
       DecoratedBox(decoration: BoxDecoration(color: context.wo.bg, border: Border(top: BorderSide(color: context.wo.hairline))),
         child: Padding(padding: const EdgeInsets.all(WoTokens.space3), child: Row(children: [
-          WoIconButton(tooltip: '聊天附件暂未接入', onPressed: () => _toast('本地聊天图片和文件附件尚未接入；未向远端上传原件'), icon: const Icon(Icons.attach_file)),
+          WoIconButton(tooltip: '发送聊天附件', onPressed: _sending || !_authorized || _routes == null || _family == null ? null : () => unawaited(_sendAttachment()), icon: const Icon(Icons.attach_file)),
           Expanded(child: TextField(controller: _text, enabled: _authorized, minLines: 1, maxLines: 5, maxLength: 2000,
             decoration: const InputDecoration(hintText: '给家人说句话', counterText: ''), textInputAction: TextInputAction.newline)),
           WoIconButton(tooltip: '保存消息', onPressed: _sending || !_authorized || _routes == null || _family == null ? null : () => unawaited(_send()), icon: Icon(_sending ? Icons.hourglass_empty : Icons.send)),
@@ -309,5 +353,55 @@ class _LocalChatPageState extends State<LocalChatPage> with WidgetsBindingObserv
     WidgetsBinding.instance.removeObserver(this); _runtime?.changes.removeListener(_changed);
     _session?.chatRefreshSignal.removeListener(_changed); _text.dispose(); _scroll.dispose();
     super.dispose();
+  }
+}
+
+String _attachmentSize(int bytes) => bytes < 1024 ? '$bytes B' : bytes < 1024 * 1024 ?
+  '${(bytes / 1024).toStringAsFixed(1)} KiB' : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
+
+/// 固定图片区域和稳定父消息ID配合ChatHistoryList，字节状态改变不会插入新行或挤动阅读锚点。
+class _LocalChatAttachment extends StatefulWidget {
+  const _LocalChatAttachment({super.key, required this.family, required this.routes, required this.message});
+  final String family;
+  final ChatRoutes routes;
+  final Json message;
+  @override State<_LocalChatAttachment> createState() => _LocalChatAttachmentState();
+}
+class _LocalChatAttachmentState extends State<_LocalChatAttachment> {
+  Future<File?>? _image;
+  @override void initState() { super.initState(); _refreshImage(); }
+  @override void didUpdateWidget(covariant _LocalChatAttachment oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.family != widget.family || oldWidget.message['id'] != widget.message['id'] ||
+        oldWidget.message['attachment_status'] != widget.message['attachment_status'] ||
+        oldWidget.message['local_pending'] != widget.message['local_pending'] ||
+        oldWidget.message['retracted'] != widget.message['retracted']) _refreshImage();
+  }
+  void _refreshImage() {
+    _image = widget.message['kind'] == 'image' && widget.message['local_pending'] != true &&
+      widget.message['attachment_status'] == 'available_local' ?
+      widget.routes.attachmentFile(widget.family, widget.message['id'] as String) : null;
+  }
+  @override Widget build(BuildContext context) {
+    final raw = widget.message['attachment'];
+    final descriptor = raw is Map ? AttachmentDescriptor.fromJson(Json.from(raw)) : null;
+    final available = widget.message['attachment_status'] == 'available_local';
+    final image = widget.message['kind'] == 'image';
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (image) SizedBox(width: 180, height: 180, child: _image == null ?
+        const Center(child: Icon(Icons.image_outlined, size: 48)) : FutureBuilder<File?>(future: _image, builder: (context, snapshot) {
+          final file = snapshot.data;
+          return file == null ? const Center(child: Icon(Icons.image_not_supported_outlined, size: 48)) :
+            Image.file(file, width: 180, height: 180, fit: BoxFit.contain, cacheWidth: 640,
+              errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 48)));
+        })),
+      if (!image) const Icon(Icons.insert_drive_file_outlined, size: 32),
+      Text(descriptor?.displayName ?? (image ? '图片附件元数据待同步' : '文件附件元数据待同步'), maxLines: 3, overflow: TextOverflow.ellipsis),
+      if (descriptor != null) Text(_attachmentSize(descriptor.size), style: Theme.of(context).textTheme.labelSmall),
+      Text(available ? '附件已校验并保存本机' : '本机缺少附件字节 · 等待前台同步',
+        style: Theme.of(context).textTheme.labelSmall),
+      if (!image && available) Text('当前仅保存普通文件，尚未接入系统应用打开', style: Theme.of(context).textTheme.labelSmall),
+      Text('本机状态不代表其他设备已收到', style: Theme.of(context).textTheme.labelSmall),
+    ]);
   }
 }
