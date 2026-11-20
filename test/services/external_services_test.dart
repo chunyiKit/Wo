@@ -12,7 +12,7 @@ http.Response jsonResponse(Object body, {int status = 200}) => http.Response(jso
 http.Response envelope(Object data) => jsonResponse({'success': true, 'data': data});
 Matcher failure(ServiceFailure code) => isA<ExternalServiceException>().having((e) => e.failure, 'failure', code);
 MovieBackendConfig movieConfig() => MovieBackendConfig(baseUrl: Uri.parse('https://movie.example'), remoteFamilyId: 'remote-family', bearerToken: 'test-only-movie-token');
-WeatherServiceConfig weatherConfig() => WeatherServiceConfig(baseUrl: Uri.parse('https://weather.example/v7'), apiKey: 'test-only-weather-key');
+WeatherServiceConfig weatherConfig() => WeatherServiceConfig(baseUrl: Uri.parse('https://weather.example'), protocol: WeatherProtocol.cityBasedV7, apiKey: 'test-only-weather-key');
 ImageModelConfig modelConfig({Iterable<Uri> resultOrigins = const []}) => ImageModelConfig(baseUrl: Uri.parse('https://model.example/v1'), apiKey: 'test-only-model-key', model: 'test-image-model', retentionNotice: '合成测试：配置者已查看供应商输入留存政策', resultOrigins: resultOrigins);
 ImageGenerationConsent consent(ImageModelConfig config) => ImageGenerationConsent(endpoint: config.baseUrl, retentionNotice: config.retentionNotice, allowSourceUpload: true, providerPolicyReviewed: true);
 
@@ -89,8 +89,8 @@ void main() {
   test('配置拒绝明文远程地址/URL凭据，只为显式合成回环允许 HTTP', () {
     expect(() => MovieBackendConfig(baseUrl: Uri.parse('http://public.example'), remoteFamilyId: 'f', bearerToken: 'test-only'), throwsA(failure(ServiceFailure.invalidInput)));
     expect(() => modelConfig().resultOrigins.add(Uri.parse('https://evil.example')), throwsUnsupportedError);
-    expect(() => WeatherServiceConfig(baseUrl: Uri.parse('https://user:pass@weather.example'), apiKey: 'test-only'), throwsA(failure(ServiceFailure.invalidInput)));
-    final local = WeatherServiceConfig(baseUrl: Uri.parse('http://127.0.0.1:9000/v7'), apiKey: 'test-only', allowInsecureLoopback: true);
+    expect(() => WeatherServiceConfig(baseUrl: Uri.parse('https://user:pass@weather.example'), protocol: WeatherProtocol.currentV1, apiKey: 'test-only'), throwsA(failure(ServiceFailure.invalidInput)));
+    final local = WeatherServiceConfig(baseUrl: Uri.parse('http://127.0.0.1:9000'), protocol: WeatherProtocol.cityBasedV7, apiKey: 'test-only', allowInsecureLoopback: true);
     expect(local.baseUrl.scheme, 'http');
   });
 
@@ -104,24 +104,25 @@ void main() {
     expect(calls, 0);
   });
 
-  test('天气仅发送既有协议必需字段与降低精度位置，不写远端家庭设置', () async {
+  test('显式v7只发送公制参数与降低精度位置，凭据header且不写设置', () async {
     final requests = <http.Request>[];
     final client = WeatherClient(loadConfig: () async => weatherConfig(), locateWithPermission: () async => const AuthorizedLocation(12.34567, 45.67891), client: MockClient((request) async {
       requests.add(request);
       expect(request.method, 'GET'); expect(request.body, '');
       expect(request.url.queryParameters['location'], '45.68,12.35');
-      expect(request.url.queryParameters.keys.toSet(), request.url.path.endsWith('/now') ? {'location','key'} : {'location','key','type'});
-      if (request.url.path.endsWith('/now')) return jsonResponse({'code':'200','updateTime':'2026-11-20T00:00:00Z','now':{'temp':'20','humidity':'50','text':'晴'}});
-      return jsonResponse({'code':'200','daily':[{'level':'2'}]});
+      expect(request.url.queryParameters.keys.toSet(), {'location','unit'});
+      expect(request.url.queryParameters['unit'],'m');
+      expect(request.headers['X-QW-Api-Key']??request.headers['x-qw-api-key'],'test-only-weather-key');
+      expect(request.url.path, '/v7/weather/now');return jsonResponse({'code':'200','updateTime':'2026-11-20T00:00:00Z','now':{'temp':'20','humidity':'50','text':'晴'}});
     }));
     final result = await client.current();
-    expect(result['temp_c'], 20); expect(result['humidity_pct'], 50); expect(result['uv_index'], 2);
+    expect(result['temp_c'], 20); expect(result['humidity_pct'], 50); expect(result['uv_index'], isNull);
     expect(result['latitude'], 12.35); expect(result['longitude'], 45.68);
-    expect(result.containsKey('key'), false); expect(requests, hasLength(2));
+    expect(result.containsKey('key'), false); expect(requests, hasLength(1));
     expect(requests.every((r) => !r.url.path.contains('families') && !r.url.path.contains('settings')), true);
   });
 
-  test('可选 UV 失败保留天气；无效/非有限坐标不会出站', () async {
+  test('v7不额外查询UV或自动fallback；无效非有限坐标不会出站', () async {
     var calls = 0;
     final transport = MockClient((request) async {
       calls++;
@@ -129,12 +130,12 @@ void main() {
       return http.Response('synthetic failure', 503);
     });
     final client = WeatherClient(loadConfig: () async => weatherConfig(), locateWithPermission: () async => const AuthorizedLocation(1, 2), client: transport);
-    expect((await client.current())['temp_c'], 20); expect(calls, 2);
+    expect((await client.current())['temp_c'], 20); expect(calls, 1);
     for (final location in [const AuthorizedLocation(91, 2), AuthorizedLocation(double.nan, 2)]) {
       final invalid = WeatherClient(loadConfig: () async => weatherConfig(), locateWithPermission: () async => location, client: transport);
       await expectLater(invalid.current(), throwsA(failure(ServiceFailure.invalidInput)));
     }
-    expect(calls, 2);
+    expect(calls, 1);
   });
 
   test('天气坏响应不假装可用，不把供应商错误文本暴露给 UI', () async {

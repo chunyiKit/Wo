@@ -10,11 +10,11 @@
 | --- | --- | --- |
 | 电影片库 | `backend/app/plugins/movie/routes.py` 的 GET `/api/v1/families/{family}/plugins/movie/discover`、`/discover/genres`、`/discover/poster`。需后端会话和家庭成员身份 | 仅这三个查询 GET。远端 endpoint、remoteFamilyId 和 bearer token 必须显式配置，与新本地家庭分离。后端 `already_added` 来自旧云片单，必须丢弃并由本地 TMDB ID 集合重新计算 |
 | 添加/补充电影 | POST `/movies/from_tmdb`、`/movies/{id}/enrich` 会写云端 Movie、安排后台补充 | 不提供这些方法，不发送本地片单、备注或看过状态。现有后端没有纯单电影详情查询端点；从 discover 选中条目时本地保存已返回的元数据。需要额外详情时不能悄悄借用会写库的 POST |
-| 天气 | `backend/app/plugins/plant/routes.py` 旧 GET `/weather` 读取云端 `PlantFamilySettings` 坐标，PUT `/settings` 持久化坐标；`backend/app/services/weather/qweather.py` 使用 QWeather `/weather/now` 和可选 `/indices/1d?type=5` | 沿用仓库既有 QWeather 协议形状的独立 adapter，不调用旧云设置。经设备权限 callback 得到坐标后，仅发送 `location=longitude,latitude`、该协议所需 key 与可选 UV type。坐标降至两位小数，约公里级，不发送高度、速度、朝向、身份、整份设置或记录 |
+| 天气 | `backend/app/plugins/plant/routes.py` 旧 GET `/weather` 读取云端 `PlantFamilySettings` 坐标，PUT `/settings` 持久化坐标；`backend/app/services/weather/qweather.py` 使用 QWeather `/weather/now` 和可选 `/indices/1d?type=5` | 同一 QWeather 供应商，显式选择当前 v1 或兼容 v7，不自动 fallback。v1 使用纬度在先的两位小数 path；v7 使用经度在先的 location 与公制 unit。凭据放 header。每次仅一个天气 GET，不写旧云设置或额外上传位置 |
 | 旅行风格图 | `backend/app/services/ai/image_client.py` 为已配置模型的 `/images/generations` 协议；旧 `travel/routes.py` 会上传/写库，`travel/service.py` 生成成功后还删除原照 | 直接调用本机显式配置的模型。只执行生成，不调用云旅行 CRUD/文件上传/后台任务接口，不删除原照。原照、记录、生成结果由调用者本地保存 |
 | 植物分析 | 旧日志上传会排云端 AI 任务 | 本模块没有植物分析客户端，不扩大该远程用法 |
 
-未验证当前真实供应商的商用配置或准确率。天气 adapter 是仓库已有协议的客户端移植，不能把地理定位本身当成天气来源；真实端点/凭据/协议适配仍需要明确配置，缺配置仅此服务返回 `notConfigured`。
+未验证当前真实供应商的商用配置或准确率。天气 adapter 已核对官方 v1/显式 v7 文档（见下文），不能把地理定位本身当成天气来源；真实端点/凭据/协议适配仍需要明确配置，缺配置仅此服务返回 `notConfigured`。
 
 ## 调用契约
 
@@ -27,8 +27,10 @@
 `WeatherClient.current()`：
 
 - `loadConfig()` 先于定位 callback；未配置不弹定位请求。`locateWithPermission()` 必须由设备权限流程提供，拒绝/未授权返回 null，不能回落到旧云坐标。
-- 结果兼容已有 `PlantWeather` 字段：`available,temp_c,feels_like_c,condition,humidity_pct,precip_mm,wind_*,pressure_hpa,visibility_km,cloud_pct,dew_point_c,uv_index,observed_at,latitude,longitude`。UV 请求失败保留已有天气，空/无效主体不伪报可用。
-- QWeather 旧契约将 key 放查询参数；客户端不记录或返回完整 URL，不把它写成缓存键或错误文本。调用者必须把凭据放私有本机存储，不能把请求 URL 放进可分享日志。
+- 结果兼容已有 `PlantWeather` 字段：`available,temp_c,feels_like_c,condition,humidity_pct,precip_mm,wind_*,pressure_hpa,visibility_km,cloud_pct,dew_point_c,uv_index,observed_at,latitude,longitude`。v1 自带实时 UV，保留数值 0；显式 v7 没有该字段，返回 null，空/无效主体不伪报可用。
+- `WeatherServiceConfig` 必须显式传 `protocol: WeatherProtocol.currentV1`（优先）或 `cityBasedV7`（兼容），baseUrl 仅为 API host origin；`apiKey` 与 `bearerToken` 二选一，仅请求 header 使用。凭据从本机安全存储读取，不加入 URL、结果或普通设置。v1 失败不会换 v7 重新发送位置。
+- v1 `/weather/v1/current/{lat2}/{lon2}`：消费字段逐项核对单位，湿度/云量比例转百分比、m/s 转 km/h、m 转 km；缺省可选字段保留 null，未知单位、非有限/越界数值拒绝。v7 `/v7/weather/now?location=lon2,lat2&unit=m` 保持其已声明公制单位，单 GET，不额外请求日指数冒称实时 UV。
+- 规范来源：[Current Weather v1](https://dev.qweather.com/en/docs/api/weather/weather-current/)、[官方认证](https://dev.qweather.com/en/docs/configuration/authentication/)、[单位](https://dev.qweather.com/en/docs/resource/unit/)、[v7 兼容接口](https://dev.qweather.com/en/docs/api/weather/weather-now-webapi-v7/)。官方已提示 v7 将被弃用；本模块没有推测具体停用日期。返回保留 `provider/protocol/attributions`，接入层应展示数据来源，不自动抓取 attribution URL。
 
 `ConfiguredImageClient.generate(image, prompt, consent)`：
 

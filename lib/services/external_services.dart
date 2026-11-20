@@ -199,13 +199,24 @@ class AuthorizedLocation {
   final double latitude, longitude;
 }
 
-/// 沿用仓库既有 QWeather 协议形状；不写旧后端 plant/settings 坐标。
+/// currentV1 为新接线优先选项；cityBasedV7 只由配置者显式选择，不自动fallback。
+enum WeatherProtocol { currentV1, cityBasedV7 }
+
 class WeatherServiceConfig {
-  WeatherServiceConfig({required Uri baseUrl, required this.apiKey,
-    bool allowInsecureLoopback = false})
-      : baseUrl = _base(baseUrl, allowInsecureLoopback: allowInsecureLoopback);
+  WeatherServiceConfig({required Uri baseUrl, required this.protocol, this.apiKey = '',
+    this.bearerToken = '', bool allowInsecureLoopback = false})
+      : baseUrl = _base(baseUrl, allowInsecureLoopback: allowInsecureLoopback) {
+    if (this.baseUrl.path.isNotEmpty || (apiKey.isNotEmpty && bearerToken.isNotEmpty) ||
+        apiKey.length > 4096 || bearerToken.length > 8192 ||
+        RegExp(r'[\x00-\x20\x7f]').hasMatch(apiKey + bearerToken)) {
+      throw const ExternalServiceException('天气', ServiceFailure.invalidInput);
+    }
+  }
+  /// 配置 QWeather API host origin，不带 /v7 或 /weather；凭据仅从本机安全存储加载。
   final Uri baseUrl;
-  final String apiKey;
+  final WeatherProtocol protocol;
+  final String apiKey, bearerToken;
+  bool get configured => apiKey.isNotEmpty || bearerToken.isNotEmpty;
 }
 
 class WeatherClient {
@@ -213,12 +224,12 @@ class WeatherClient {
     required http.Client client, Duration timeout = const Duration(seconds: 12)})
       : _http = _Transport(client, '天气', timeout);
   final Future<WeatherServiceConfig?> Function() loadConfig;
-  /// 必须由设备权限流程提供；拒绝/未授权返回 null，不用持久化的旧云坐标代替。
+  /// 设备权限流程提供；拒绝/未授权返回null，不读取或写入旧云/本地家庭坐标设置。
   final Future<AuthorizedLocation?> Function() locateWithPermission;
   final _Transport _http;
   Future<Map<String, dynamic>> current() async {
     final config = await _configuration(loadConfig, '天气');
-    if (config == null || config.apiKey.isEmpty) throw const ExternalServiceException('天气', ServiceFailure.notConfigured);
+    if (config == null || !config.configured) throw const ExternalServiceException('天气', ServiceFailure.notConfigured);
     AuthorizedLocation? location;
     try { location = await locateWithPermission(); } catch (_) { throw const ExternalServiceException('天气', ServiceFailure.locationDenied); }
     if (location == null) throw const ExternalServiceException('天气', ServiceFailure.locationDenied);
@@ -226,32 +237,84 @@ class WeatherClient {
         location.latitude.abs() > 90 || location.longitude.abs() > 180) {
       throw const ExternalServiceException('天气', ServiceFailure.invalidInput);
     }
-    // 天气不需要高度/速度/朝向/身份；将位置降低到约公里精度。
+    // 仅降低精度位置；高度、速度、朝向、设备/家庭身份不出站。
     final lat = location.latitude.toStringAsFixed(2), lon = location.longitude.toStringAsFixed(2);
-    final query = {'location': '$lon,$lat', 'key': config.apiKey};
-    final now = await _http.json(http.Request('GET', _route(config.baseUrl, 'weather/now', query)));
-    if (now is! Map || now['code'] != '200' || now['now'] is! Map) {
-      throw const ExternalServiceException('天气', ServiceFailure.invalidResponse, requestMayHaveBeenSent: true);
-    }
-    final n = now['now'] as Map;
-    double? number(dynamic input) { final value = double.tryParse('$input'); return value?.isFinite == true ? value : null; }
-    String? text(dynamic input) => input is String && input.length <= 200 ? input : null;
-    if (number(n['temp']) == null && text(n['text']) == null) throw const ExternalServiceException('天气', ServiceFailure.invalidResponse, requestMayHaveBeenSent: true);
-    final output = <String, dynamic>{'available': true, 'latitude': double.parse(lat), 'longitude': double.parse(lon),
-      'temp_c': number(n['temp']), 'feels_like_c': number(n['feelsLike']), 'condition': text(n['text']),
-      'icon': text(n['icon']), 'humidity_pct': number(n['humidity'])?.toInt(), 'precip_mm': number(n['precip']),
-      'wind_dir': text(n['windDir']), 'wind_scale': text(n['windScale']), 'wind_speed_kmh': number(n['windSpeed']),
-      'wind_deg': number(n['wind360']), 'pressure_hpa': number(n['pressure']), 'visibility_km': number(n['vis']),
-      'cloud_pct': number(n['cloud'])?.toInt(), 'dew_point_c': number(n['dew']),
-      'observed_at': text(now['updateTime']) ?? text(n['obsTime']), 'uv_index': null};
-    try {
-      final uv = await _http.json(http.Request('GET', _route(config.baseUrl, 'indices/1d', {...query, 'type': '5'})));
-      if (uv is Map && uv['code'] == '200' && uv['daily'] is List && (uv['daily'] as List).isNotEmpty) {
-        final first = (uv['daily'] as List).first;
-        if (first is Map) output['uv_index'] = number(first['level']);
-      }
-    } on ExternalServiceException { /* 可选 UV 失败不抹掉已收到的天气。 */ }
-    return output;
+    final uri = config.protocol == WeatherProtocol.currentV1
+      ? _route(config.baseUrl, 'weather/v1/current/$lat/$lon')
+      : _route(config.baseUrl, 'v7/weather/now', {'location':'$lon,$lat', 'unit':'m'});
+    final request = http.Request('GET', uri)..headers['Accept'] = 'application/json';
+    if (config.bearerToken.isNotEmpty) { request.headers['Authorization'] = 'Bearer ${config.bearerToken}'; }
+    else { request.headers['X-QW-Api-Key'] = config.apiKey; }
+    final raw = await _http.json(request);
+    // 单个所选协议一次请求；错误/不支持/解析失败均不再向另一版本发送位置。
+    final result = config.protocol == WeatherProtocol.currentV1 ? _v1(raw) : _v7(raw);
+    return {'available':true,'provider':'QWeather','protocol':config.protocol.name,
+      'latitude':double.parse(lat),'longitude':double.parse(lon),...result};
+  }
+  static Never _invalid() => throw const ExternalServiceException('天气', ServiceFailure.invalidResponse, requestMayHaveBeenSent:true);
+  static Map _map(Object? value) { if(value is! Map) _invalid(); return value as Map; }
+  static String? _text(Object? value, {int max=200}) {
+    if(value==null)return null;
+    if(value is! String || value.isEmpty || value.length>max || value.runes.any((r)=>r<32||r==127))_invalid();
+    return value as String;
+  }
+  static double? _number(Object? value,double min,double max,{bool legacy=false}) {
+    if(value==null)return null;
+    double? n;
+    if(legacy) { if(value is! String)_invalid(); n=double.tryParse(value as String); }
+    else { if(value is! num)_invalid(); n=(value as num).toDouble(); }
+    if(n==null||!n.isFinite||n<min||n>max)_invalid();return n;
+  }
+  static double? _measure(Object? value,String unit,double min,double max,{bool requiredValue=false}) {
+    if(value==null){if(requiredValue)_invalid();return null;}
+    final m=_map(value);if(m['unit']!=unit)_invalid();final n=_number(m['value'],min,max);
+    if(n==null)_invalid();return n;
+  }
+  static String? _timestamp(Object? value,{bool requiredValue=false}) {
+    final text=_text(value,max:64);
+    if(text==null){if(requiredValue)_invalid();return null;}
+    if(!RegExp(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$').hasMatch(text!)||DateTime.tryParse(text)==null)_invalid();return text;
+  }
+  static List<String> _attributions(Object? value) {
+    if(value==null)return const [];
+    if(value is! List || value.length>16)_invalid();final output=<String>[];
+    for(final raw in value as List){final text=_text(raw,max:1024);if(text==null)_invalid();final uri=Uri.tryParse(text!);
+      if(uri==null||uri.scheme!='https'||uri.host.isEmpty||uri.userInfo.isNotEmpty)_invalid();output.add(text);}
+    return List.unmodifiable(output);
+  }
+  static Map<String,dynamic> _v1(Object? raw) {
+    final n=_map(raw),condition=_map(_map(raw)['condition']);
+    final temp=_measure(n['temperature'],'°C',-150,100,requiredValue:true);
+    final text=_text(condition['text']);if(text==null)_invalid();
+    final wind=n['wind']==null?null:_map(n['wind']);final direction=wind?['direction']==null?null:_map(wind!['direction']);
+    final speed=_measure(wind?['speed'],'m/s',0,200);
+    final scale=_number(wind?['scale'],0,17);if(scale!=null&&scale!=scale.roundToDouble())_invalid();
+    final compass=_text(direction?['compass'],max:8);
+    if(compass!=null&&!{'n','nne','ne','ene','e','ese','se','sse','s','ssw','sw','wsw','w','wnw','nw','nnw','none','vrb'}.contains(compass))_invalid();
+    final humidity=_number(n['humidity'],0,1),cloud=_number(n['cloudCover'],0,1);
+    final visibility=_measure(n['visibility'],'m',0,1000000);
+    final precipitation=n['precipitation']==null?null:_map(n['precipitation']);
+    final metadata=n['metadata']==null?null:_map(n['metadata']);
+    return {'temp_c':temp,'feels_like_c':_measure(n['feelsLike'],'°C',-200,150),'condition':text,'icon':_text(condition['code'],max:20),
+      'humidity_pct':humidity==null?null:(humidity*100).round(),'cloud_pct':cloud==null?null:(cloud*100).round(),
+      'precip_mm':_measure(precipitation?['amount'],'mm',0,1000),'wind_dir':compass,'wind_scale':scale?.toInt().toString(),
+      'wind_speed_kmh':speed==null?null:speed*3.6,'wind_deg':_number(direction?['degree'],0,365),
+      'pressure_hpa':_measure(n['pressure'],'hPa',100,1200),'visibility_km':visibility==null?null:visibility/1000,
+      'dew_point_c':_measure(n['dewPoint'],'°C',-150,100),'observed_at':_timestamp(n['validTime'],requiredValue:true),
+      'uv_index':_number(n['uvIndex'],0,15),'attributions':_attributions(metadata?['attributions'])};
+  }
+  static Map<String,dynamic> _v7(Object? raw) {
+    final response=_map(raw);if(response['code']!='200')_invalid();final n=_map(response['now']);
+    final temp=_number(n['temp'],-150,100,legacy:true),condition=_text(n['text']);if(temp==null&&condition==null)_invalid();
+    final refer=response['refer']==null?null:_map(response['refer']);
+    return {'temp_c':temp,'feels_like_c':_number(n['feelsLike'],-200,150,legacy:true),'condition':condition,'icon':_text(n['icon'],max:20),
+      'humidity_pct':_number(n['humidity'],0,100,legacy:true)?.round(),'precip_mm':_number(n['precip'],0,1000,legacy:true),
+      'wind_dir':_text(n['windDir']),'wind_scale':_text(n['windScale'],max:20),'wind_speed_kmh':_number(n['windSpeed'],0,720,legacy:true),
+      'wind_deg':_number(n['wind360'],0,365,legacy:true),'pressure_hpa':_number(n['pressure'],100,1200,legacy:true),
+      'visibility_km':_number(n['vis'],0,1000,legacy:true),'cloud_pct':_number(n['cloud'],0,100,legacy:true)?.round(),
+      'dew_point_c':_number(n['dew'],-150,100,legacy:true),'observed_at':_timestamp(n['obsTime'])??_timestamp(response['updateTime']),
+      // v7当前天气没有实时UV字段，不能把另一日指数的level冒称实时UV。
+      'uv_index':null,'attributions':_attributions(refer?['sources'])};
   }
 }
 
