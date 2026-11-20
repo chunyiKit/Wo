@@ -43,3 +43,12 @@ backend/deploy/tls/out/
 # 本机连接配置（示例文件入库，真实地址不入库）
 config/*.local.json
 backend/deploy/env/deploy.env
+
+# Go 电脑端构建与本机运行资料（只能定向提交源码）
+/desktop/out/
+/desktop/wo-computer
+/desktop/*.exe
+/desktop/.runtime/
+/desktop/coverage.out
+*.woseal
+*.wotar
