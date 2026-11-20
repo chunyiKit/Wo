@@ -2,6 +2,7 @@
 package backup
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,7 +29,20 @@ var ErrIncomplete = errors.New("backup is incomplete")
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,100}$`)
 var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
-func ValidID(id string) bool { return idPattern.MatchString(id) }
+func ValidID(id string) bool {
+	if !idPattern.MatchString(id) {
+		return false
+	}
+	upper := strings.ToUpper(id)
+	switch upper {
+	case "CON", "PRN", "AUX", "NUL":
+		return false
+	}
+	if len(upper) == 4 && (strings.HasPrefix(upper, "COM") || strings.HasPrefix(upper, "LPT")) && upper[3] >= '1' && upper[3] <= '9' {
+		return false
+	}
+	return true
+}
 
 type Entry struct {
 	ID          string `json:"id"`
@@ -126,10 +141,10 @@ func Validate(m Manifest) error {
 	var total int64
 	sealed := 0
 	for _, e := range m.Entries {
-		if !ValidID(e.ID) || seen[e.ID] || e.Size < 0 || e.Size > MaxFileSize {
+		if !ValidID(e.ID) || seen[strings.ToLower(e.ID)] || e.Size < 0 || e.Size > MaxFileSize {
 			return errors.New("invalid or duplicate entry")
 		}
-		seen[e.ID] = true
+		seen[strings.ToLower(e.ID)] = true
 		if e.Kind != "records" && e.Kind != "photo" && e.Kind != "video" && e.Kind != "thumbnail" && e.Kind != "sealed" {
 			return errors.New("invalid kind")
 		}
@@ -167,6 +182,10 @@ func Validate(m Manifest) error {
 		if total > MaxTotalSize {
 			return errors.New("backup too large")
 		}
+	}
+	encoded, err := json.Marshal(m)
+	if err != nil || len(encoded) > 2<<20 {
+		return errors.New("canonical manifest too large")
 	}
 	return nil
 }
@@ -233,6 +252,23 @@ func (s *Store) Create(m Manifest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, _ := base(m.FamilyID, m.BackupID)
+	if _, err := s.root.Lstat(p); err == nil {
+		old, e := s.manifest(m.FamilyID, m.BackupID)
+		if e != nil {
+			return e
+		}
+		a, _ := json.Marshal(old)
+		b, _ := json.Marshal(m)
+		if !bytes.Equal(a, b) {
+			return ErrConflict
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := s.capacity(m); err != nil {
+		return err
+	}
 	if err := s.root.MkdirAll("backups/"+m.FamilyID, 0700); err != nil {
 		return err
 	}
@@ -256,6 +292,58 @@ func (s *Store) Create(m Manifest) error {
 	}
 	b, _ := json.Marshal(m)
 	return s.atomic(p+"/manifest.json", b)
+}
+
+// 全目录最多256个归档、声明总大小最多1TiB；无自动删除旧备份。
+func (s *Store) capacity(next Manifest) error {
+	var reserved int64
+	for _, e := range next.Entries {
+		reserved += e.Size
+	}
+	count := 0
+	f, e := s.root.Open("backups")
+	if e != nil {
+		return e
+	}
+	families, e := f.ReadDir(-1)
+	f.Close()
+	if e != nil {
+		return e
+	}
+	for _, family := range families {
+		if !family.IsDir() || !ValidID(family.Name()) {
+			continue
+		}
+		d, e := s.root.Open("backups/" + family.Name())
+		if e != nil {
+			return e
+		}
+		dirs, e := d.ReadDir(-1)
+		d.Close()
+		if e != nil {
+			return e
+		}
+		for _, dir := range dirs {
+			if !dir.IsDir() || !ValidID(dir.Name()) {
+				continue
+			}
+			count++
+			m, e := s.manifest(family.Name(), dir.Name())
+			if e != nil {
+				return errors.New("capacity cannot be verified")
+			}
+			for _, entry := range m.Entries {
+				reserved += entry.Size
+				if reserved > MaxTotalSize {
+					return errors.New("backup directory quota reached")
+				}
+			}
+		}
+	}
+	if count >= 256 || reserved > MaxTotalSize {
+		return errors.New("backup directory quota reached")
+	}
+	return nil
 }
 func entry(m Manifest, id string) (Entry, error) {
 	if !ValidID(id) {
@@ -416,21 +504,44 @@ func (s *Store) Append(fid, bid, eid string, offset, length int64, sha string, r
 	if offset < 0 || length <= 0 || length > ChunkSize || !hashPattern.MatchString(sha) {
 		return 0, errors.New("invalid chunk")
 	}
+	// 不持全库锁读取网络：一个慢手机不能阻塞别的家庭或本机管理。
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	m, err := s.manifest(fid, bid)
+	var e Entry
+	if err == nil {
+		e, err = entry(m, eid)
+	}
+	s.mu.Unlock()
 	if err != nil {
 		return 0, err
 	}
-	e, err := entry(m, eid)
-	if err != nil {
-		return 0, err
-	}
-	if e.Missing != "" {
+	if e.Missing != "" || offset+length > e.Size {
 		return 0, ErrConflict
 	}
 	p, _ := base(fid, bid)
 	p += "/entries/" + eid
+	tmp := p + ".incoming-" + token()
+	f, err := s.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return 0, err
+	}
+	defer s.root.Remove(tmp)
+	h := sha256.New()
+	n, copyErr := io.Copy(io.MultiWriter(f, h), io.LimitReader(r, length+1))
+	closeErr := f.Close()
+	if copyErr != nil || closeErr != nil || n != length || hex.EncodeToString(h.Sum(nil)) != sha {
+		return 0, errors.New("chunk size or digest mismatch")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	latest, err := s.manifest(fid, bid)
+	if err != nil {
+		return 0, err
+	}
+	same, err := entry(latest, eid)
+	if err != nil || same != e {
+		return 0, ErrConflict
+	}
 	if _, err = s.root.Stat(p + ".blob"); err == nil {
 		return e.Size, ErrConflict
 	}
@@ -450,23 +561,8 @@ func (s *Store) Append(fid, bid, eid string, offset, length int64, sha string, r
 	if offset != current && !retry {
 		return current, ErrConflict
 	}
-	if offset+length > e.Size {
-		return current, ErrConflict
-	}
 	if len(j.Chunks) >= 65536 && !retry {
 		return current, errors.New("chunk limit")
-	}
-	tmp := p + ".incoming-" + token()
-	f, err := s.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return current, err
-	}
-	defer s.root.Remove(tmp)
-	h := sha256.New()
-	n, copyErr := io.Copy(io.MultiWriter(f, h), io.LimitReader(r, length+1))
-	closeErr := f.Close()
-	if copyErr != nil || closeErr != nil || n != length || hex.EncodeToString(h.Sum(nil)) != sha {
-		return current, errors.New("chunk size or digest mismatch")
 	}
 	if retry {
 		return current, nil
@@ -646,7 +742,11 @@ func (s *Store) Status(fid, bid string) (Status, error) {
 	}
 	return s.status(m)
 }
-func (s *Store) List() (out []Status, err error) {
+func (s *Store) List() ([]Status, error) { return s.ListFamily("") }
+func (s *Store) ListFamily(family string) (out []Status, err error) {
+	if family != "" && !ValidID(family) {
+		return nil, errors.New("invalid family")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out = []Status{}
@@ -660,7 +760,7 @@ func (s *Store) List() (out []Status, err error) {
 		return nil, err
 	}
 	for _, fam := range families {
-		if !fam.IsDir() || !ValidID(fam.Name()) {
+		if !fam.IsDir() || !ValidID(fam.Name()) || (family != "" && family != fam.Name()) {
 			continue
 		}
 		f, e := s.root.Open("backups/" + fam.Name())
@@ -678,11 +778,13 @@ func (s *Store) List() (out []Status, err error) {
 			}
 			m, e := s.manifest(fam.Name(), d.Name())
 			if e != nil {
-				return nil, e
+				out = append(out, Status{FamilyID: fam.Name(), BackupID: d.Name(), State: "unreadable", Issues: []string{"manifest_unreadable"}, Entries: []EntryStatus{}})
+				continue
 			}
 			st, e := s.status(m)
 			if e != nil {
-				return nil, e
+				out = append(out, Status{FamilyID: fam.Name(), BackupID: d.Name(), State: "unreadable", Issues: []string{"data_unreadable"}, Entries: []EntryStatus{}})
+				continue
 			}
 			out = append(out, st)
 		}
@@ -712,9 +814,23 @@ func (s *Store) OpenVerified(fid, bid, eid string, allowRestricted bool) (*os.Fi
 		return nil, e, os.ErrNotExist
 	}
 	p, _ := base(fid, bid)
-	if _, err = s.root.Stat(p + "/verified.json"); err != nil {
+	raw, err := s.root.ReadFile(p + "/verified.json")
+	if err != nil {
 		return nil, e, ErrIncomplete
 	}
+	var mark marker
+	mb, _ := json.Marshal(m)
+	if json.Unmarshal(raw, &mark) != nil || mark.ManifestSHA != digest(mb) || mark.VerifiedAt == "" {
+		return nil, e, errors.New("invalid verified marker")
+	}
 	f, err := s.regular(p + "/entries/" + eid + ".blob")
-	return f, e, err
+	if err != nil {
+		return nil, e, err
+	}
+	info, err := f.Stat()
+	if err != nil || info.Size() != e.Size {
+		f.Close()
+		return nil, e, errors.New("verified size changed")
+	}
+	return f, e, nil
 }

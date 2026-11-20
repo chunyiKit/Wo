@@ -3,12 +3,14 @@ package backup
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func setup(t *testing.T) (*Store, string) {
@@ -298,5 +300,161 @@ func TestMultipleStreamingChunksMatchWholeSource(t *testing.T) {
 	}
 	if _, e = s.Check(m.FamilyID, m.BackupID); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestCanonicalManifestSizeBeforeWrite(t *testing.T) {
+	s, dir := setup(t)
+	m := sample(nil)
+	m.BackupID = "expansion"
+	m.Entries = nil
+	for i := 0; i < 4096; i++ {
+		m.Entries = append(m.Entries, Entry{ID: fmt.Sprint("e", i), Kind: "records", SHA256: digest(nil), Label: strings.Repeat("<", 240)})
+	}
+	if e := s.Create(m); e == nil {
+		t.Fatal("escaped canonical JSON exceeded read limit")
+	}
+	if _, e := os.Stat(filepath.Join(dir, "backups/family-a/expansion")); !errors.Is(e, os.ErrNotExist) {
+		t.Fatal("invalid manifest left directory", e)
+	}
+}
+func TestCorruptForeignManifestDoesNotBreakFamilyList(t *testing.T) {
+	s, dir := setup(t)
+	m := sample([]byte("data"))
+	s.Create(m)
+	other := sample([]byte("other"))
+	other.FamilyID = "foreign"
+	s.Create(other)
+	os.WriteFile(filepath.Join(dir, "backups/foreign/backup-a/manifest.json"), []byte("broken"), 0600)
+	list, e := s.ListFamily("family-a")
+	if e != nil || len(list) != 1 || list[0].FamilyID != "family-a" {
+		t.Fatal(list, e)
+	}
+	all, e := s.List()
+	if e != nil || len(all) != 2 {
+		t.Fatal(all, e)
+	}
+}
+func TestPartialBinaryJournalAfterCrash(t *testing.T) {
+	s, dir := setup(t)
+	data := []byte("source bytes")
+	m := sample(data)
+	s.Create(m)
+	s.Append(m.FamilyID, m.BackupID, "original", 0, 6, digest(data[:6]), bytes.NewReader(data[:6]))
+	s.Close()
+	p := filepath.Join(dir, "backups/family-a/backup-a/entries/original.journal")
+	f, e := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0600)
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.Write([]byte{1, 2, 3, 4, 5})
+	f.Close()
+	r, e := New(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer r.Close()
+	st, e := r.Status(m.FamilyID, m.BackupID)
+	if e != nil || st.Entries[0].Offset != 6 {
+		t.Fatal(st, e)
+	}
+	info, _ := os.Stat(p)
+	if info.Size() != 48 {
+		t.Fatal(info.Size())
+	}
+}
+
+type slowReader struct {
+	Started, Resume chan struct{}
+	done            bool
+}
+
+func (r *slowReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	close(r.Started)
+	<-r.Resume
+	return copy(p, []byte("data")), nil
+}
+func TestSlowPhoneDoesNotBlockOtherFamilyStatus(t *testing.T) {
+	s, _ := setup(t)
+	m := sample([]byte("data"))
+	s.Create(m)
+	other := sample([]byte("other"))
+	other.FamilyID = "foreign"
+	s.Create(other)
+	r := &slowReader{Started: make(chan struct{}), Resume: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, e := s.Append(m.FamilyID, m.BackupID, "original", 0, 4, digest([]byte("data")), r)
+		done <- e
+	}()
+	<-r.Started
+	status := make(chan error, 1)
+	go func() { _, e := s.Status("foreign", "backup-a"); status <- e }()
+	select {
+	case e := <-status:
+		if e != nil {
+			t.Fatal(e)
+		}
+	case <-time.After(time.Second):
+		close(r.Resume)
+		t.Fatal("slow reader held global lock")
+	}
+	close(r.Resume)
+	if e := <-done; e != nil {
+		t.Fatal(e)
+	}
+}
+func TestDownloadRefusesCorruptMarkerAndChangedLength(t *testing.T) {
+	s, dir := setup(t)
+	data := []byte("data")
+	m := sample(data)
+	s.Create(m)
+	appendAll(t, s, m, data)
+	s.Finalize(m.FamilyID, m.BackupID)
+	base := filepath.Join(dir, "backups/family-a/backup-a")
+	marker, _ := os.ReadFile(filepath.Join(base, "verified.json"))
+	os.WriteFile(filepath.Join(base, "verified.json"), []byte("broken"), 0600)
+	if f, _, e := s.OpenVerified(m.FamilyID, m.BackupID, "original", false); e == nil {
+		f.Close()
+		t.Fatal("corrupt marker allowed")
+	}
+	os.WriteFile(filepath.Join(base, "verified.json"), marker, 0600)
+	os.WriteFile(filepath.Join(base, "entries/original.blob"), []byte("short"), 0600)
+	if f, _, e := s.OpenVerified(m.FamilyID, m.BackupID, "original", false); e == nil {
+		f.Close()
+		t.Fatal("changed file length allowed")
+	}
+}
+
+func TestDirectoryQuotaAndWindowsNames(t *testing.T) {
+	s, _ := setup(t)
+	for _, id := range []string{"CON", "com1", "AUX", "LPT9"} {
+		m := sample([]byte("x"))
+		m.Entries[0].ID = id
+		if e := s.Create(m); e == nil {
+			t.Fatal(id)
+		}
+	}
+	m := sample([]byte("x"))
+	m.Entries = append(m.Entries, Entry{ID: "ORIGINAL", Kind: "records", SHA256: digest(nil)})
+	if e := s.Create(m); e == nil {
+		t.Fatal("case collision")
+	}
+	large := Manifest{Version: 1, FamilyID: "family-a", BackupID: "reserved", Entries: []Entry{}}
+	for i := 0; i < 16; i++ {
+		large.Entries = append(large.Entries, Entry{ID: fmt.Sprint("e", i), Kind: "video", Size: MaxFileSize, SHA256: strings.Repeat("0", 64)})
+	}
+	if e := s.Create(large); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.Create(sample([]byte("x"))); e == nil {
+		t.Fatal("directory reservation quota ignored")
+	}
+	if e := s.Create(large); e != nil {
+		t.Fatal("existing retry blocked by quota", e)
 	}
 }
