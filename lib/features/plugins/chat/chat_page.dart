@@ -17,6 +17,7 @@ import '../../../widgets/member_avatar.dart';
 import '../../../widgets/placeholder_screen.dart';
 import 'chat_history_list.dart';
 import 'chat_history_refresh.dart';
+import 'local_chat_page.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -93,6 +94,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final session = WoScope.of(context);
+    if (session.api.isLocal) {
+      // 本地页独立读取事实源；不启动旧账号游标或旧附件下载队列。
+      _poller?.cancel();
+      _session?.chatRefreshSignal.removeListener(_onExternalRefresh);
+      _session = null; _scopeKey = null; _ownerUserId = null; _familyId = null;
+      _scopeGeneration++; _loadRequest++;
+      return;
+    }
     if (!identical(_session, session)) {
       _syncService = ChatSyncService(api: session.api, store: _store);
       _session?.chatRefreshSignal.removeListener(_onExternalRefresh);
@@ -426,6 +435,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (WoScope.api(context).isLocal) return const LocalChatPage();
     return WoScaffold(
       appBar: WoAppBar(title: const Text('家聊')),
       body: SafeArea(
