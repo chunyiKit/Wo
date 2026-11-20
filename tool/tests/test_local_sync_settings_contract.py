@@ -36,7 +36,7 @@ class SyncSettingsContract(unittest.TestCase):
         self.assertIn('InternetAddress.tryParse', manual)
         self.assertIn('LocalSyncCoordinator.localAddress(ip)', manual)
         self.assertIn('number < 1 || number > 65535', manual)
-        self.assertIn('sync.connect(peer, ip.address, number)', manual)
+        self.assertIn('sync.connectManually(peer, ip.address, number)', manual)
         self.assertNotIn('Socket.connect', manual)
         self.assertIn('MemberAvatar(url:', self.page)
         self.assertIn('coupleConsent(peer.id, local: value)', self.page)
