@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../data/api_client.dart';
 import '../local_backend.dart';
 import '../local_store.dart';
+import '../backup/backup_models.dart' show decodeBackupJson;
 
 /// 库存数量只派生自不可变事件；名称等元数据仍采用既有字段合并。
 class StockAccountingRoutes {
@@ -33,9 +34,11 @@ class StockAccountingRoutes {
   static const immutableCollections = <String>{'plugins/stock/events'};
   static const eventFields = <String>{'event_id', 'type', 'item_id', 'buy_id', 'cycle', 'next_cycle', 'delta', 'ack', 'order', 'actor', 'created_at'};
   static const eventSemanticFields = <String>{'type', 'item_id', 'buy_id', 'cycle', 'next_cycle', 'delta', 'ack'};
-  static const entryFields = <String>{'family_id', 'created_by', 'created_at', 'calendar_date', 'calendar_offset_minutes', 'amount_minor', 'category', 'note', 'exclude_from_budget'};
+  static const entryBaseFields = <String>{'family_id', 'created_by', 'created_at', 'calendar_date', 'calendar_offset_minutes', 'amount_minor', 'category', 'note', 'exclude_from_budget'};
+  static const entrySourceFields = <String>{'source_plugin', 'source_id', 'source_occurrence', 'source_event_id'};
+  static const entryFields = <String>{...entryBaseFields, ...entrySourceFields};
   static const budgetEntryFields = <String>{'monthly_amount_minor', 'updated_at', 'updated_by'};
-  static const requestResponseFields = <String>{'id', 'family_id', 'created_by', 'created_at', 'name', 'emoji', 'qty', 'unit', 'low_at', 'note', 'creation_request', 'raw_qty', 'quantity_conflict', 'quantity_conflicts', 'is_low', 'creator_name', 'creator_emoji', 'creator_avatar_url', 'want_qty', 'stock_item_id', 'bought', 'bought_at', 'purchase_cycle', 'receipt_conflict', 'deleted', 'code', 'label', 'amount', 'amount_minor', 'category', 'exclude_from_budget', 'calendar_date', 'calendar_offset_minutes', 'monthly_amount'};
+  static const requestResponseFields = <String>{...entrySourceFields, 'id', 'family_id', 'created_by', 'created_at', 'name', 'emoji', 'qty', 'unit', 'low_at', 'note', 'creation_request', 'raw_qty', 'quantity_conflict', 'quantity_conflicts', 'is_low', 'creator_name', 'creator_emoji', 'creator_avatar_url', 'want_qty', 'stock_item_id', 'bought', 'bought_at', 'purchase_cycle', 'receipt_conflict', 'deleted', 'code', 'label', 'amount', 'amount_minor', 'category', 'exclude_from_budget', 'calendar_date', 'calendar_offset_minutes', 'monthly_amount'};
 
   static String eventSemantic(Json event) {
     final value = {for (final key in eventSemanticFields) if (event.containsKey(key)) key: event[key]};
@@ -71,6 +74,32 @@ class StockAccountingRoutes {
           event.keys.any((k) => !{'event_id', 'type', 'buy_id', 'cycle', 'next_cycle', 'order', 'actor', 'created_at'}.contains(k))) bad();
     } else { bad(); }
     return event;
+  }
+
+  /// 自动来源字段只能由订阅处理器创建；公开手动API不接受这些body字段。
+  /// 这里只核验结构与确定性ID；网络导入还必须验证已认证charge来源。
+  static Json decodeEntry(Object? encoded,{required String familyId,String? expectedId}) {
+    Never bad()=>throw const FormatException('账目结构或自动来源无效');
+    if(encoded is! String)bad();
+    final parsed=decodeBackupJson(encoded);if(parsed is! Map)bad();final entry=Json.from(parsed);
+    bool identifier(Object? value){if(value is! String)return false;final m=ids.firstMatch(value);return m!=null&&m.start==0&&m.end==value.length;}
+    bool date(Object? value){if(value is! String||value.length!=10)return false;final parsed=DateTime.tryParse(value);return parsed!=null&&parsed.year>=1&&parsed.year<=9999&&calendarDate(parsed)==value;}
+    if(!entryBaseFields.every(entry.containsKey)||entry.keys.any((k)=>!entryFields.contains(k))||
+        entry['family_id']!=familyId||!identifier(entry['created_by'])||entry['created_at'] is! String||
+        (entry['created_at'] as String).length>64||DateTime.tryParse(entry['created_at'] as String)?.isUtc!=true||
+        !date(entry['calendar_date'])||entry['calendar_offset_minutes'] is! int||
+        (entry['calendar_offset_minutes'] as int)<-1440||(entry['calendar_offset_minutes'] as int)>1440||
+        entry['amount_minor'] is! int||(entry['amount_minor'] as int).abs()>maxMinor||
+        entry['category'] is! String||(entry['category'] as String).length>16||!identifier(entry['category'])||
+        entry['exclude_from_budget'] is! bool||entry['note']!=null&&(entry['note'] is! String||(entry['note'] as String).runes.length>200))bad();
+    if(entrySourceFields.any(entry.containsKey)) {
+      if(!entrySourceFields.every(entry.containsKey)||entry['source_plugin']!='subscription'||
+          !identifier(entry['source_id'])||!date(entry['source_occurrence'])||
+          entry['calendar_date']!=entry['source_occurrence']||
+          entry['source_event_id']!=uuid.v5(namespace,'subscription-charge:$familyId:${entry['source_id']}:${entry['source_occurrence']}')||
+          expectedId!=null&&expectedId!=uuid.v5(namespace,'subscription-expense:$familyId:${entry['source_id']}:${entry['source_occurrence']}'))bad();
+    }
+    return entry;
   }
 
   static Never invalid(String message) => throw ApiException(
@@ -430,15 +459,10 @@ class StockAccountingRoutes {
     }
   }
   Json _entry(Json row) {
-    if (row['entry'] is! String) throw ApiException('ACCOUNTING_INVALID', '账目本地记录不完整', statusCode: 409);
-    final entry = Json.from(jsonDecode(row['entry'] as String) as Map);
-    final minor = entry['amount_minor'];
-    if (minor is! int || minor.abs() > maxMinor || entry['exclude_from_budget'] is! bool ||
-        entry['family_id'] != row['family_id'] || entry['created_at'] is! String || entry['category'] is! String) {
-      throw ApiException('ACCOUNTING_INVALID', '账目金额或来源无效', statusCode: 409);
-    }
-    _validDate(entry['calendar_date']);
-    return {...entry, 'id': row['id'], 'amount': moneyText(minor)};
+    Json entry;
+    try {entry=decodeEntry(row['entry'],familyId:row['family_id'] as String,expectedId:row['id'] as String);}
+    on FormatException {throw ApiException('ACCOUNTING_INVALID','账目金额或来源无效',statusCode:409);}
+    return {...entry,'id':row['id'],'amount':moneyText(entry['amount_minor'] as int)};
   }
   Future<int?> _budget(DatabaseExecutor tx, String fid) async {
     final row = await _document(tx, fid, _acctCol(fid, 'budget'), 'monthly');

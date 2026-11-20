@@ -30,8 +30,8 @@ class RetirementSubscriptionRoutes {
     'notifications': {'type', 'title', 'body', 'icon_emoji', 'created_by', 'created_at', 'read_by', 'status', 'recipient_ids', 'source_plugin', 'source_id'},
   };
   static const immutableCollections = {'plugins/retirement/ledger', 'plugins/subscription/charges'};
-  static const eventFields = {'event_id', 'kind', 'account_id', 'debt_id', 'subscription_id', 'amount_minor', 'period', 'expense_period', 'due', 'next_due_after', 'auto_recorded', 'note', 'actor', 'order', 'created_at'};
-  static const eventSemanticFields = {'kind', 'account_id', 'debt_id', 'subscription_id', 'amount_minor', 'period', 'expense_period', 'due', 'next_due_after', 'auto_recorded'};
+  static const eventFields = {'event_id', 'kind', 'account_id', 'debt_id', 'subscription_id', 'amount_minor', 'period', 'expense_period', 'due', 'next_due_after', 'auto_recorded', 'accounting_category', 'exclude_from_budget', 'note', 'actor', 'order', 'created_at'};
+  static const eventSemanticFields = {'kind', 'account_id', 'debt_id', 'subscription_id', 'amount_minor', 'period', 'expense_period', 'due', 'next_due_after', 'auto_recorded', 'accounting_category', 'exclude_from_budget'};
   static const accountEntryFields = {'name', 'kind', 'emoji', 'balance_minor', 'monthly_income_minor', 'income_day', 'family_id', 'created_at', 'created_by', 'created_on', 'basis_event_ids', 'acknowledged_conflicts', 'settlement_checks'};
   static const debtEntryFields = {'name', 'kind', 'emoji', 'balance_minor', 'monthly_payment_minor', 'payment_day', 'active', 'from_account_id', 'family_id', 'created_at', 'created_by', 'created_on', 'basis_event_ids', 'acknowledged_conflicts'};
   static const planEntryFields = {'retire_date', 'savings_goal_minor', 'goal_basis', 'surplus_basis', 'updated_by', 'updated_at'};
@@ -60,9 +60,9 @@ class RetirementSubscriptionRoutes {
     final kind = event['kind'], amount = event['amount_minor'] as int;
     if (subscription != null && subscription != (kind == 'subscription_charge')) bad();
     if (kind == 'subscription_charge') {
-      if (!identifier(event['subscription_id']) || amount <= 0 || amount > StockAccountingRoutes.maxMinor || event['auto_recorded'] is! bool) bad();
+      if (!identifier(event['subscription_id']) || amount <= 0 || amount > StockAccountingRoutes.maxMinor || event['auto_recorded'] is! bool || event['accounting_category'] is! String || (event['accounting_category'] as String).isEmpty || (event['accounting_category'] as String).length > 16 || event['exclude_from_budget'] is! bool) bad();
       final due = day(event['due']), next = day(event['next_due_after']);
-      if (!next.isAfter(due) || period(due) != event['period'] || event.keys.any((k) => !{'event_id', 'kind', 'subscription_id', 'amount_minor', 'period', 'due', 'next_due_after', 'auto_recorded', 'note', 'actor', 'order', 'created_at'}.contains(k))) bad();
+      if (!next.isAfter(due) || period(due) != event['period'] || event.keys.any((k) => !{'event_id', 'kind', 'subscription_id', 'amount_minor', 'period', 'due', 'next_due_after', 'auto_recorded', 'accounting_category', 'exclude_from_budget', 'note', 'actor', 'order', 'created_at'}.contains(k))) bad();
     } else if (kind == 'income' || kind == 'debt_payment' || kind == 'expense_settle') {
       if (event['account_id'] != null && !identifier(event['account_id']) || event['debt_id'] != null && !identifier(event['debt_id'])) bad();
       if (kind == 'income' && (!identifier(event['account_id']) || event['debt_id'] != null || amount <= 0 || amount > maxMinor)) bad();
@@ -575,12 +575,14 @@ class RetirementSubscriptionRoutes {
       await _appendEvent(tx, fid, 'subscription', 'charges', id, {'kind': 'subscription_charge',
         'subscription_id': sourceId, 'amount_minor': entry['amount_minor'], 'due': due,
         'period': due.substring(0, 7), 'next_due_after': advanceDue(due, entry['cycle'] as String),
-        'auto_recorded': recorded, 'note': '${entry['name']} 订阅到期'}, changes);
+        'auto_recorded': recorded, 'accounting_category': entry['accounting_category'],
+        'exclude_from_budget': entry['exclude_from_budget'], 'note': '${entry['name']} 订阅到期'}, changes);
       if (recorded) {
-        final expense = {'family_id': fid, 'created_by': entry['created_by'], 'created_at': now().toUtc().toIso8601String(),
+        final expense = {'family_id': fid, 'created_by': store.deviceId, 'created_at': now().toUtc().toIso8601String(),
           'calendar_date': due, 'calendar_offset_minutes': now().toLocal().timeZoneOffset.inMinutes,
           'amount_minor': entry['amount_minor'], 'category': entry['accounting_category'],
-          'note': '${entry['name']} 订阅扣费', 'exclude_from_budget': entry['exclude_from_budget']};
+          'note': '${entry['name']} 订阅扣费', 'exclude_from_budget': entry['exclude_from_budget'],
+          'source_plugin': 'subscription', 'source_id': sourceId, 'source_occurrence': due, 'source_event_id': id};
         changes.add(change(fid, col(fid, 'accounting', 'transactions'), stable('subscription-expense:$fid:$sourceId:$due'),
           {'family_id': fid, 'entry': LocalStore.canonical(expense)}));
       }

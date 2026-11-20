@@ -9,6 +9,7 @@ class SyncPolicyContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.policy=(ROOT/'lib/local/sync/sync_policy.dart').read_text()
+        cls.stock=(ROOT/'lib/local/plugins/stock_accounting.dart').read_text()
         cls.wire=(ROOT/'lib/local/sync/sync_wire.dart').read_text()
         cls.coordinator=(ROOT/'lib/local/sync/sync_coordinator.dart').read_text()
         cls.prepared=(ROOT/'test/local/sync/portable_policy_test.dart').read_text()
@@ -44,8 +45,9 @@ class SyncPolicyContractTests(unittest.TestCase):
 
     def test_business_calendar_is_independent_of_processing_timestamp(self):
         entry=self.policy.split('static void _entry(',1)[1].split('static void _request(',1)[0]
-        self.assertIn("_calendar(value['calendar_date'])",entry)
-        self.assertIn("_timestamp(value['created_at'])",entry)
+        self.assertIn('StockAccountingRoutes.decodeEntry(',entry)
+        self.assertIn("!date(entry['calendar_date'])",self.stock)
+        self.assertIn("DateTime.tryParse(entry['created_at'] as String)?.isUtc!=true",self.stock)
         self.assertNotIn('Duration(minutes:',entry)
         self.assertNotIn('calendarDate(calendar)',entry)
         self.assertIn("'calendar_date':'2026-01-01'",self.prepared)

@@ -1,5 +1,6 @@
 // Prepared only. No Flutter/Dart/SDK execution was performed for this module.
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -91,6 +92,13 @@ void main() {
     await routes.processDue(fid);
     expect((await row('GET', ['subscription', 'subscriptions', sub['id'] as String]))['next_due'], '2023-03-28');
     final expenses = await store.list(fid, '/families/$fid/plugins/accounting/transactions'); expect(expenses, hasLength(2));
+    for (final raw in expenses) {
+      final entry = jsonDecode(raw['entry'] as String) as Map;
+      expect(entry['created_by'], store.deviceId); expect(entry['source_plugin'], 'subscription');
+      expect(entry['source_id'], sub['id']); expect(entry['source_occurrence'], entry['calendar_date']);
+      expect(entry['source_event_id'], isA<String>());
+      expect(entry['created_at'], clock.toUtc().toIso8601String());
+    }
     final accounting = StockAccountingRoutes(store, now: () => clock);
     final summary = await accounting.request('GET', fid, ['accounting', 'summary'], query: {'year': 2023, 'month': 2});
     expect((summary!.data as Map)['month_total'], '9.99');

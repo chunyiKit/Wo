@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../local_media_repository.dart';
 import '../local_store.dart';
 import '../plugins/stock_accounting.dart';
+import '../plugins/retirement_subscription.dart';
 import 'strict_json.dart';
 import 'peer_registry.dart';
 import 'sync_wire.dart';
@@ -78,19 +79,19 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     for(final k in ['confirm_stocktake','bought']){if(body.containsKey(k)&&body[k] is! bool)_badEmbedded();}
     if(body.containsKey('client_id')&&!_text(body['client_id'],100))_badEmbedded();
   }
-  static void _entry(Json value,{required String familyId,required String id,Json? previous,String? actor}){
-    _fields(value,StockAccountingRoutes.entryFields,{});
-    if(value['family_id']!=familyId||value['created_by'] is! String||!syncId(value['created_by'] as String)||
-        !_timestamp(value['created_at'])||!_calendar(value['calendar_date'])||
-        !_integer(value['calendar_offset_minutes'],-1440,1440)||
-        !_integer(value['amount_minor'],-StockAccountingRoutes.maxMinor,StockAccountingRoutes.maxMinor)||
-        value['category'] is! String||(value['category'] as String).length>16||!syncId(value['category'] as String)||
-        !_text(value['note'],200,nullable:true,empty:true)||value['exclude_from_budget'] is! bool)_badEmbedded();
-    // calendar_date为独立业务账期；离线补记/订阅到期日可早于实际created_at，绝不反推改写。
+  static void _entry(Json value,{required String familyId,required String id,Json? previous,String? actor,bool verifiedAutomaticSource=false,bool verifiedPriorOrigin=false}){
+    StockAccountingRoutes.decodeEntry(LocalStore.canonical(value),familyId:familyId,expectedId:id);
+    final automatic=StockAccountingRoutes.entrySourceFields.every(value.containsKey);
     if(previous!=null){
-      final old=_jsonObject(previous['entry']);
-      for(final k in ['family_id','created_by','created_at','calendar_date','calendar_offset_minutes']){if(value[k]!=old[k])_badEmbedded();}
-    }else if(actor!=null&&value['created_by']!=actor){_badEmbedded();}
+      final old=StockAccountingRoutes.decodeEntry(previous['entry'],familyId:familyId,expectedId:id);
+      if(StockAccountingRoutes.entrySourceFields.any((key)=>value[key]!=old[key]))_badEmbedded();
+      final collision=automatic&&verifiedAutomaticSource&&actor!=null&&value['created_by']==actor;
+      final prior=automatic&&verifiedPriorOrigin;
+      for(final key in ['family_id','created_by','created_at','calendar_date','calendar_offset_minutes']){
+        if(value[key]!=old[key]&&!((collision||prior)&&{'created_by','created_at','calendar_offset_minutes'}.contains(key)))_badEmbedded();
+      }
+    }else if(actor!=null&&(value['created_by']!=actor||automatic&&!verifiedAutomaticSource)){_badEmbedded();}
+    // calendar_date为独立业务账期；离线补记/订阅到期日可早于实际created_at，绝不反推改写。
   }
   static void _request(String suffix,String familyId,String id,Json fields){
     _fields(fields,{'fingerprint','response'},{});
@@ -165,8 +166,8 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     }else if(plugin=='accounting'&&tail[1]=='budget'){
       _fields(response,{'monthly_amount'},{});if(_money(response['monthly_amount'],nonnegative:true)!=_money(body['monthly_amount'],nonnegative:true))_badEmbedded();
     }else if(plugin=='accounting'){
-      _fields(response,{...StockAccountingRoutes.entryFields,'id','amount','creator_name','creator_emoji','creator_avatar_url'},{});
-      _entry({for(final k in StockAccountingRoutes.entryFields)k:response[k]},familyId:familyId,id:response['id'] as String);
+      _fields(response,{...StockAccountingRoutes.entryBaseFields,'id','amount','creator_name','creator_emoji','creator_avatar_url'},StockAccountingRoutes.entrySourceFields);
+      _entry({for(final k in StockAccountingRoutes.entryFields)if(response.containsKey(k))k:response[k]},familyId:familyId,id:response['id'] as String);
     }else{
       final toBuy=tail.length==4&&tail[1]=='items'&&tail[3]=='to-buy';
       final item=tail[1]=='items'&&!toBuy;
@@ -194,11 +195,206 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     }
   }
 
+  static bool _period(Object? value)=>value is String&&value.length==7&&
+    RegExp(r'^[0-9]{4}-(0[1-9]|1[0-2])$').hasMatch(value)&&int.parse(value.substring(0,4))>=1;
+  static bool _idList(Object? value)=>value is List&&value.length<=4096&&value.every((v)=>v is String&&syncId(v));
+  static bool _conflictList(Object? value)=>value is List&&value.length<=4096&&value.every((v)=>v is String);
+  static int _financeMoney(Object? value,{bool nonnegative=false,bool subscription=false}){
+    try{return RetirementSubscriptionRoutes.minor(value,nonnegative:nonnegative,subscription:subscription);}catch(_){_badEmbedded();}
+  }
+  static int _renderedMoney(Object? value){
+    if(value is! String||value.length>20||!RegExp(r'^-?[0-9]{1,14}\.[0-9]{2}$').hasMatch(value))_badEmbedded();
+    final negative=value.startsWith('-'),parts=(value.startsWith('-')?value.substring(1):value).split('.');
+    final minor=int.parse(parts[0])*100+int.parse(parts[1]);if(minor>RetirementSubscriptionRoutes.safeInteger)_badEmbedded();
+    return negative?-minor:minor;
+  }
+  static Json _financeEvent(String familyId,String suffix,String id,Object? encoded,{String? actor,int? clock}){
+    final decoded=_jsonObject(encoded);Json event;
+    try{event=RetirementSubscriptionRoutes.decodeEvent(LocalStore.canonical(decoded),expectedId:id,actor:actor,order:clock,subscription:suffix=='plugins/subscription/charges');}
+    catch(_){_badEmbedded();}
+    if(!_period(event['period'])||event['actor'] is! String||!syncId(event['actor'] as String)||
+        !_integer(event['order'],1,1<<40)||!_timestamp(event['created_at']))_badEmbedded();
+    for(final key in ['account_id','debt_id','subscription_id']){if(event[key]!=null&&(event[key] is! String||!syncId(event[key] as String)))_badEmbedded();}
+    String source;
+    if(event['kind']=='subscription_charge'){
+      if(!_calendar(event['due'])||!_calendar(event['next_due_after'])||event['accounting_category'] is! String||
+          (event['accounting_category'] as String).length>16||!syncId(event['accounting_category'] as String)||event['exclude_from_budget'] is! bool)_badEmbedded();
+      source='subscription-charge:$familyId:${event['subscription_id']}:${event['due']}';
+    }else{
+      if(event['kind']=='expense_settle'&&!_period(event['expense_period']))_badEmbedded();
+      final origin=event['kind']=='income'?event['account_id']:event['kind']=='debt_payment'?event['debt_id']:'family';
+      source='retirement:$familyId:${event['kind']}:${event['period']}:$origin';
+    }
+    if(id!=StockAccountingRoutes.uuid.v5(StockAccountingRoutes.namespace,source))_badEmbedded();
+    return event;
+  }
+  static void _financeEntry(String familyId,String suffix,String id,Json fields,{Json? previous,String? actor}){
+    _fields(fields,{'family_id','entry'},{});if(fields['family_id']!=familyId)_badEmbedded();
+    final entry=_jsonObject(fields['entry']);
+    final account=suffix=='plugins/retirement/accounts',debt=suffix=='plugins/retirement/debts',plan=suffix=='plugins/retirement/plan';
+    final allowed=account?RetirementSubscriptionRoutes.accountEntryFields:debt?RetirementSubscriptionRoutes.debtEntryFields:
+      plan?RetirementSubscriptionRoutes.planEntryFields:RetirementSubscriptionRoutes.subscriptionEntryFields;
+    _fields(entry,allowed,{});
+    if(plan){
+      if(id!='family'||entry['retire_date']!=null&&!_calendar(entry['retire_date'])||
+          entry['savings_goal_minor']!=null&&!_integer(entry['savings_goal_minor'],0,RetirementSubscriptionRoutes.maxMinor)||
+          !RetirementSubscriptionRoutes.goalBases.contains(entry['goal_basis'])||!RetirementSubscriptionRoutes.surplusBases.contains(entry['surplus_basis'])||
+          entry['updated_by'] is! String||!syncId(entry['updated_by'] as String)||actor!=null&&entry['updated_by']!=actor||!_timestamp(entry['updated_at']))_badEmbedded();
+      return;
+    }
+    if(entry['family_id']!=familyId||entry['created_by'] is! String||!syncId(entry['created_by'] as String)||
+        !_timestamp(entry['created_at'])||!_calendar(entry['created_on'])||!_text(entry['name'],40)||!_text(entry['emoji'],16))_badEmbedded();
+    if(previous!=null){final old=_jsonObject(previous['entry']);for(final key in ['family_id','created_by','created_at','created_on']){if(entry[key]!=old[key])_badEmbedded();}}
+    else if(actor!=null&&entry['created_by']!=actor){_badEmbedded();}
+    if(account||debt){
+      if(!(account?RetirementSubscriptionRoutes.accountKinds:RetirementSubscriptionRoutes.debtKinds).contains(entry['kind'])||
+          !_integer(entry['balance_minor'],debt?0:-RetirementSubscriptionRoutes.maxMinor,RetirementSubscriptionRoutes.maxMinor)||
+          !_integer(entry[debt?'monthly_payment_minor':'monthly_income_minor'],0,RetirementSubscriptionRoutes.maxMinor)||
+          !_integer(entry[debt?'payment_day':'income_day'],1,28)||!_idList(entry['basis_event_ids'])||!_conflictList(entry['acknowledged_conflicts']))_badEmbedded();
+      if(debt){if(entry['active'] is! bool||entry['from_account_id']!=null&&(entry['from_account_id'] is! String||!syncId(entry['from_account_id'] as String)))_badEmbedded();}
+      else{
+        final checks=entry['settlement_checks'];if(checks is! Map||checks.length>4096||checks.entries.any((e)=>e.key is! String||!syncId(e.key as String)||!_integer(e.value,-RetirementSubscriptionRoutes.safeInteger,RetirementSubscriptionRoutes.safeInteger)))_badEmbedded();
+      }
+    }else{
+      if(!_integer(entry['amount_minor'],1,StockAccountingRoutes.maxMinor)||!{'monthly','yearly'}.contains(entry['cycle'])||!_calendar(entry['next_due'])||
+          !_text(entry['note'],200,nullable:true,empty:true)||!_integer(entry['notify_days_before'],0,60)||
+          entry['accounting_category'] is! String||(entry['accounting_category'] as String).length>16||!syncId(entry['accounting_category'] as String)||
+          !['notify_enabled','auto_record','exclude_from_budget','active'].every((k)=>entry[k] is bool)||!_conflictList(entry['acknowledged_charge_conflicts']))_badEmbedded();
+    }
+  }
+  static void _financeRequest(String familyId,String suffix,String id,Json fields){
+    _fields(fields,{'fingerprint','response'},{});final fp=_jsonObject(fields['fingerprint']);_fields(fp,{'method','tail','body','query'},{});
+    final plugin=suffix.startsWith('plugins/retirement/')?'retirement':'subscription',rawTail=fp['tail'];
+    if(rawTail is! List||rawTail.length<2||rawTail.length>3||rawTail.any((v)=>v is! String||!syncId(v))||fp['body'] is! Map||fp['query'] is! Map||(fp['query'] as Map).isNotEmpty)_badEmbedded();
+    final tail=rawTail.cast<String>(),body=Json.from(fp['body'] as Map),method=fp['method'];_noOriginal(body);
+    if(tail[0]!=plugin||!_text(body['client_id'],100)||id!=StockAccountingRoutes.uuid.v5(StockAccountingRoutes.namespace,'$plugin-client:$familyId:${(body['client_id'] as String).trim()}'))_badEmbedded();
+    final resource=tail[1],subscription=plugin=='subscription',plan=!subscription&&resource=='plan',debt=!subscription&&resource=='debts';
+    if(subscription&&resource!='subscriptions'||!subscription&&!{'accounts','debts','plan'}.contains(resource))_badEmbedded();
+    if(method=='DELETE'){
+      if(tail.length!=3||plan)_badEmbedded();_fields(body,{'client_id'},{});
+    }else{
+      if(plan?(tail.length!=2||method!='PUT'):(tail.length==2?method!='POST':method!='PUT'))_badEmbedded();
+      final keys=subscription?{'name','emoji','amount','cycle','next_due','note','notify_enabled','notify_days_before','auto_record','accounting_category','exclude_from_budget','active','confirm_billing','client_id'}:
+        plan?{'retire_date','savings_goal','goal_basis','surplus_basis','client_id'}:
+        {'name','kind','emoji','balance',if(debt)...['monthly_payment','payment_day','from_account_id','active']else...['monthly_income','income_day'],'client_id'};
+      _fields(body,{'client_id'},keys);
+      if(!plan&&tail.length==2&&(!body.containsKey('name')||!body.containsKey(subscription?'amount':'balance')||subscription&&!body.containsKey('next_due')))_badEmbedded();
+      for(final key in ['name','emoji']){if(body.containsKey(key)&&!_text(body[key],key=='name'?40:16))_badEmbedded();}
+      for(final key in ['amount','balance','monthly_payment','monthly_income','savings_goal']){
+        if(body.containsKey(key)&&!(key=='savings_goal'&&body[key]==null)){
+          final minor=_financeMoney(body[key],nonnegative:key!='balance'||debt,subscription:key=='amount');if(key=='amount'&&minor<=0)_badEmbedded();
+        }
+      }
+      if(body.containsKey('kind')&&!(debt?RetirementSubscriptionRoutes.debtKinds:RetirementSubscriptionRoutes.accountKinds).contains(body['kind']))_badEmbedded();
+      for(final key in ['income_day','payment_day']){if(body.containsKey(key)&&!_integer(body[key],1,28))_badEmbedded();}
+      for(final key in ['active','confirm_billing','notify_enabled','auto_record','exclude_from_budget']){if(body.containsKey(key)&&body[key] is! bool)_badEmbedded();}
+      for(final key in ['retire_date','next_due']){if(body.containsKey(key)&&!(key=='retire_date'&&body[key]==null)&&!_calendar(body[key]))_badEmbedded();}
+      if(body['from_account_id']!=null&&(body['from_account_id'] is! String||!syncId(body['from_account_id'] as String)))_badEmbedded();
+      if(body.containsKey('note')&&!_text(body['note'],200,nullable:true,empty:true)||body.containsKey('notify_days_before')&&!_integer(body['notify_days_before'],0,60)||
+          body.containsKey('cycle')&&!{'monthly','yearly'}.contains(body['cycle'])||body.containsKey('accounting_category')&&(body['accounting_category'] is! String||(body['accounting_category'] as String).length>16||!syncId(body['accounting_category'] as String))||
+          body.containsKey('goal_basis')&&!RetirementSubscriptionRoutes.goalBases.contains(body['goal_basis'])||body.containsKey('surplus_basis')&&!RetirementSubscriptionRoutes.surplusBases.contains(body['surplus_basis']))_badEmbedded();
+      if(body['confirm_billing']==true&&!body.containsKey('next_due'))_badEmbedded();
+    }
+    if(fields['response'] is! Map)_badEmbedded();final response=Json.from(fields['response'] as Map);_noOriginal(response);
+    _fields(response,{},RetirementSubscriptionRoutes.requestResponseFields);
+    if(method=='DELETE'){_fields(response,{'deleted'},{});if(response['deleted']!=tail[2])_badEmbedded();return;}
+    if(plan){
+      _fields(response,{'retire_date','savings_goal','goal_basis','surplus_basis'},{});
+      if(response['retire_date']!=null&&!_calendar(response['retire_date'])||response['savings_goal']!=null&&_renderedMoney(response['savings_goal'])<0||
+          !RetirementSubscriptionRoutes.goalBases.contains(response['goal_basis'])||!RetirementSubscriptionRoutes.surplusBases.contains(response['surplus_basis']))_badEmbedded();return;
+    }
+    final entryFields=subscription?RetirementSubscriptionRoutes.subscriptionEntryFields:debt?RetirementSubscriptionRoutes.debtEntryFields:RetirementSubscriptionRoutes.accountEntryFields;
+    final derived=subscription?{'amount','days_until','billing_conflict'}:debt?{'balance','balance_conflict','monthly_payment'}:{'balance','balance_conflict','monthly_income','settlement_conflict'};
+    _fields(response,{...entryFields,...derived,'id','creator_name','creator_emoji','creator_avatar_url'},{});
+    if(response['id'] is! String||!syncId(response['id'] as String)||response['creator_avatar_url']!=null||
+        !_text(response['creator_name'],64,nullable:true,empty:true)||!_text(response['creator_emoji'],16,nullable:true,empty:true))_badEmbedded();
+    final entry=<String,dynamic>{for(final key in entryFields)key:response[key]};
+    _financeEntry(familyId,'plugins/$plugin/$resource',response['id'] as String,{'family_id':familyId,'entry':LocalStore.canonical(entry)});
+    if(subscription){if(_renderedMoney(response['amount'])!=entry['amount_minor']||!_integer(response['days_until'],-4000000,4000000)||response['billing_conflict'] is! bool)_badEmbedded();}
+    else{_renderedMoney(response['balance']);if(response['balance_conflict'] is! bool||!debt&&response['settlement_conflict'] is! bool||
+        _renderedMoney(response[debt?'monthly_payment':'monthly_income'])!=entry[debt?'monthly_payment_minor':'monthly_income_minor'])_badEmbedded();}
+    final expected=tail.length==3?tail[2]:StockAccountingRoutes.uuid.v5(StockAccountingRoutes.namespace,subscription?'$familyId:subscription:${body['client_id']}':'$familyId:$resource:${body['client_id']}');
+    if(response['id']!=expected)_badEmbedded();
+  }
+
+  Future<({bool initial,bool priorOrigin})> _automaticSource(String familyId,String scope,String id,Json fields,Json? previous,
+      String actor,int clock,Map<String,Json> pendingProofs)async{
+    final entry=StockAccountingRoutes.decodeEntry(fields['entry'],familyId:familyId,expectedId:id);
+    if(!StockAccountingRoutes.entrySourceFields.any(entry.containsKey))return (initial:false,priorOrigin:false);
+    final sourceId=entry['source_event_id'] as String,creator=entry['created_by'] as String;
+    final collection='/families/$scope/plugins/subscription/charges',key='$scope|$sourceId|$creator';
+    Json? proof=pendingProofs[key];
+    if(proof==null){
+      // 只取已保存的原actor操作，不把另一设备的LWW文档快照当成来源签发证明。
+      final rows=await store.db.query('operations',columns:['payload'],
+        where:'space=? AND actor=? AND instr(payload,?)>0',whereArgs:[scope,creator,sourceId],orderBy:'sequence',limit:256);
+      for(final row in rows){final op=Json.from(decodeStrictJson(row['payload'] as String) as Map);
+        if(op['collection']==collection&&op['id']==sourceId&&op['actor']==creator&&op['kind']=='patch'){proof=op;break;}
+      }
+    }
+    if(proof==null||proof['space']!=scope||proof['collection']!=collection||proof['id']!=sourceId||
+        proof['actor']!=creator||proof['clock'] is! int||proof['fields'] is! Map)_badEmbedded();
+    final proofFields=Json.from(proof['fields'] as Map);_fields(proofFields,{'event'},{});
+    final charge=_financeEvent(familyId,'plugins/subscription/charges',sourceId,proofFields['event'],actor:creator,clock:proof['clock'] as int);
+    if(charge['auto_recorded']!=true||charge['subscription_id']!=entry['source_id']||charge['due']!=entry['source_occurrence'])_badEmbedded();
+    final initial=entry['created_by']==actor&&entry['amount_minor']==charge['amount_minor']&&
+      entry['category']==charge['accounting_category']&&entry['exclude_from_budget']==charge['exclude_from_budget'];
+    bool origin(Json op){
+      if(op['space']!=scope||op['collection']!='/families/$scope/plugins/accounting/transactions'||op['id']!=id||op['kind']!='patch'||
+          op['actor']!=creator||!_integer(op['sequence'],1,1<<40)||op['clock'] is! int||(op['clock'] as int)<=charge['order']||
+          (op['clock'] as int)>=clock||op['fields'] is! Map)return false;
+      final payload=Json.from(op['fields'] as Map);if(payload['entry'] is! String)return false;
+      final value=StockAccountingRoutes.decodeEntry(payload['entry'],familyId:familyId,expectedId:id);
+      return value['created_by']==creator&&value['created_at']==entry['created_at']&&value['calendar_offset_minutes']==entry['calendar_offset_minutes']&&
+        StockAccountingRoutes.entrySourceFields.every((k)=>value[k]==entry[k])&&value['amount_minor']==charge['amount_minor']&&
+        value['category']==charge['accounting_category']&&value['exclude_from_budget']==charge['exclude_from_budget'];
+    }
+    var priorOrigin=false;
+    if(!initial){
+      priorOrigin=pendingProofs.values.any(origin);
+      if(!priorOrigin){
+        final rows=await store.db.query('operations',columns:['payload'],where:'space=? AND actor=? AND instr(payload,?)>0',whereArgs:[scope,creator,id],orderBy:'sequence',limit:256);
+        for(final row in rows){if(origin(Json.from(decodeStrictJson(row['payload'] as String) as Map))){priorOrigin=true;break;}}
+      }
+    }
+    if(previous==null&&!initial)_badEmbedded();
+    if(previous!=null){
+      final old=StockAccountingRoutes.decodeEntry(previous['entry'],familyId:familyId,expectedId:id);
+      if(StockAccountingRoutes.entrySourceFields.any((k)=>old[k]!=entry[k]))_badEmbedded();
+      final originChanged=['created_by','created_at','calendar_offset_minutes'].any((k)=>old[k]!=entry[k]);
+      if(originChanged&&!initial&&!priorOrigin)_badEmbedded();
+    }
+    return (initial:initial,priorOrigin:priorOrigin);
+  }
+  static void _financeNotification(Json fields,{String? actor,Json? previous}){
+    _fields(fields,{'type','title','body','icon_emoji','created_by','created_at','read_by','status','recipient_ids','source_plugin','source_id'},{});
+    if(!{'retirement','subscription'}.contains(fields['source_plugin'])||
+        !(fields['source_plugin']=='retirement'?{'retirement_debt_charged','retirement_expense_settled'}:{'subscription_due','subscription_charged'}).contains(fields['type'])||
+        !_text(fields['title'],200)||!_text(fields['body'],2000)||!_text(fields['icon_emoji'],16)||
+        fields['created_by'] is! String||!syncId(fields['created_by'] as String)||!_timestamp(fields['created_at'])||
+        fields['status']!='pending_local_delivery'||fields['read_by'] is! List||(fields['read_by'] as List).isNotEmpty||
+        !_idList(fields['recipient_ids'])||(fields['recipient_ids'] as List).length>128||fields['source_id'] is! String||!syncId(fields['source_id'] as String))_badEmbedded();
+    if(actor!=null&&previous==null&&fields['created_by']!=actor)_badEmbedded();
+    if(previous!=null&&['source_plugin','source_id','type'].any((k)=>previous[k]!=fields[k]))_badEmbedded();
+  }
+
   /// 字段不含文档id；备份可复用本机句柄隔离和嵌套schema，不需要导出设备引用。
   /// actor/clock同时提供时还验证不可变事件的操作来源；最终快照无日志时只做结构验证。
   static void validatePortableFields({required String familyId,required String suffix,required String id,
-    required Json fields,Json? previous,String? actor,int? clock,bool deletion=false}){
+    required Json fields,Json? previous,String? actor,int? clock,bool deletion=false,bool verifiedAutomaticSource=false,bool verifiedPriorOrigin=false}){
     _noOriginal(fields);
+    if(RetirementSubscriptionRoutes.immutableCollections.contains(suffix)){
+      if(deletion)_badEmbedded();_fields(fields,{'event'},{});_financeEvent(familyId,suffix,id,fields['event'],actor:actor,clock:clock);return;
+    }
+    if(suffix=='plugins/retirement/requests'||suffix=='plugins/subscription/requests'){
+      if(deletion)_badEmbedded();_financeRequest(familyId,suffix,id,fields);return;
+    }
+    if(!deletion&&(suffix=='plugins/retirement/accounts'||suffix=='plugins/retirement/debts'||suffix=='plugins/retirement/plan'||suffix=='plugins/subscription/subscriptions')){
+      _financeEntry(familyId,suffix,id,fields,previous:previous,actor:actor);return;
+    }
+    if(suffix=='notifications'&&{'retirement','subscription'}.contains(fields['source_plugin'])){
+      if(deletion)_badEmbedded();_financeNotification(fields,actor:actor,previous:previous);return;
+    }
     if(suffix=='plugins/stock/events'){
       if(deletion)_badEmbedded();_fields(fields,{'event'},{});
       final decoded=_jsonObject(fields['event']);
@@ -230,7 +426,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       if(fields.containsKey('creation_request'))_stockBody(_jsonObject(fields['creation_request']),item:item,creation:true);
     }else if(suffix=='plugins/accounting/transactions'){
       _fields(fields,{'family_id','entry'},{});if(fields['family_id']!=familyId)_badEmbedded();
-      _entry(_jsonObject(fields['entry']),familyId:familyId,id:id,previous:previous,actor:actor);
+      _entry(_jsonObject(fields['entry']),familyId:familyId,id:id,previous:previous,actor:actor,verifiedAutomaticSource:verifiedAutomaticSource,verifiedPriorOrigin:verifiedPriorOrigin);
     }else if(suffix=='plugins/accounting/budget'){
       _fields(fields,{'family_id','entry'},{});final budget=_jsonObject(fields['entry']);_fields(budget,StockAccountingRoutes.budgetEntryFields,{});
       if(id!='monthly'||fields['family_id']!=familyId||!_integer(budget['monthly_amount_minor'],0,StockAccountingRoutes.maxMinor)||
@@ -281,7 +477,8 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
         final existingRows=await store.db.query('documents',columns:['data'],where:'space=? AND collection=? AND id=?',whereArgs:[scope,op['collection'],op['id']]);
         final previous=existingRows.isEmpty?null:Json.from(jsonDecode(existingRows.single['data'] as String) as Map);
         final complete=<String,dynamic>{...?previous,...fields};
-        validatePortableFields(familyId:peer.familyId,suffix:suffix,id:op['id'] as String,fields:complete,previous:previous,actor:store.deviceId,clock:op['clock'] as int,deletion:op['kind']=='delete');ops.add(op);
+        final verified=suffix=='plugins/accounting/transactions'&&op['kind']=='patch'?await _automaticSource(peer.familyId,scope,op['id'] as String,complete,previous,store.deviceId,op['clock'] as int,{}):(initial:false,priorOrigin:false);
+        validatePortableFields(familyId:peer.familyId,suffix:suffix,id:op['id'] as String,fields:complete,previous:previous,actor:store.deviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);ops.add(op);
         if((op['collection'] as String).endsWith('/plugins/memory/media')&&op['kind']=='patch'){final fields=op['fields'] as Map;if(fields['thumbnail_sha256'] is String)await addThumb(scope,op['id'] as String,fields['thumbnail_sha256'] as String);}
       }
       if(rows.length==64)more=true;
@@ -291,7 +488,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
   }
   @override Future<void> apply(PeerLink peer,Map<String,dynamic> value)async{
     _object(value,{'t','ops','thumbs','more'});if(value['t']!='delta'||value['ops'] is! List||value['thumbs'] is! List||value['more'] is! bool||(value['ops'] as List).length>64||(value['thumbs'] as List).length>16||wireBytes(value).length>syncMaxPlainBytes)throw const FormatException('增量批次无效');
-    final allowed=await _allowed(peer);final grouped=<String,List<Json>>{},shadow=<String,Json?>{},deleted=<String,bool>{},prefix=<String,int>{};
+    final allowed=await _allowed(peer);final pendingProofs=<String,Json>{};final grouped=<String,List<Json>>{},shadow=<String,Json?>{},deleted=<String,bool>{},prefix=<String,int>{};
     Future<Json?> row(String s,String c,String id)async{final k='$s|$c|$id';if(shadow.containsKey(k))return shadow[k];
       final rows=await store.db.query('documents',columns:['data','deleted'],where:'space=? AND collection=? AND id=?',whereArgs:[s,c,id]);if(rows.isEmpty)return null;deleted[k]=rows.single['deleted']==1;return {...Map<String,dynamic>.from(jsonDecode(rows.single['data'] as String) as Map),'id':id};}
     for(final raw in value['ops'] as List){final op=Map<String,dynamic>.from(raw as Map);_object(op,{'space','actor','sequence','clock','collection','id','kind','fields'});
@@ -313,8 +510,10 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       final stockCreation=(suffix=='plugins/stock/items'||suffix=='plugins/stock/buys')&&op['kind']=='patch'&&
         {'family_id','created_by','created_at','name','emoji'}.every(fields.containsKey)&&fields['created_by']==peer.remoteDeviceId;
       // 同收货/采购的确定性ID可在两台离线手机同时创建；其元数据作者按LWW，数量仍只认源事件。
+      final financeNotice=suffix=='notifications'&&{'retirement','subscription'}.contains(fields['source_plugin'])&&
+        {'type','title','body','icon_emoji','created_by','created_at','read_by','status','recipient_ids','source_plugin','source_id'}.every(fields.containsKey)&&fields['created_by']==peer.remoteDeviceId;
       if(fields.containsKey('created_by')&&((old==null&&fields['created_by']!=peer.remoteDeviceId)||
-          (old!=null&&old['created_by']!=fields['created_by']&&!stockCreation)))throw const FormatException('作者身份不可伪造');
+          (old!=null&&old['created_by']!=fields['created_by']&&!stockCreation&&!financeNotice)))throw const FormatException('作者身份不可伪造');
       if(suffix=='plugins/memory/memories'&&op['kind']=='patch'){
         if(merged['family_id']!=peer.familyId||merged['visibility']!=(scope==peer.familyId?'family':'couple'))throw const FormatException('私密或伴侣内容不能降级公开');
         if(old!=null&&fields.containsKey('visibility')&&old['visibility']!=fields['visibility'])throw const FormatException('可见范围不可修改');
@@ -331,7 +530,10 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       }
       final embedded=<String,dynamic>{...merged}..remove('id');
       final previous=old==null?null:(<String,dynamic>{...old}..remove('id'));
-      validatePortableFields(familyId:peer.familyId,suffix:suffix,id:id,fields:embedded,previous:previous,actor:peer.remoteDeviceId,clock:op['clock'] as int,deletion:op['kind']=='delete');
+      final verified=suffix=='plugins/accounting/transactions'&&op['kind']=='patch'?await _automaticSource(peer.familyId,scope,id,embedded,previous,peer.remoteDeviceId,op['clock'] as int,pendingProofs):(initial:false,priorOrigin:false);
+      validatePortableFields(familyId:peer.familyId,suffix:suffix,id:id,fields:embedded,previous:previous,actor:peer.remoteDeviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);
+      if(suffix=='plugins/subscription/charges'&&op['kind']=='patch')pendingProofs['$scope|$id|${op['actor']}']=op;
+      if(suffix=='plugins/accounting/transactions'&&op['kind']=='patch')pendingProofs['entry|$scope|$id|${op['actor']}|${op['sequence']}']=op;
       shadow['$scope|$collection|$id']=merged;if(op['kind']=='delete')deleted['$scope|$collection|$id']=true;(grouped[scope]??=[]).add(op);
     }
     final incoming=<({String scope,String id,String hash,Uint8List bytes})>[];
