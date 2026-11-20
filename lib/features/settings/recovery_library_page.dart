@@ -61,6 +61,8 @@ class _RecoveryLibraryPageState extends State<RecoveryLibraryPage> {
       title:const Text('加入独立恢复资料库？'),
       content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
         Text('记录 ${plan.documentCount} 项；缺件 ${plan.missingCount} 项；原件保真待确认 ${plan.unverifiedCount} 项。'),
+        const SizedBox(height:WoTokens.space2),Text(_packageNotice(plan.packageBound,plan.excludedPublicEntries)),
+        if(plan.coverageIssues.isNotEmpty)const Text('来源归档保留了祖先原件未关联或覆盖未知的缺项声明，不能视为原件齐全。'),
         const SizedBox(height:WoTokens.space3),Text(_evidenceNotice(plan.evidenceVersion)),
         const SizedBox(height:WoTokens.space3),const Text('只建立本机独立、只读的历史资料库。不会覆盖当前家庭，不恢复旧成员身份或伴侣绑定，不向家庭手机同步。'),
         const SizedBox(height:WoTokens.space3),const Text('本次归档指纹'),SelectableText(plan.fingerprint,style:const TextStyle(fontFamily:'monospace',fontSize:12)),
@@ -101,6 +103,8 @@ class _RecoveryLibraryPageState extends State<RecoveryLibraryPage> {
           if(_previewError!=null)...[Text(_previewError!),TextButton(onPressed:_previewBusy||_importBusy?null:_loadPreview,child:const Text('重新读取预览'))],
           if(plan!=null)...[
             Text('来源家庭标签：${plan.sourceFamilyId}'),Text('记录 ${plan.documentCount} 项 · 缺件 ${plan.missingCount} 项 · 原件保真待确认 ${plan.unverifiedCount} 项'),
+            const SizedBox(height:WoTokens.space2),Text(_packageNotice(plan.packageBound,plan.excludedPublicEntries)),
+        if(plan.coverageIssues.isNotEmpty)const Text('来源归档保留了祖先原件未关联或覆盖未知的缺项声明，不能视为原件齐全。'),
             const SizedBox(height:WoTokens.space2),Text(_evidenceNotice(plan.evidenceVersion)),
             const SizedBox(height:WoTokens.space2),const Text('归档指纹'),SelectableText(plan.fingerprint,style:const TextStyle(fontFamily:'monospace',fontSize:12)),
             const SizedBox(height:WoTokens.space3),FilledButton(onPressed:_previewBusy||_importBusy?null:_import,child:Text(_importBusy?'正在加入独立资料库…':'预览后确认加入')),
@@ -114,6 +118,8 @@ class _RecoveryLibraryPageState extends State<RecoveryLibraryPage> {
           onTap:()=>_open(workspace),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text('历史归档 · ${workspace.documentCount} 条记录',style:Theme.of(context).textTheme.titleMedium),
             Text('来源家庭标签：${workspace.sourceFamilyId}'),Text('缺件 ${workspace.missingCount} 项 · 原件保真待确认 ${workspace.unverifiedCount} 项'),
+            const SizedBox(height:WoTokens.space2),Text(_packageNotice(workspace.packageBound,workspace.excludedPublicEntries,imported:true)),
+            if(workspace.coverageIssues.isNotEmpty)const Text('祖先归档仍有原件未关联或覆盖未知；再次备份不消除这些缺项。'),
             const SizedBox(height:WoTokens.space2),Text(_evidenceNotice(workspace.evidenceVersion)),
             const SizedBox(height:WoTokens.space2),const Text('独立只读 · 不加入当前家庭 · 不向手机同步'),
             const Align(alignment:Alignment.centerRight,child:Icon(Icons.chevron_right)),
@@ -160,6 +166,8 @@ class _RecoveryWorkspacePageState extends State<_RecoveryWorkspacePage> {
       IconButton(tooltip:'静默刷新',onPressed:_loading?null:_refresh,icon:const Icon(Icons.refresh)),
     ]),body:SafeArea(top:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.all(WoTokens.space3),child:Text('独立只读。${_evidenceNotice(widget.workspace.evidenceVersion)} 不应用到当前家庭或同步。')),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:WoTokens.space3),child:Text(_packageNotice(widget.workspace.packageBound,widget.workspace.excludedPublicEntries,imported:true))),
+      if(widget.workspace.coverageIssues.isNotEmpty)const Padding(padding:EdgeInsets.all(WoTokens.space3),child:Text('祖先归档仍有原件未关联或覆盖未知；本包绑定不能证明祖先完整。')),
       if(_loading&&_documents!=null)const LinearProgressIndicator(semanticsLabel:'正在静默刷新历史资料'),
       if(_backupBusy)const LinearProgressIndicator(semanticsLabel:'正在打开独立资料库备份'),
       if(_error!=null)Padding(padding:const EdgeInsets.symmetric(horizontal:WoTokens.space3),child:Text(_error!)),
@@ -248,6 +256,11 @@ class _RecoveryMediaPageState extends State<_RecoveryMediaPage> {
     ])));
 }
 
+String _packageNotice(bool bound,int excluded,{bool imported=false}){
+  if(!bound)return '旧包未验证同包绑定，未关联公开文件 $excluded 项；只保留已校验内层的独立只读资料。';
+  final status=imported?'公开与内层可用文件已一并保存在本机私有资料库，缺件继续保留声明。':'确认后，公开与内层可用文件会一并私有导入，缺件不会补造。';
+  return '已验证同包。$status${excluded>0?' 另有公开文件 $excluded 项未关联。':''} 这不代表完整业务恢复。';
+}
 String _evidenceNotice(int version)=>switch(version){
   1=>'v1 记录没有操作历史或授权证据，不能重建旧成员权限。',
   0=>'归档没有可用记录证据；媒体校验不等于业务恢复。',
@@ -273,6 +286,10 @@ String _recoveryError(Object error){
     'recovery_records_integrity'=>'记录文件摘要不匹配，未加入资料库。',
     'recovery_unknown_schema'=>'归档含当前未支持的记录类型，未作为成功导入。',
     'recovery_backup_identity_mismatch'=>'独立资料库的备份身份不匹配，没有使用当前家庭替代。',
+    'package_binding_context'=>'备份包上下文不匹配，未关联公开文件。',
+    'package_binding_inventory'=>'备份包公开与内层清单不匹配，未关联公开文件。',
+    'package_binding_collision'=>'备份条目标识存在冲突，未作为同包导入。',
+    'package_binding_limit'||'package_total_limit'=>'备份包超过联合恢复限额，未作为成功导入。',
     'private_acl_unavailable'=>'此平台未验证私有目录权限，已停止打开或写入明文。',
     _=>'操作未完成，现有资料保持原样。请核对同一已校验归档后显式重试。',
   };

@@ -18,6 +18,7 @@ class QuarantineStore implements BackupReceiveStore {
   QuarantineStore._(this.directory);
   final Directory directory;
   BackupManifest? _manifest;bool _finished=false;
+  bool verifiedFor(BackupManifest manifest)=>_finished&&_manifest?.canonicalJson==manifest.canonicalJson;
   final _ranges=<String,List<_SavedRange>>{};
   Directory get _chunks=>Directory('${directory.path}${Platform.pathSeparator}ranges');
   static Future<QuarantineStore> create(Directory privateParent)async{
@@ -94,6 +95,15 @@ class QuarantineStore implements BackupReceiveStore {
       'restricted_requires_key':manifest.entries.any((e)=>e.kind=='sealed'),
       'missing':{for(final e in manifest.entries)if(e.missing.isNotEmpty)e.id:e.missing}
     }),flush:true);_finished=true;
+  }
+  /// 仅流出同一已完成清单的验证字节；读后仍核对全文摘要，消费者须等EOF才发布。
+  Stream<List<int>> verifiedRead(BackupEntry entry)async*{
+    _entry(entry);if(!_finished||entry.missing.isNotEmpty)throw const BackupException('quarantine_not_verified');
+    final hash=ArchiveSha256();var count=0;
+    for(final range in _ranges[entry.id]!){await _verifyRange(range);await for(final bytes in range.file.openRead()){
+      count+=bytes.length;if(count>entry.size)throw const BackupException('full_digest_mismatch');hash.add(bytes);yield bytes;
+    }}
+    if(count!=entry.size||backupHex(hash.finish())!=entry.sha256)throw const BackupException('full_digest_mismatch');
   }
   /// 文件仍是惰性缓存，sealed 仍为密文；不会重用源URI、书签、照片ID或设备身份。
   Future<File> materializeVerifiedFile(BackupEntry entry)async{

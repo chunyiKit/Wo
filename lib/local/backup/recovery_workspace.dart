@@ -10,6 +10,7 @@ import 'backup_models.dart';
 import 'mobile_backup_controller.dart';
 import 'portable_archive.dart';
 import 'record_evidence.dart';
+import 'package_binding.dart';
 
 typedef RecoveryFieldValidator=void Function({required String familyId,required String suffix,required String id,required Map<String,dynamic> fields});
 
@@ -18,8 +19,12 @@ class RecoveryWorkspace {
   RecoveryWorkspace(Map<String,Object?> row):id=row['id'] as String,
     sourceFamilyId=row['source_family'] as String,ownerDeviceId=row['owner'] as String,
     documentCount=row['document_count'] as int,missingCount=row['missing_count'] as int,
-    unverifiedCount=row['unverified_count'] as int,evidenceVersion=row['evidence_version'] as int;
-  final String id,sourceFamilyId,ownerDeviceId;
+    unverifiedCount=row['unverified_count'] as int,evidenceVersion=row['evidence_version'] as int,
+    packageOrigin=(row['package_origin'] as String? ?? ''),excludedPublicEntries=(row['excluded_public'] as int? ?? 0);
+  final String id,sourceFamilyId,ownerDeviceId,packageOrigin;final int excludedPublicEntries;
+  Map<String,dynamic> get _packageMetadata=>packageOrigin.isEmpty?const {}:backupObject(jsonDecode(packageOrigin));
+  bool get packageBound=>_packageMetadata.containsKey('context')?_packageMetadata['context'] is Map:packageOrigin.isNotEmpty;
+  List<String> get coverageIssues=>List<String>.from(_packageMetadata['coverage_issues'] as List? ?? const []);
   final int documentCount,missingCount,unverifiedCount,evidenceVersion;
   bool get normalImportAllowed=>false;
   bool get peerExportable=>false;
@@ -32,9 +37,10 @@ class RecoveryDocument {
   final String space,collection,id;final Map<String,dynamic> fields;final bool deleted;
 }
 class RecoveryPreview {
-  RecoveryPreview(this.fingerprint,this.sourceFamilyId,this.documents,this.missingCount,this.unverifiedCount,this.evidenceVersion);
+  RecoveryPreview(this.fingerprint,this.sourceFamilyId,this.documents,this.missingCount,this.unverifiedCount,this.evidenceVersion,{this.packageBound=false,this.excludedPublicEntries=0,this.coverageIssues=const []});
   final String fingerprint,sourceFamilyId;final List<RecoveryDocument> documents;
   final int missingCount,unverifiedCount,evidenceVersion;
+  final bool packageBound;final int excludedPublicEntries;final List<String> coverageIssues;
   int get documentCount=>documents.length;
 }
 
@@ -50,19 +56,20 @@ class RecoveryWorkspaceStore {
     final type=await FileSystemEntity.type(path,followLinks:false);
     if(type!=FileSystemEntityType.notFound&&type!=FileSystemEntityType.file)throw const BackupException('untrusted_recovery_path');
     for(final suffix in ['-wal','-shm','-journal']){final t=await FileSystemEntity.type('$path$suffix',followLinks:false);if(t!=FileSystemEntityType.notFound&&t!=FileSystemEntityType.file)throw const BackupException('untrusted_recovery_path');}
-    final db=await (factory??databaseFactory).openDatabase(path,options:OpenDatabaseOptions(version:1,singleInstance:false,onCreate:(db,_)async{
-      await db.execute('CREATE TABLE workspaces(id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, source_family TEXT NOT NULL, owner TEXT NOT NULL, state TEXT NOT NULL, document_count INTEGER NOT NULL, missing_count INTEGER NOT NULL, unverified_count INTEGER NOT NULL, evidence_version INTEGER NOT NULL)');
+    final db=await (factory??databaseFactory).openDatabase(path,options:OpenDatabaseOptions(version:2,singleInstance:false,onUpgrade:(db,old,_)async{if(old<2){await db.execute("ALTER TABLE workspaces ADD COLUMN package_origin TEXT NOT NULL DEFAULT ''");await db.execute("ALTER TABLE workspaces ADD COLUMN excluded_public INTEGER NOT NULL DEFAULT 0");}},onCreate:(db,_)async{
+      await db.execute("CREATE TABLE workspaces(id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, source_family TEXT NOT NULL, owner TEXT NOT NULL, state TEXT NOT NULL, document_count INTEGER NOT NULL, missing_count INTEGER NOT NULL, unverified_count INTEGER NOT NULL, evidence_version INTEGER NOT NULL, package_origin TEXT NOT NULL DEFAULT '', excluded_public INTEGER NOT NULL DEFAULT 0)");
       await db.execute('CREATE TABLE history(workspace TEXT NOT NULL, ordinal INTEGER NOT NULL, space TEXT NOT NULL, collection TEXT NOT NULL, record_id TEXT NOT NULL, fields TEXT NOT NULL, deleted INTEGER NOT NULL, PRIMARY KEY(workspace,ordinal), UNIQUE(workspace,space,collection,record_id))');
       await db.execute('CREATE TABLE backup_settings(workspace TEXT PRIMARY KEY, value TEXT NOT NULL)');
     }));
     try{return RecoveryWorkspaceStore._(db,await OwnedMediaStore.open(crypto:crypto,factory:factory),schemas,commentFields,validateFields);}catch(_){await db.close();rethrow;}
   }
   Future<void> close()async{await _queue;await media.close();await _db.close();}
-  String _fingerprint(PortableRestore restore)=>hashing.sha256.convert(utf8.encode(jsonEncode(restore.manifest.toJson()))).toString();
+  String _fingerprint(PortableRestore restore)=>hashing.sha256.convert(utf8.encode(jsonEncode(restore.packageOrigin==null&&restore.excludedPublicEntries==0
+    ?restore.manifest.toJson():{'manifest':restore.manifest.toJson(),'package_origin':restore.packageOrigin,'excluded_public':restore.excludedPublicEntries}))).toString();
   Future<RecoveryPreview> preview(PortableRestore restore)async{
     // Only objects produced by authenticated archive verification reach this API.
     // Rehash records at use time; media import independently rehashes every original.
-    final entries=restore.manifest.entries.where((e)=>e.kind=='records').toList();
+    final entries=restore.manifest.entries.where((e)=>e.kind=='records'&&!{BackupPackageBinding.entryId,BackupPackageBinding.coverageEntryId}.contains(e.id)).toList();
     if(entries.length>1)throw const BackupException('ambiguous_recovery_records');
     final docs=<RecoveryDocument>[];var version=0;
     if(entries.isNotEmpty&&entries.single.missingReason.isEmpty){
@@ -89,10 +96,10 @@ class RecoveryWorkspaceStore {
         }
         final evidence=RecordEvidence.decode(raw,expectedFamily:restore.sourceFamilyId,schema:RecordEvidenceSchema(fields:expanded,
           validateContent:(space,suffix,id,fields,kind){
-            if(kind!=EvidenceContentKind.deletion)validateFields(familyId:restore.sourceFamilyId,suffix:suffix,id:id,fields:fields);
+            if(kind==EvidenceContentKind.document)validateFields(familyId:restore.sourceFamilyId,suffix:suffix,id:id,fields:fields);
           }));
         docs.addAll(evidence.documents.map((d)=>RecoveryDocument(space:d.space,collection:d.collection,id:d.id,fields:d.data,deleted:d.deleted)));
-        return RecoveryPreview(_fingerprint(restore),restore.sourceFamilyId,List.unmodifiable(docs),restore.missing.length,restore.unverifiedOriginals.length,version);
+        return RecoveryPreview(_fingerprint(restore),restore.sourceFamilyId,List.unmodifiable(docs),restore.missing.length,restore.unverifiedOriginals.length,version,packageBound:restore.packageBound,excludedPublicEntries:restore.excludedPublicEntries,coverageIssues:restore.coverageIssues);
       }
       if(version!=1)throw const BackupException('unsupported_recovery_evidence');
       if(object.length!=4||object['family_id']!=restore.sourceFamilyId||object['records_applied']!=false||object['documents'] is! List)throw const BackupException('recovery_records_schema');
@@ -112,7 +119,7 @@ class RecoveryWorkspaceStore {
         docs.add(RecoveryDocument(space:space,collection:collection,id:id,fields:fields));
       }
     }
-    return RecoveryPreview(_fingerprint(restore),restore.sourceFamilyId,List.unmodifiable(docs),restore.missing.length,restore.unverifiedOriginals.length,version);
+    return RecoveryPreview(_fingerprint(restore),restore.sourceFamilyId,List.unmodifiable(docs),restore.missing.length,restore.unverifiedOriginals.length,version,packageBound:restore.packageBound,excludedPublicEntries:restore.excludedPublicEntries,coverageIssues:restore.coverageIssues);
   }
   Future<RecoveryWorkspace> importVerified(PortableRestore restore,{required bool confirmed,required String expectedFingerprint}){
     if(!confirmed)return Future.error(const BackupException('recovery_confirmation_required'));
@@ -128,7 +135,8 @@ class RecoveryWorkspaceStore {
       final id=rows.isEmpty?const Uuid().v4():rows.single['id'] as String;
       if(rows.isEmpty)await _db.insert('workspaces',{'id':id,'fingerprint':plan.fingerprint,'source_family':plan.sourceFamilyId,
         'owner':const Uuid().v4(),'state':'importing','document_count':plan.documentCount,'missing_count':plan.missingCount,
-        'unverified_count':plan.unverifiedCount,'evidence_version':plan.evidenceVersion});
+        'unverified_count':plan.unverifiedCount,'evidence_version':plan.evidenceVersion,
+        'package_origin':jsonEncode({'context':restore.packageOrigin,'coverage_issues':restore.coverageIssues}),'excluded_public':restore.excludedPublicEntries});
       // A failed/terminated import is invisible. The same fingerprint resumes owned objects;
       // existing user data and previously published libraries are never replaced.
       final thumbs=<String,String>{};
@@ -164,10 +172,12 @@ class RecoveryWorkspaceStore {
   Future<List<OwnedMediaAsset>> assets(String id)async{await get(id);return media.list(id);}
   BackupPreferencesStore preferences(String id)=>_RecoveryPreferences(this,id);
   Future<BackupSnapshot> snapshot(String id)async{
-    await get(id);final sources=<BackupSource>[];
-    for(final asset in await assets(id)){sources.add(await media.prepareBackupSource(id,asset.id));}
-    return BackupSnapshot(sources:sources,coverageNotes:const ['私有恢复资料库原字节再备份；不代表正常业务恢复。'],
-      omittedScopes:const ['成员授权与撤权证明未重建','记录未应用到业务数据库','本机设置、密钥与原身份不在归档内','此入口不包含外层公开归档文件；只含持钥验证的内部条目']);
+    final workspace=await get(id);final sources=<BackupSource>[];
+    for(final asset in await assets(id)){if({BackupPackageBinding.entryId,BackupPackageBinding.coverageEntryId}.contains(asset.originalEntryId))continue;sources.add(await media.prepareBackupSource(id,asset.id));}
+    return BackupSnapshot(sources:sources,recoveryOmissions:{...workspace.coverageIssues,if(!workspace.packageBound)'ancestor_coverage_unknown',if(workspace.excludedPublicEntries>0)'unbound_ancestor_public'},coverageNotes:const ['私有恢复资料库原字节再备份；不代表正常业务恢复。'],
+      omittedScopes:['成员授权与撤权证明未重建','记录未应用到业务数据库','本机设置、密钥与原身份不在归档内',
+        if(!workspace.packageBound)'旧归档未证明外层公开文件关联，未纳入资料库',
+        '旧同包索引只在原私有资料库保留审计；此备份使用新包绑定，祖先缺件说明随新加密覆盖记录保留']);
   }
 }
 class _RecoveryPreferences implements BackupPreferencesStore {

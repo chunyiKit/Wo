@@ -6,6 +6,8 @@ import 'archive_io.dart';
 import 'backup_models.dart';
 import 'backup_transport.dart';
 import 'vault_codec.dart';
+import 'package_binding.dart';
+import 'quarantine_store.dart';
 
 const _portableKinds={'records','photo','video','thumbnail'};
 const _portableMissing={'not_on_device','permission_denied','source_missing','source_unavailable','unsupported','not_authorized','source_not_exact'};
@@ -38,7 +40,7 @@ class PortableManifest {
   final String familyId;final List<PortableEntry> entries;
   Map<String,dynamic> toJson()=>{'version':1,'family_id':familyId,'entries':entries.map((e)=>e.toJson()).toList()};
   factory PortableManifest.fromJson(Map<String,dynamic> j){
-    if(j.length!=3||j['version']!=1||j['family_id'] is! String||j['entries'] is! List)throw const BackupException('invalid_portable_json');
+    if(j.length!=3||j['version'] is! int||j['version']!=1||j['family_id'] is! String||j['entries'] is! List)throw const BackupException('invalid_portable_json');
     return PortableManifest(familyId:j['family_id'] as String,entries:(j['entries'] as List).map((e)=>PortableEntry.fromJson(backupObject(e))));
   }
 }
@@ -47,11 +49,13 @@ class PortableRecoveredFile {
   final String newId;final File file;final PortableEntry entry;
 }
 class PortableRestore {
-  PortableRestore._(this.directory,this.manifest,this.newFamilyId,this.newDeviceId,this.files,this.missing,this.unverifiedOriginals);
+  PortableRestore._(this.directory,this.manifest,this.newFamilyId,this.newDeviceId,this.files,this.missing,this.unverifiedOriginals,{this.packageOrigin,this.excludedPublicEntries=0,this.coverageIssues=const []});
   final Directory directory;final PortableManifest manifest;final String newFamilyId,newDeviceId;
   String get sourceFamilyId=>manifest.familyId;
+  final Map<String,dynamic>? packageOrigin;final int excludedPublicEntries;final List<String> coverageIssues;
+  bool get packageBound=>packageOrigin!=null;
   final Map<String,PortableRecoveredFile> files;final Map<String,String> missing,unverifiedOriginals;
-  bool get declaredBytesComplete=>missing.isEmpty&&unverifiedOriginals.isEmpty;
+  bool get declaredBytesComplete=>missing.isEmpty&&unverifiedOriginals.isEmpty&&excludedPublicEntries==0&&coverageIssues.isEmpty;
   bool get recordsApplied=>false;
   bool get fullDeviceComplete=>false;
   // 受限内容始终保持受限，伴侣绑定及权限未由导入流程安全重建前不可回落家庭共享。
@@ -106,16 +110,66 @@ class PortableArchive {
         if((e.kind=='photo'||e.kind=='video')&&!e.sourceExact)unverified[e.id]='source_not_exact';
       }
       final end=await reader.exact(1024);if(end.any((b)=>b!=0))throw const BackupException('portable_terminator');await reader.eof();
+      var coverageIssues=const <String>[];
+      final coverageEntry=manifest.entries.where((e)=>e.id==BackupPackageBinding.coverageEntryId).toList();
+      if(coverageEntry.isNotEmpty){final e=coverageEntry.single,f=files[e.id];
+        if(e.kind!='records'||e.missingReason.isNotEmpty||e.size>65536||f==null||await f.file.length()!=e.size)throw const BackupException('invalid_recovery_coverage');
+        coverageIssues=BackupPackageBinding.readCoverage(await f.file.readAsBytes(),manifest.familyId);
+      }
       var family=await _newId();while(family==manifest.familyId){family=await _newId();}
       final device=await _newId();
       await File('${stage.path}${Platform.pathSeparator}verified.json').writeAsString(jsonEncode({
         'source_family_id':manifest.familyId,'new_family_id':family,'new_device_id':device,'records_applied':false,
-        'restricted':true,'full_device_complete':false,'missing':missing,'unverified_originals':unverified,
+        'restricted':true,'full_device_complete':false,'coverage_issues':coverageIssues,'missing':missing,'unverified_originals':unverified,
         'files':{for(final e in files.entries)e.key:{'new_id':e.value.newId,'kind':e.value.entry.kind,'size':e.value.entry.size,'sha256':e.value.entry.sha256,'source_exact':e.value.entry.sourceExact}}
       }),flush:true);
-      return PortableRestore._(stage,manifest,family,device,Map.unmodifiable(files),Map.unmodifiable(missing),Map.unmodifiable(unverified));
+      return PortableRestore._(stage,manifest,family,device,Map.unmodifiable(files),Map.unmodifiable(missing),Map.unmodifiable(unverified),coverageIssues:coverageIssues);
     }catch(_){if(stage!=null)await stage.delete(recursive:true);rethrow;}
     finally{await reader.close();}
+  }
+  /// 生产入口仅由restoreRestrictedBackup在VaultContext认证之后调用。
+  /// 不靠ID推断关联：先验证加密索引完整inventory，再从同一已验证receiver流式取公开字节。
+  Future<PortableRestore> bindOuterPackage(PortableRestore inner,BackupManifest outer,String sealedId,QuarantineStore receiver)async{
+    if(inner.sourceFamilyId!=outer.familyId||!receiver.verifiedFor(outer))throw const BackupException('package_receiver_mismatch');
+    final public=outer.entries.where((e)=>e.kind!='sealed').toList();
+    final indexes=inner.manifest.entries.where((e)=>e.id==BackupPackageBinding.entryId).toList();
+    if(indexes.isEmpty)return PortableRestore._(inner.directory,inner.manifest,inner.newFamilyId,inner.newDeviceId,
+      inner.files,inner.missing,inner.unverifiedOriginals,excludedPublicEntries:public.length,coverageIssues:inner.coverageIssues);
+    if(indexes.length!=1||indexes.single.kind!='records'||indexes.single.missingReason.isNotEmpty)throw const BackupException('package_binding_invalid');
+    final index=indexes.single,source=inner.files[BackupPackageBinding.entryId];
+    if(source==null||index.size>BackupPackageBinding.maxBytes||await FileSystemEntity.type(source.file.path,followLinks:false)!=FileSystemEntityType.file||
+      source.file.parent.absolute.path!=inner.directory.absolute.path||await source.file.length()!=index.size)throw const BackupException('package_binding_invalid');
+    final raw=BytesBuilder(copy:false);var length=0;
+    await for(final chunk in source.file.openRead()){length+=chunk.length;if(length>index.size)throw const BackupException('package_binding_invalid');raw.add(chunk);}
+    final bytes=raw.takeBytes();if(length!=index.size||BackupPackageBinding.digest(bytes)!=index.sha256)throw const BackupException('package_binding_invalid');
+    BackupPackageBinding.validate(bytes,outer:outer,sealedId:sealedId,innerEntries:inner.manifest.entries.map((e)=>e.toJson()));
+    final entries=<PortableEntry>[...inner.manifest.entries,for(final e in public)PortableEntry(id:e.id,kind:e.kind,size:e.size,sha256:e.sha256,sourceExact:e.sourceExact,
+      missingReason:switch(e.missing){'permission_denied'=>'permission_denied','cloud_only'=>'not_on_device','not_exact_original'=>'source_not_exact','source_unavailable'=>'source_unavailable',_=>''})];
+    final manifest=PortableManifest(familyId:outer.familyId,entries:entries);
+    final files=<String,PortableRecoveredFile>{...inner.files},missing=<String,String>{...inner.missing},unverified=<String,String>{...inner.unverifiedOriginals};
+    final created=<File>[];
+    try{
+      for(final entry in entries.skip(inner.manifest.entries.length)){
+        if(entry.missingReason.isNotEmpty){missing[entry.id]=entry.missingReason;continue;}
+        final original=public.singleWhere((e)=>e.id==entry.id),newId=await _newId();
+        final target=File('${inner.directory.path}/$newId.blob');await target.create(exclusive:true);created.add(target);
+        final output=await target.open(mode:FileMode.writeOnly),hash=ArchiveSha256();var count=0;
+        try{await for(final chunk in receiver.verifiedRead(original)){count+=chunk.length;if(count>entry.size)throw const BackupException('package_public_integrity');hash.add(chunk);await output.writeFrom(chunk);}await output.flush();}
+        finally{await output.close();}
+        if(count!=entry.size||backupHex(hash.finish())!=entry.sha256)throw const BackupException('package_public_integrity');
+        files[entry.id]=PortableRecoveredFile(newId,target,entry);
+        if((entry.kind=='photo'||entry.kind=='video')&&!entry.sourceExact)unverified[entry.id]='source_not_exact';
+      }
+      final origin=Map<String,dynamic>.unmodifiable({'family_id':outer.familyId,'backup_id':outer.backupId,'sealed_id':sealedId,
+        'index_sha256':index.sha256,'outer_manifest_sha256':BackupPackageBinding.digest(Uint8List.fromList(utf8.encode(outer.canonicalJson))),
+        'public_entries':public.length});
+      final marker=File('${inner.directory.path}/verified.json');
+      if(await FileSystemEntity.type(marker.path,followLinks:false)!=FileSystemEntityType.file)throw const BackupException('package_marker_invalid');
+      await marker.writeAsString(jsonEncode({'source_family_id':outer.familyId,'new_family_id':inner.newFamilyId,'new_device_id':inner.newDeviceId,
+        'records_applied':false,'full_device_complete':false,'restricted':true,'coverage_issues':inner.coverageIssues,'package_origin':origin,'missing':missing,'unverified_originals':unverified,
+        'files':{for(final e in files.entries)e.key:{'new_id':e.value.newId,...e.value.entry.toJson()}}}),flush:true);
+      return PortableRestore._(inner.directory,manifest,inner.newFamilyId,inner.newDeviceId,Map.unmodifiable(files),Map.unmodifiable(missing),Map.unmodifiable(unverified),packageOrigin:origin,coverageIssues:inner.coverageIssues);
+    }catch(_){for(final file in created){try{await file.delete();}catch(_){}}rethrow;}
   }
   Future<String> _newId()async{final bytes=await crypto.random(16);if(bytes.length!=16)throw const BackupException('invalid_random');return backupHex(bytes);}
 }

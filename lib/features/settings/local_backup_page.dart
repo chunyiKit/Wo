@@ -99,14 +99,15 @@ class _LocalBackupPageState extends State<LocalBackupPage> {
         _section('发起备份',[
           CheckboxListTile(contentPadding:EdgeInsets.zero,value:_allowPublic,onChanged:c.busy||c.hasPendingUpload?null:(v)=>setState(()=>_allowPublic=v??false),
             title:const Text('允许电脑直接读取家庭公开照片与视频'),subtitle:const Text('默认不开放明文；私密、伴侣媒体与全部记录始终加密。')),
-          FilledButton(onPressed:c.busy||!_destinationMatches||c.hasPendingUpload||!c.recoveryKeySavedAcknowledged?null:
+          FilledButton(onPressed:c.busy||!_destinationMatches||paired?.familyId!=c.familyId||c.hasPendingUpload||!c.recoveryKeySavedAcknowledged?null:
             ()=>_perform(()=>c.startBackup(allowPublicMediaOnComputer:_allowPublic)),child:const Text('备份当前授权资料到电脑')),
           if(!c.recoveryKeySavedAcknowledged)const Text('请先设置并另存恢复密钥。'),
           if(paired!=null&&paired.familyId!=c.familyId)const Text('当前配对用于取回其它家庭的归档；发起本家庭备份需重新配对。'),
           if(c.hasPendingUpload)...[
-            const SizedBox(height:WoTokens.space3),const Text('这次备份保留了同一份加密归档与原件快照，可以显式续传。重启 App 后会核对同一身份、电脑指纹和密钥，再续传同一份冻结字节；不会自动重新加密。'),
-            Wrap(spacing:WoTokens.space3,children:[OutlinedButton(onPressed:c.busy?null:()=>_perform(c.retryUpload),child:const Text('续传这次备份')),
-              TextButton(onPressed:c.busy?null:_discardUpload,child:const Text('放弃这次续传'))]),
+            const SizedBox(height:WoTokens.space3),Text(c.canRetryUpload?'已核对这份冻结备份，可以显式续传同一份密文。重启后仍须核对原身份、电脑指纹和密钥。':'本机有尚未通过核对的备份任务。不能上传或自动重建；请按原授权处理，或明确放弃该任务。'),
+            Wrap(spacing:WoTokens.space3,children:[OutlinedButton(onPressed:c.busy||!c.canRetryUpload?null:()=>_perform(c.retryUpload),child:const Text('续传这次备份')),
+              TextButton(onPressed:c.busy?null:_discardUpload,child:const Text('放弃这次续传')),
+              if(!c.canRetryUpload)TextButton(onPressed:c.busy?null:()=>_perform(c.load),child:const Text('重新核对本机任务'))]),
           ],
           for(final note in c.coverageNotes)Padding(padding:const EdgeInsets.only(top:WoTokens.space2),child:Text(note)),
           for(final omitted in c.omittedScopes)Padding(padding:const EdgeInsets.only(top:WoTokens.space2),child:Text('未包含：$omitted')),
@@ -139,7 +140,7 @@ class _LocalBackupPageState extends State<LocalBackupPage> {
           const Text('已生成新文件和身份。记录仍是惰性归档，没有写入现有数据库；不会沿用旧照片权限、URI 或设备身份。'),
           const Text('受限内容继续保持受限，不自动恢复伴侣绑定或改成全家可见。'),
           if(!result.declaredBytesComplete)const Text('声明内容仍不完整。已有缩略图和缺件声明保留，缺原件不冒充完整。'),
-          const Text('此入口只处理持钥验证的加密归档内部条目；外层公开备份文件尚未纳入资料库。缺少原操作或撤权证明时，禁止恢复为正常家庭业务库。'),
+          Text(result.packageBound?'已验证同一备份包的加密内部清单与公开文件，导入后全部留在本机私有资料库；仍不恢复旧身份或正常业务写入。':'旧归档没有可验证的同包绑定，外层公开文件 ${result.excludedPublicEntries} 项未关联。仍只处理持钥验证的内层；不靠相同ID拼接文件。'),
           if(widget.recoveryStore!=null)OutlinedButton(onPressed:c.busy?null:_openRecoveryLibrary,child:const Text('预览并确认保存为私有只读资料库')),
         ]),
       ])));
@@ -174,6 +175,10 @@ String _errorText(BackupException? error){
     'pending_upload_not_ready'=>'上次冻结尚未完成；请显式放弃这次任务，再生成新的备份。',
     'pending_upload_source_changed'=>'续传来源已损坏或改变，未上传；请显式放弃这次任务。',
     'pending_upload_authentication_failed'=>'本机续传记录认证失败，未恢复任务或发送资料。',
+    'package_total_limit'=>'同包恢复入口总原始字节上限100GiB，已停止；电脑通用存储限额不等于手机联合恢复能力。',
+    'portable_original_limit'=>'此入口的单个原件上限为20GiB，已停止；没有静默略过大视频。',
+    'package_binding_inventory'=>'公开文件与加密内部清单不匹配，未导入或降级处理。',
+    'package_binding_context'=>'归档包上下文不匹配，没有关联公开文件。',
     'source_changed'=>'冻结来源已改变，未作为成功备份提交。请放弃这次续传后重新准备。',
     'private_acl_unavailable'=>'此平台的私有恢复目录尚未通过权限校验，已停止写入明文。',
     _=>'操作未完成，资料仍保留在本机。请核对配置、网络与原件权限后显式重试。',

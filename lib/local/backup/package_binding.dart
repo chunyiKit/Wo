@@ -6,6 +6,20 @@ import 'backup_models.dart';
 /// 位于已认证sealed内部，关联同一包的公开字节；不是成员/原操作来源证明。
 class BackupPackageBinding {
   static const entryId='wo_backup_package_binding_v1';
+  static const coverageEntryId='wo_restore_coverage_v1';
+  static const coverageReasons={'unbound_ancestor_public','ancestor_coverage_unknown'};
+  static Uint8List coverage(String familyId,Iterable<String> reasons){
+    final list=reasons.toSet().toList()..sort();
+    if(!validBackupId(familyId)||list.any((e)=>!coverageReasons.contains(e)))throw const BackupException('invalid_recovery_coverage');
+    return Uint8List.fromList(utf8.encode(jsonEncode({'version':1,'kind':'wo_restore_coverage','family_id':familyId,'reasons':list})));
+  }
+  static List<String> readCoverage(Uint8List bytes,String familyId){
+    if(bytes.length>65536)throw const BackupException('invalid_recovery_coverage');
+    final j=backupObject(decodeBackupJson(utf8.decode(bytes,allowMalformed:false)));
+    if(j.length!=4||j['version'] is! int||j['version']!=1||j['kind']!='wo_restore_coverage'||j['family_id']!=familyId||j['reasons'] is! List)throw const BackupException('invalid_recovery_coverage');
+    final list=j['reasons'] as List;if(list.length>coverageReasons.length||list.any((e)=>e is! String||!coverageReasons.contains(e))||list.toSet().length!=list.length)throw const BackupException('invalid_recovery_coverage');
+    return List<String>.unmodifiable(list.cast<String>());
+  }
   static const maxBytes=8*1024*1024;
   static Object? _ordered(Object? value){
     if(value is Map){final keys=value.keys.cast<String>().toList()..sort();return {for(final key in keys)key:_ordered(value[key])};}
@@ -57,8 +71,8 @@ class BackupPackageBinding {
 }
 
 class PackageBindingSource implements BackupSource {
-  PackageBindingSource(Uint8List bytes):_bytes=Uint8List.fromList(bytes),entry=BackupEntry(
-    id:BackupPackageBinding.entryId,kind:'records',size:bytes.length,sha256:BackupPackageBinding.digest(bytes),sourceExact:false);
+  PackageBindingSource(Uint8List bytes,{String id=BackupPackageBinding.entryId}):_bytes=Uint8List.fromList(bytes),entry=BackupEntry(
+    id:id,kind:'records',size:bytes.length,sha256:BackupPackageBinding.digest(bytes),sourceExact:false);
   final Uint8List _bytes;
   @override final BackupEntry entry;
   @override BackupPrivacy get privacy=>BackupPrivacy.restricted;

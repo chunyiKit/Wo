@@ -10,6 +10,7 @@ import 'portable_archive.dart';
 import 'quarantine_store.dart';
 import 'restricted_backup.dart';
 import 'pending_upload_journal.dart';
+import 'package_binding.dart';
 
 abstract interface class BackupPreferencesStore {
   Future<Map<String,dynamic>?> read();
@@ -20,10 +21,10 @@ abstract interface class BackupPreferencesStore {
 /// records 是惰性导出，不是数据库文件。不可包含其它成员未授权的私密资料。
 class BackupSnapshot {
   BackupSnapshot({required Iterable<BackupSource> sources,Iterable<String> coverageNotes=const [],
-      Iterable<String> omittedScopes=const [],this.release})
-    :sources=List.unmodifiable(sources),coverageNotes=List.unmodifiable(coverageNotes),omittedScopes=List.unmodifiable(omittedScopes);
+      Iterable<String> omittedScopes=const [],Iterable<String> recoveryOmissions=const [],this.release})
+    :sources=List.unmodifiable(sources),coverageNotes=List.unmodifiable(coverageNotes),omittedScopes=List.unmodifiable(omittedScopes),recoveryOmissions=List.unmodifiable(recoveryOmissions);
   final List<BackupSource> sources;
-  final List<String> coverageNotes,omittedScopes;
+  final List<String> coverageNotes,omittedScopes,recoveryOmissions;
   final Future<void> Function()? release;
 }
 typedef BackupTransportFactory=Future<BackupTransport> Function(Uri origin,String pin);
@@ -65,7 +66,7 @@ class MobileBackupController extends ChangeNotifier {
   BackupException? _error;
   PairedComputer? _computer;
   String? _recoveryKeyRef,_revealedKeyRef;
-  bool _keyAcknowledged=false,_cleanupWarning=false;
+  bool _keyAcknowledged=false,_cleanupWarning=false,_pendingVerified=false;
   PendingUploadJournal? _journal;bool _pendingJournal=false;
   _FrozenUpload? _upload;_Download? _download;String? _requestedDownload;
   List<BackupStatus> _backups=const [];
@@ -80,6 +81,7 @@ class MobileBackupController extends ChangeNotifier {
   bool get hasRecoveryKey=>_recoveryKeyRef!=null;
   bool get recoveryKeySavedAcknowledged=>_keyAcknowledged;
   bool get cleanupWarning=>_cleanupWarning;
+  bool get canRetryUpload=>_pendingVerified&&_upload!=null&&_snapshotOwner==this;
   bool get hasPendingUpload=>_upload!=null||_pendingJournal;
   String? get pendingBackupId=>_upload?.manifest.backupId;
   bool get hasDownload=>_download!=null;
@@ -131,10 +133,12 @@ class MobileBackupController extends ChangeNotifier {
     return PendingUploadBinding.current(computer:_paired(),familyId:familyId,deviceId:deviceId,recoveryKeyRef:ref,crypto:crypto);
   }
   void _adoptPending(PendingUploadJob job){
+    _pendingVerified=true;
     _upload=_FrozenUpload(job.manifest,job.sources,BackupSnapshot(sources:job.sources),null);
     _coverage=job.coverageNotes;_omissions=job.omittedScopes;_sourceIssues=job.sourceIssues;
   }
   Future<void> _loadPending()async{
+    _pendingVerified=false;
     if(_snapshotOwner?._disposed==true)_snapshotOwner=null;
     final journal=await _pendingStore();if(!await journal.exists()){
       if(_upload!=null){_error=const BackupException('pending_upload_missing');return;}
@@ -201,16 +205,22 @@ class MobileBackupController extends ChangeNotifier {
       if(snapshot.sources.isEmpty)throw const BackupException('empty_backup_snapshot');
       final public=<BackupSource>[],restricted=<BackupSource>[];final seen=<String>{};
       for(final source in snapshot.sources){final e=source.entry;
-        if(!seen.add(e.id.toLowerCase())||e.kind=='sealed')throw const BackupException('invalid_snapshot_source');
-        if(allowPublicMediaOnComputer&&source.privacy==BackupPrivacy.public&&e.kind!='records')public.add(source);
+        if(!seen.add(e.id.toLowerCase())||e.kind=='sealed'||{BackupPackageBinding.entryId,BackupPackageBinding.coverageEntryId}.contains(e.id.toLowerCase()))throw const BackupException('invalid_snapshot_source');
+        if(allowPublicMediaOnComputer&&source.privacy==BackupPrivacy.public&&e.kind!='records'){if(e.size>20*1024*1024*1024)throw const BackupException('portable_original_limit');public.add(source);}
         else restricted.add(_RestrictedSource(source));
       }
       final backupId=await _id();
-      if(restricted.isNotEmpty){
+      {
+        for(final source in public){final e=source.entry;PortableEntry(id:e.id,kind:e.kind,size:e.size,sha256:e.sha256,sourceExact:e.sourceExact,missingReason:_portableMissing(e.missing));}
+        restricted.add(PackageBindingSource(BackupPackageBinding.coverage(familyId,snapshot.recoveryOmissions),id:BackupPackageBinding.coverageEntryId));
+        final sealedId=await _id();
+        final originalEntries=restricted.map((s){final e=s.entry;return PortableEntry(id:e.id,kind:e.kind,size:e.size,sha256:e.sha256,sourceExact:e.sourceExact,missingReason:_portableMissing(e.missing));}).toList(growable:false);
+        restricted.add(PackageBindingSource(BackupPackageBinding.create(familyId:familyId,backupId:backupId,sealedId:sealedId,
+          publicEntries:public.map((s)=>s.entry),restrictedEntries:originalEntries.map((e)=>e.toJson()))));
         final entries=restricted.map((s){final e=s.entry;return PortableEntry(id:e.id,kind:e.kind,size:e.size,sha256:e.sha256,
           sourceExact:e.sourceExact,missingReason:_portableMissing(e.missing));}).toList(growable:false);
         final parent=await privateDirectory('backup-staging');
-        sealed=await SealedBackupSource.create(id:await _id(),backupId:backupId,manifest:PortableManifest(familyId:familyId,entries:entries),
+        sealed=await SealedBackupSource.create(id:sealedId,backupId:backupId,manifest:PortableManifest(familyId:familyId,entries:entries),
           sources:{for(final s in restricted)s.entry.id:s},recoveryKeyRef:_recoveryKeyRef!,privateParent:parent,crypto:crypto);
       }
       final sources=List<BackupSource>.unmodifiable([...public,if(sealed!=null)sealed]);
@@ -229,6 +239,7 @@ class MobileBackupController extends ChangeNotifier {
     if(!hasPendingUpload||_snapshotOwner!=this)throw const BackupException('no_frozen_upload');return _uploadFrozen();
   });
   Future<BackupStatus> _uploadFrozen()async{
+    _pendingVerified=false;
     final resumed=await (await _pendingStore()).resume(await _currentBinding());
     if(resumed==null)throw const BackupException('pending_upload_missing');_adoptPending(resumed);
     final job=_upload!;_phase=MobileBackupPhase.uploading;_emit();
@@ -238,7 +249,7 @@ class MobileBackupController extends ChangeNotifier {
   Future<void> _releaseUpload()async{
     if(_snapshotOwner!=null&&_snapshotOwner!=this&& !_snapshotOwner!._disposed)throw const BackupException('frozen_backup_already_pending');
     if(_pendingJournal){final journal=await _pendingStore();if(await journal.exists())await journal.discard(await _currentBinding());_pendingJournal=false;}
-    final job=_upload;_upload=null;
+    final job=_upload;_upload=null;_pendingVerified=false;
     try{if(job?.sealed!=null)await job!.sealed!.dispose();}catch(_){_cleanupWarning=true;}
     try{if(job?.snapshot.release!=null)await job!.snapshot.release!();}catch(_){_cleanupWarning=true;}
     if(_snapshotOwner==this)_snapshotOwner=null;
@@ -266,7 +277,7 @@ class MobileBackupController extends ChangeNotifier {
     final key=_recoveryKeyRef;if(key==null)throw const BackupException('recovery_key_unavailable');
     final entry=matches.single;final file=job.materialized[entry.id]??await job.receiver.materializeVerifiedFile(entry);job.materialized[entry.id]=file;
     final result=await restoreRestrictedBackup(entry:entry,ciphertext:file,expectedFamily:job.manifest.familyId,backupId:job.manifest.backupId,
-      recoveryKeyRef:key,privateParent:await privateDirectory('backup-staging'),crypto:crypto);
+      recoveryKeyRef:key,privateParent:await privateDirectory('backup-staging'),crypto:crypto,outerManifest:job.manifest,receiver:job.receiver);
     _lastRestore=result;return result;
   });
   Future<void> discardDownloadCache()=>_run(MobileBackupPhase.loading,()async{

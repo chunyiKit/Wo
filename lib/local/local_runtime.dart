@@ -52,7 +52,10 @@ class LocalRuntime {
     });
   }
   Future<RecoveryWorkspaceStore>? _recoveryLibrary;
-  Future<RecoveryWorkspaceStore> get recoveryLibrary=>_recoveryLibrary??=RecoveryWorkspaceStore.openNative(crypto:crypto,schemas:syncSchemas,commentFields:LocalIncrementalStrategy.commentFields,validateFields:LocalIncrementalStrategy.validatePortableFields);
+  Future<RecoveryWorkspaceStore> get recoveryLibrary=>_recoveryLibrary??=()async{
+    try{return await RecoveryWorkspaceStore.openNative(crypto:crypto,schemas:syncSchemas,commentFields:LocalIncrementalStrategy.commentFields,validateFields:LocalIncrementalStrategy.validatePortableFields);}
+    catch(_){_recoveryLibrary=null;rethrow;}
+  }();
   final _recoveryBackupControllers=<String,Future<MobileBackupController>>{};
   Future<MobileBackupController> recoveryBackupController(String workspaceId)=>_recoveryBackupControllers.putIfAbsent(workspaceId,()async{
     final library=await recoveryLibrary,workspace=await library.get(workspaceId);

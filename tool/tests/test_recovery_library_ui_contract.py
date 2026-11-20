@@ -76,6 +76,15 @@ class RecoveryLibraryUiContractTests(unittest.TestCase):
         self.assertLess(backup.index('recovery_backup_identity_mismatch'), backup.index('LocalBackupPage(controller:controller)'))
         self.assertNotIn('controller.dispose(', self.source)
 
+    def test_package_binding_status_and_excluded_public_are_visible(self):
+        self.assertEqual(self.source.count('_packageNotice(plan.packageBound,plan.excludedPublicEntries)'), 2)
+        self.assertIn('_packageNotice(workspace.packageBound,workspace.excludedPublicEntries,imported:true)', self.source)
+        self.assertIn('_packageNotice(widget.workspace.packageBound,widget.workspace.excludedPublicEntries,imported:true)', self.source)
+        self.assertIn('旧包未验证同包绑定，未关联公开文件 $excluded 项', self.source)
+        self.assertIn('公开与内层可用文件会一并私有导入', self.source)
+        self.assertIn('公开与内层可用文件已一并保存在本机私有资料库', self.source)
+        self.assertIn('这不代表完整业务恢复', self.source)
+
     def test_video_is_not_autoplayed_and_controller_is_disposed(self):
         init = self.source.split('Future<void> _initializeVideo()', 1)[1].split('@override void dispose()', 1)[0]
         self.assertNotIn('.play()', init)
