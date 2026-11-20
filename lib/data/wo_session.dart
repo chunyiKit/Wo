@@ -73,7 +73,7 @@ class WoSession extends ChangeNotifier {
     if (isCurrentAuth(snapshot)) await clearAuth();
   }
 
-  bool get isLoggedIn => _token != null && _token!.isNotEmpty;
+  bool get isLoggedIn => api.isLocal || (_token != null && _token!.isNotEmpty);
   Bootstrap? get bootstrap => _bootstrap;
   bool get loading => _loading;
   Object? get error => _error;
@@ -87,6 +87,10 @@ class WoSession extends ChangeNotifier {
   /// 启动时恢复登录态。本地有 token 用本地的；否则若构建期通过 WO_USER_ID 强制了
   /// 身份就用它（调试用），都没有则为未登录。
   Future<void> restore() async {
+    if (api.isLocal) {
+      _token = null; api.authToken = ''; api.userId = '';
+      notifyListeners(); return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_kToken);
     if (stored != null && stored.isNotEmpty) {
@@ -182,6 +186,7 @@ class WoSession extends ChangeNotifier {
 
   /// 当前登出离线时仍清本地；全部撤销失败则保留状态，让用户重试。
   Future<void> logout({bool all = false}) async {
+    if (api.isLocal) throw StateError('本机资料不使用旧云登录；退出不能删除本机资料');
     _authGeneration++;
     final snapshot = authSnapshot;
     if (all) {
@@ -227,7 +232,7 @@ class WoSession extends ChangeNotifier {
   /// 不能拖累登录/启动主流程；下次登录或启动会再试。
   Future<void> _syncPushRegistration() async {
     final p = push;
-    if (p == null || !isLoggedIn) return;
+    if (api.isLocal || p == null || !isLoggedIn) return;
     try {
       final rid = await p.currentRegistrationId();
       if (rid != null && rid.isNotEmpty) {

@@ -18,18 +18,19 @@ class SettingsPage extends StatelessWidget {
         top: false,
         child: ListView(
           children: [
-            const WoListTile(
+            if (session.api.isLocal) const WoListTile(title: Text('本机身份与家庭'), subtitle: Text('业务资料保存在本机；旧云账号不参与启动')) ,
+            if (!session.api.isLocal) const WoListTile(
               title: Text('账号与安全'),
               trailing: Icon(Icons.chevron_right),
             ),
-            WoListTile(
+            if (!session.api.isLocal) WoListTile(
               title: const Text('恢复码与会话撤销'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => const RecoveryPage(enroll: true),
               ),),
             ),
-            WoListTile(
+            if (!session.api.isLocal) WoListTile(
               title: const Text('修改密码'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push(WoRoutes.changePassword),

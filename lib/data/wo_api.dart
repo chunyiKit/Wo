@@ -5,6 +5,7 @@ import 'models.dart';
 /// 业务仓库：把后端端点封装成带类型的方法。页面只跟它打交道。
 class WoApi {
   WoApi(this._client);
+  bool get isLocal => _client.isLocal;
 
   final ApiClient _client;
 
@@ -70,6 +71,7 @@ class WoApi {
 
   /// 已中断登录的响应可能稍后到达；仅撤销它签发的令牌。
   Future<void> discardLoginToken(String token) async {
+    if (isLocal) return;
     final client = ApiClient(baseUrl: baseUrl, authToken: token, userId: '');
     try {
       await client.post('/auth/logout');

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import '../local/local_backend.dart';
 
 /// 后端返回的业务错误（信封 success=false 时抛出）。
 class ApiException implements Exception {
@@ -32,17 +33,22 @@ class NetworkException implements Exception {
 /// 业务层只拿到 `data` 字段（已解码的 Map / List）；信封里的 success/error
 /// 由本类统一处理，不让每个页面重复写。
 class ApiClient {
+  static LocalBackend? localBackend;
+  final LocalBackend? _local;
+  bool get isLocal => _local != null;
   ApiClient({
     http.Client? httpClient,
     String? baseUrl,
     String? userId,
     String? authToken,
-  })  : _http = httpClient ?? http.Client(),
+  })  : _local = httpClient == null && baseUrl == null ? localBackend : null,
+        _injectedHttp = httpClient,
         _baseUrl = baseUrl ?? ApiConfig.baseUrl,
         userId = userId ?? ApiConfig.devUserId,
         authToken = authToken ?? '';
 
-  final http.Client _http;
+  final http.Client? _injectedHttp;
+  late final http.Client _http = _injectedHttp ?? http.Client();
   final String _baseUrl;
 
   /// 登录签发的会话令牌（Bearer）。登录后设置，登出清空。
@@ -56,7 +62,7 @@ class ApiClient {
   static const _timeout = Duration(seconds: 15);
 
   /// 拼接图片等原始资源的完整地址用（相对路径已含 /api/v1 前缀，故这里只给 host）。
-  String get baseUrl => _baseUrl;
+  String get baseUrl => _local?.mediaBaseUrl ?? _baseUrl;
 
   /// 认证头：优先会话令牌(Bearer)；没有则回退 X-User-Id(仅 dev 调试通道)。
   /// 都没有则不带（如 /auth/login 等公开接口）。
@@ -67,7 +73,7 @@ class ApiClient {
   }
 
   /// 加载受鉴权保护的资源（如菜谱封面原图、电影海报）时要带的头。
-  Map<String, String> get imageHeaders => _authHeaders;
+  Map<String, String> get imageHeaders => _local?.mediaHeaders ?? _authHeaders;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -82,8 +88,9 @@ class ApiClient {
     );
   }
 
-  Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
-      _send(() => _http.get(_uri(path, query), headers: _headers));
+  Future<dynamic> get(String path, {Map<String, dynamic>? query}) async => _local != null
+      ? (await _local.request('GET', path, query: query)).data
+      : _send(() => _http.get(_uri(path, query), headers: _headers));
 
   /// 同 [get]，但额外带回信封里的 `meta`（分页元数据）。返回 (data, meta)：
   /// 普通接口 meta 为 null，分页接口里含 total / cursor / limit。
@@ -91,6 +98,7 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (_local != null) return _local.request('GET', path, query: query);
     final envelope = await _sendEnvelope(
       () => _http.get(_uri(path, query), headers: _headers),
     );
@@ -100,16 +108,19 @@ class ApiClient {
     );
   }
 
-  Future<dynamic> post(String path, {Object? body, Duration? timeout}) => _send(
+  Future<dynamic> post(String path, {Object? body, Duration? timeout}) async => _local != null
+      ? (await _local.request('POST', path, body: body)).data : _send(
         () => _http.post(_uri(path), headers: _headers, body: _encode(body)),
         timeout: timeout,
       );
 
-  Future<dynamic> patch(String path, {Object? body}) => _send(
+  Future<dynamic> patch(String path, {Object? body}) async => _local != null
+      ? (await _local.request('PATCH', path, body: body)).data : _send(
         () => _http.patch(_uri(path), headers: _headers, body: _encode(body)),
       );
 
-  Future<dynamic> put(String path, {Object? body}) => _send(
+  Future<dynamic> put(String path, {Object? body}) async => _local != null
+      ? (await _local.request('PUT', path, body: body)).data : _send(
         () => _http.put(_uri(path), headers: _headers, body: _encode(body)),
       );
 
@@ -117,8 +128,8 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
-  }) =>
-      _send(
+  }) async => _local != null
+      ? (await _local.request('DELETE', path, body: body, query: query)).data : _send(
         () => _http.delete(
           _uri(path, query),
           headers: _headers,
@@ -135,8 +146,8 @@ class ApiClient {
     required String filename,
     String field = 'file',
     Map<String, String>? fields,
-  }) =>
-      _send(() async {
+  }) async => _local != null
+      ? (await _local.request('POST', path, files: [(bytes, filename)], fields: fields)).data : _send(() async {
         final req = http.MultipartRequest('POST', _uri(path));
         req.headers.addAll(_authHeaders);
         req.headers['Accept'] = 'application/json';
@@ -144,7 +155,7 @@ class ApiClient {
         req.files.add(
           http.MultipartFile.fromBytes(field, bytes, filename: filename),
         );
-        return http.Response.fromStream(await req.send());
+        return http.Response.fromStream(await _http.send(req));
       });
 
   /// 上传多个文件（multipart/form-data，同一 [field] 多个部分）。后端用
@@ -154,8 +165,8 @@ class ApiClient {
     required List<(List<int>, String)> filesData,
     String field = 'files',
     Map<String, String>? fields,
-  }) =>
-      _send(() async {
+  }) async => _local != null
+      ? (await _local.request('POST', path, files: filesData, fields: fields)).data : _send(() async {
         final req = http.MultipartRequest('POST', _uri(path));
         req.headers.addAll(_authHeaders);
         req.headers['Accept'] = 'application/json';
@@ -165,7 +176,7 @@ class ApiClient {
             http.MultipartFile.fromBytes(field, bytes, filename: filename),
           );
         }
-        return http.Response.fromStream(await req.send());
+        return http.Response.fromStream(await _http.send(req));
       });
 
   String? _encode(Object? body) => body == null ? null : jsonEncode(body);
@@ -220,5 +231,5 @@ class ApiClient {
     return envelope;
   }
 
-  void close() => _http.close();
+  void close() { if (_local == null) _http.close(); }
 }

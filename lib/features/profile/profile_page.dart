@@ -261,7 +261,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
             const SizedBox(height: WoTokens.space5),
-            Center(
+            if (!session.api.isLocal) Center(
               child: WoTextButton(
                 onPressed: _logout,
                 style: WoTextButton.styleFrom(

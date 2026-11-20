@@ -8,11 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'data/api_config.dart';
 import 'data/app_update.dart';
-import 'data/push_service.dart';
-import 'data/wo_http_overrides.dart';
 import 'data/wo_session.dart';
+import 'local/local_runtime.dart';
 import 'navigation/notification_nav.dart';
 import 'navigation/wo_router.dart';
 import 'navigation/wo_routes.dart';
@@ -33,7 +31,6 @@ Future<void> _applyHighRefreshRate() async {
 }
 
 Future<void> main() async {
-  ApiConfig.validate();
   WidgetsFlutterBinding.ensureInitialized();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(
@@ -43,26 +40,13 @@ Future<void> main() async {
   });
   // 尽早申请高刷新率，让首帧起就跑满屏幕刷新率。
   await _applyHighRefreshRate();
-  // 信任内置私有 CA(裸 IP + 自签证书的 HTTPS)。必须在任何网络请求前装好。
-  HttpOverrides.global = await WoHttpOverrides.load();
+  // 本机身份和业务库先就绪；远程服务由各自明确配置和用户操作触发。
+  await LocalRuntime.initialize();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
 
-  // 极光推送：初始化 SDK + 申请通知权限（后台进行，不阻塞首帧）。registration
-  // id 的上报由 WoSession 在登录/启动时完成。
-  final push = PushService(
-    appKey: ApiConfig.jpushAppKey,
-    channel: ApiConfig.jpushChannel,
-  );
-  final session = WoSession(push: push);
-  // 前台收到 / 点开推送时，刷新消息中心与聊天同步信号。
-  push.onInboxShouldRefresh = () {
-    session.requestMessagesRefresh();
-    session.requestChatRefresh();
-  };
-  unawaited(push.init());
-
+  final session = WoSession();
   // 先读出外观偏好，确保首帧就用对主题（不闪）。
   await session.loadThemeMode();
 
@@ -99,7 +83,7 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
     widget.session.push?.onOpenNotification = _openPushTarget;
     // APK 应用内更新仅适用于 Android。检查与启动数据并行，不阻塞 Splash；
     // 弹窗会等 Splash 完成导航后再显示，避免被路由替换带走。
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid && !widget.session.api.isLocal) {
       _launchUpdateCheck = widget.session.appUpdate.check();
     }
   }
