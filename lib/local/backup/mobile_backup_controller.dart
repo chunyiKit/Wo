@@ -9,6 +9,7 @@ import 'mobile_backup_client.dart';
 import 'portable_archive.dart';
 import 'quarantine_store.dart';
 import 'restricted_backup.dart';
+import 'pending_upload_journal.dart';
 
 abstract interface class BackupPreferencesStore {
   Future<Map<String,dynamic>?> read();
@@ -65,6 +66,7 @@ class MobileBackupController extends ChangeNotifier {
   PairedComputer? _computer;
   String? _recoveryKeyRef,_revealedKeyRef;
   bool _keyAcknowledged=false,_cleanupWarning=false;
+  PendingUploadJournal? _journal;bool _pendingJournal=false;
   _FrozenUpload? _upload;_Download? _download;String? _requestedDownload;
   List<BackupStatus> _backups=const [];
   BackupStatus? _lastUpload;PortableRestore? _lastRestore;
@@ -78,7 +80,7 @@ class MobileBackupController extends ChangeNotifier {
   bool get hasRecoveryKey=>_recoveryKeyRef!=null;
   bool get recoveryKeySavedAcknowledged=>_keyAcknowledged;
   bool get cleanupWarning=>_cleanupWarning;
-  bool get hasPendingUpload=>_upload!=null;
+  bool get hasPendingUpload=>_upload!=null||_pendingJournal;
   String? get pendingBackupId=>_upload?.manifest.backupId;
   bool get hasDownload=>_download!=null;
   bool get canRetryDownload=>_requestedDownload!=null;
@@ -105,7 +107,7 @@ class MobileBackupController extends ChangeNotifier {
     _globalQueue=task.then<void>((_) {},onError:(Object _,StackTrace __){});return task;
   }
   Future<void> load()=>_run(MobileBackupPhase.loading,()async{
-    if(_loaded)return;final raw=await preferences.read();
+    if(_loaded){await _loadPending();return;}final raw=await preferences.read();
     if(raw!=null){
       if(raw['v']!=1||raw.keys.any((k)=>!{'v','computer','recovery_key_ref','key_saved_acknowledged'}.contains(k)))throw const BackupException('invalid_backup_preferences');
       final p=raw['computer'];PairedComputer? computer;
@@ -115,14 +117,34 @@ class MobileBackupController extends ChangeNotifier {
       if(raw['key_saved_acknowledged'] is! bool)throw const BackupException('invalid_backup_preferences');
       _computer=computer;_recoveryKeyRef=key as String?;_keyAcknowledged=key!=null&&raw['key_saved_acknowledged']==true;
     }
-    _loaded=true;
+    _loaded=true;await _loadPending();
   });
   Map<String,dynamic> _settings(PairedComputer? computer,String? key,bool ack)=>{'v':1,
     'computer':computer==null?null:{'v':1,'origin':computer.origin.toString(),'pin':computer.pin,'family':computer.familyId,'device':computer.deviceId,'token_ref':computer.tokenRef},
     'recovery_key_ref':key,'key_saved_acknowledged':ack};
-  void _noFrozenUpload(){if(_upload!=null)throw const BackupException('finish_or_discard_pending_job');}
-  void _noPending(){if(_upload!=null||_download!=null)throw const BackupException('finish_or_discard_pending_job');}
+  void _noFrozenUpload(){if(hasPendingUpload)throw const BackupException('finish_or_discard_pending_job');}
+  void _noPending(){if(hasPendingUpload||_download!=null)throw const BackupException('finish_or_discard_pending_job');}
   PairedComputer _paired(){final p=_computer;if(p==null)throw const BackupException('computer_not_paired');return p;}
+  Future<PendingUploadJournal> _pendingStore()async=>_journal??=PendingUploadJournal(privateParent:await privateDirectory('backup-pending'));
+  Future<PendingUploadBinding> _currentBinding()async{
+    final ref=_recoveryKeyRef;if(ref==null)throw const BackupException('pending_upload_credentials_unavailable');
+    return PendingUploadBinding.current(computer:_paired(),familyId:familyId,deviceId:deviceId,recoveryKeyRef:ref,crypto:crypto);
+  }
+  void _adoptPending(PendingUploadJob job){
+    _upload=_FrozenUpload(job.manifest,job.sources,BackupSnapshot(sources:job.sources),null);
+    _coverage=job.coverageNotes;_omissions=job.omittedScopes;_sourceIssues=job.sourceIssues;
+  }
+  Future<void> _loadPending()async{
+    if(_snapshotOwner?._disposed==true)_snapshotOwner=null;
+    final journal=await _pendingStore();if(!await journal.exists()){
+      if(_upload!=null){_error=const BackupException('pending_upload_missing');return;}
+      _pendingJournal=false;if(_snapshotOwner==this)_snapshotOwner=null;return;
+    }
+    _pendingJournal=true;
+    if(_snapshotOwner!=null&&_snapshotOwner!=this){_error=const BackupException('frozen_backup_already_pending');return;}
+    try{final job=await journal.resume(await _currentBinding());if(job==null)throw const BackupException('pending_upload_missing');_snapshotOwner=this;_adoptPending(job);}
+    catch(e){_error=e is BackupException?e:const BackupException('pending_upload_corrupt');}
+  }
   Future<T> _withClient<T>(Future<T> Function(MobileBackupClient) action)async{
     final p=_paired(),transport=await transportFactory(_paired().origin,_paired().pin);
     try{return await action(MobileBackupClient(transport:transport,crypto:crypto,computer:p));}finally{transport.close();}
@@ -167,7 +189,9 @@ class MobileBackupController extends ChangeNotifier {
   });
   Future<String> _id()async{final b=await crypto.random(16);if(b.length!=16)throw const BackupException('invalid_random');return backupHex(b);}
   Future<BackupStatus> startBackup({bool allowPublicMediaOnComputer=false})=>_run(MobileBackupPhase.preparing,()async{
-    if(_upload!=null||_snapshotOwner!=null)throw const BackupException('frozen_backup_already_pending');
+    if(_snapshotOwner?._disposed==true)_snapshotOwner=null;
+    if(hasPendingUpload||_snapshotOwner!=null)throw const BackupException('frozen_backup_already_pending');
+    if(await (await _pendingStore()).exists()){await _loadPending();throw const BackupException('frozen_backup_already_pending');}
     if(_paired().familyId!=familyId)throw const BackupException('paired_family_is_restore_only');
     if(_recoveryKeyRef==null||!_keyAcknowledged)throw const BackupException('recovery_key_not_saved');
     _snapshotOwner=this;BackupSnapshot? snapshot;SealedBackupSource? sealed;
@@ -191,19 +215,29 @@ class MobileBackupController extends ChangeNotifier {
       }
       final sources=List<BackupSource>.unmodifiable([...public,if(sealed!=null)sealed]);
       final manifest=BackupManifest(familyId:familyId,backupId:backupId,entries:sources.map((s)=>s.entry));
-      _upload=_FrozenUpload(manifest,sources,snapshot,sealed);
-    }catch(_){if(sealed!=null){try{await sealed.dispose();}catch(_){_cleanupWarning=true;}}if(snapshot?.release!=null){try{await snapshot!.release!();}catch(_){_cleanupWarning=true;}}_snapshotOwner=null;rethrow;}
+      // Freeze final network bytes before the first request. Resume never regenerates ciphertext.
+      final job=await (await _pendingStore()).freeze(binding:await _currentBinding(),manifest:manifest,sources:sources,
+        allowPublicMediaOnComputer:allowPublicMediaOnComputer,coverageNotes:_coverage,omittedScopes:_omissions,sourceIssues:_sourceIssues);
+      _pendingJournal=true;_adoptPending(job);
+      if(sealed!=null){try{await sealed.dispose();}catch(_){_cleanupWarning=true;}sealed=null;}
+      if(snapshot.release!=null){try{await snapshot.release!();}catch(_){_cleanupWarning=true;}}
+      snapshot=null;
+    }catch(_){if(sealed!=null){try{await sealed.dispose();}catch(_){_cleanupWarning=true;}}if(snapshot?.release!=null){try{await snapshot!.release!();}catch(_){_cleanupWarning=true;}}_pendingJournal=await (await _pendingStore()).exists();if(!_pendingJournal)_snapshotOwner=null;rethrow;}
     return _uploadFrozen();
   });
   Future<BackupStatus> retryUpload()=>_run(MobileBackupPhase.uploading,()async{
-    if(_upload==null||_snapshotOwner!=this)throw const BackupException('no_frozen_upload');return _uploadFrozen();
+    if(!hasPendingUpload||_snapshotOwner!=this)throw const BackupException('no_frozen_upload');return _uploadFrozen();
   });
   Future<BackupStatus> _uploadFrozen()async{
+    final resumed=await (await _pendingStore()).resume(await _currentBinding());
+    if(resumed==null)throw const BackupException('pending_upload_missing');_adoptPending(resumed);
     final job=_upload!;_phase=MobileBackupPhase.uploading;_emit();
     final result=await _withClient((c)=>c.upload(job.manifest,job.sources));_lastUpload=result;
     await _releaseUpload();return result;
   }
   Future<void> _releaseUpload()async{
+    if(_snapshotOwner!=null&&_snapshotOwner!=this&& !_snapshotOwner!._disposed)throw const BackupException('frozen_backup_already_pending');
+    if(_pendingJournal){final journal=await _pendingStore();if(await journal.exists())await journal.discard(await _currentBinding());_pendingJournal=false;}
     final job=_upload;_upload=null;
     try{if(job?.sealed!=null)await job!.sealed!.dispose();}catch(_){_cleanupWarning=true;}
     try{if(job?.snapshot.release!=null)await job!.snapshot.release!();}catch(_){_cleanupWarning=true;}

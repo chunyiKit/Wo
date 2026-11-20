@@ -21,7 +21,7 @@ class _LocalBackupPageState extends State<LocalBackupPage> {
   @override void initState(){super.initState();_family.text=c.familyId;c.addListener(_changed);unawaited(_initialize());}
   void _changed(){if(mounted)setState((){});}
   Future<void> _initialize()async{
-    if(!c.loaded&&!c.busy)await _perform(c.load);
+    if(!c.busy)await _perform(c.load);
     if(!mounted)return;final computer=c.computer;if(computer!=null){_origin.text=computer.origin.toString();_pin.text=computer.pin;_family.text=computer.familyId;}if(mounted)setState((){});
   }
   @override void dispose(){c.removeListener(_changed);for(final field in [_origin,_pin,_code,_family,_importKey]){field.dispose();}super.dispose();}
@@ -104,7 +104,7 @@ class _LocalBackupPageState extends State<LocalBackupPage> {
           if(!c.recoveryKeySavedAcknowledged)const Text('请先设置并另存恢复密钥。'),
           if(paired!=null&&paired.familyId!=c.familyId)const Text('当前配对用于取回其它家庭的归档；发起本家庭备份需重新配对。'),
           if(c.hasPendingUpload)...[
-            const SizedBox(height:WoTokens.space3),const Text('这次备份保留了同一份加密归档与原件快照，可以显式续传。本次运行内保留续传，重启 App 后需重新发起。'),
+            const SizedBox(height:WoTokens.space3),const Text('这次备份保留了同一份加密归档与原件快照，可以显式续传。重启 App 后会核对同一身份、电脑指纹和密钥，再续传同一份冻结字节；不会自动重新加密。'),
             Wrap(spacing:WoTokens.space3,children:[OutlinedButton(onPressed:c.busy?null:()=>_perform(c.retryUpload),child:const Text('续传这次备份')),
               TextButton(onPressed:c.busy?null:_discardUpload,child:const Text('放弃这次续传'))]),
           ],
