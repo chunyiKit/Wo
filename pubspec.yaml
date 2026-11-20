@@ -15,6 +15,8 @@ dependencies:
     sdk: flutter
   go_router: ^14.6.0
   http: ^1.2.0
+  # 本地流式SHA256/HMAC；已有锁文件中的标准纯Dart依赖，SDK恢复后解析锁定。
+  crypto: ^3.0.6
   shared_preferences: ^2.3.0
   # Android 13+ 运行时通知权限（POST_NOTIFICATIONS）申请。
   permission_handler: ^11.3.0

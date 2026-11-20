@@ -52,3 +52,7 @@ backend/deploy/env/deploy.env
 /desktop/coverage.out
 *.woseal
 *.wotar
+
+# Python静态契约检查缓存
+__pycache__/
+*.pyc
