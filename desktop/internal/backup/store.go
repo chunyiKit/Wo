@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chunyiKit/Wo/desktop/internal/vault"
 	"io"
 	"os"
 	"path/filepath"
@@ -68,13 +69,15 @@ type EntryStatus struct {
 	Missing string `json:"missing,omitempty"`
 }
 type Status struct {
-	FamilyID   string        `json:"family_id"`
-	BackupID   string        `json:"backup_id"`
-	State      string        `json:"state"`
-	Complete   bool          `json:"complete"`
-	VerifiedAt string        `json:"verified_at,omitempty"`
-	Issues     []string      `json:"issues"`
-	Entries    []EntryStatus `json:"entries"`
+	Scope              string        `json:"scope"`
+	FullDeviceComplete bool          `json:"full_device_complete"`
+	FamilyID           string        `json:"family_id"`
+	BackupID           string        `json:"backup_id"`
+	State              string        `json:"state"`
+	Complete           bool          `json:"complete"`
+	VerifiedAt         string        `json:"verified_at,omitempty"`
+	Issues             []string      `json:"issues"`
+	Entries            []EntryStatus `json:"entries"`
 }
 type chunk struct {
 	Offset int64  `json:"offset"`
@@ -158,7 +161,7 @@ func Validate(m Manifest) error {
 		}
 		if e.Kind == "sealed" {
 			sealed++
-			if e.Label != "" || e.Missing != "" || e.SourceExact || e.Size < 64 {
+			if e.Label != "" || e.Missing != "" || e.SourceExact || e.Size < vault.MinCiphertextBytes {
 				return errors.New("restricted archive must be opaque")
 			}
 		}
@@ -633,6 +636,12 @@ func (s *Store) verify(m Manifest, publish bool) error {
 		if err != nil {
 			return err
 		}
+		if e.Kind == "sealed" {
+			if _, headerErr := vault.InspectHeader(f); headerErr != nil {
+				f.Close()
+				return errors.New("invalid sealed header")
+			}
+		}
 		sha, n, err := fileSHA(f)
 		f.Close()
 		if err != nil || n != e.Size || sha != e.SHA256 {
@@ -679,7 +688,7 @@ func (s *Store) Check(fid, bid string) (Status, error) {
 	return s.status(m)
 }
 func (s *Store) status(m Manifest) (Status, error) {
-	st := Status{FamilyID: m.FamilyID, BackupID: m.BackupID, State: "uploading", Issues: []string{}, Entries: []EntryStatus{}}
+	st := Status{FamilyID: m.FamilyID, BackupID: m.BackupID, State: "uploading", Scope: "declared_public_files", Issues: []string{}, Entries: []EntryStatus{}}
 	p, _ := base(m.FamilyID, m.BackupID)
 	var done marker
 	b, er := s.root.ReadFile(p + "/verified.json")
@@ -719,6 +728,7 @@ func (s *Store) status(m Manifest) (Status, error) {
 			es.Offset = offset
 		}
 		if e.Kind == "sealed" {
+			st.Scope = "opaque_restricted_unverified"
 			st.Issues = append(st.Issues, "restricted_archive_requires_key_holder_verification")
 			st.Complete = false
 		}

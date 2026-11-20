@@ -2,8 +2,10 @@ package backup
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/chunyiKit/Wo/desktop/internal/vault"
 	"io"
 	"os"
 	"path/filepath"
@@ -188,7 +190,10 @@ func TestMissingAndUnprovenOriginalNeverComplete(t *testing.T) {
 }
 func TestOpaqueRestrictedNotDownloadableByBrowser(t *testing.T) {
 	s, _ := setup(t)
-	data := bytes.Repeat([]byte{0x91}, 80)
+	var cipher bytes.Buffer
+	key := sha256.Sum256([]byte("synthetic unit key"))
+	vault.Encrypt(&cipher, strings.NewReader("synthetic restricted bytes"), key[:], vault.Context{Family: "family-a", Backup: "backup-a", Entry: "opaque"}, vault.Limits{})
+	data := cipher.Bytes()
 	m := sample(data)
 	m.Entries[0] = Entry{ID: "opaque", Kind: "sealed", Size: int64(len(data)), SHA256: digest(data)}
 	s.Create(m)
