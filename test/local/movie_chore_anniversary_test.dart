@@ -206,4 +206,84 @@ void main(){
     expect(await store.list(fid,'/families/$fid/plugins/chore/chores'),isEmpty);
     expect(await store.list(fid,'/families/$fid/notifications'),isEmpty);expect(await store.vector(fid),before);
   });
+
+  Future<LocalResult> anniversary(String method,List<String> tail,{Json body=const{},Json query=const{}})async{
+    final result=await routes.request(method,fid,['anniversary','dates',...tail],body:body,query:query);expect(result,isNotNull);return result!;
+  }
+  test('纪念日CRUD和模型、真实作者、提醒字段及重启持久',()async{
+    final created=await anniversary('POST',[],body:{'name':' 相识 ','event_date':'2020-12-01','emoji':'💞','note':'保留','notify_enabled':true,'notify_days_before':7});
+    final model=Anniversary.fromJson(Map<String,dynamic>.from(created.data as Map));expect(model.name,'相识');expect(model.isLunar,isFalse);expect(model.notifyEnabled,isTrue);expect(model.notifyDaysBefore,7);expect(model.daysUntil,11);
+    expect((created.data as Map)['created_by'],store.deviceId);expect((created.data as Map)['creator_avatar_url'],'/local/avatar/${store.deviceId}?v=1');
+    await anniversary('PUT',[model.id],body:{'name':'改名','note':null,'notify_enabled':false,'notify_days_before':0});
+    await store.close();store=await LocalStore.open(factory:databaseFactoryFfi,path:'${directory.path}/local.sqlite');routes=MovieChoreAnniversaryRoutes(store,now:()=>clock);
+    final read=Anniversary.fromJson(Map<String,dynamic>.from((await anniversary('GET',[model.id])).data as Map));expect(read.name,'改名');expect(read.note,isNull);expect(read.eventDate.month,12);expect(read.notifyEnabled,isFalse);expect(read.createdAt,model.createdAt);
+    await anniversary('DELETE',[model.id]);await expectLater(anniversary('GET',[model.id]),error(404));expect(requests,isEmpty);
+  });
+  test('本地农历保留闰月和小月兼容，岁末跨公历年不跳过当前农历年',()async{
+    final today=DateTime.utc(2026,1,1);
+    expect(LocalAnniversaryCalendar.nextOccurrence(DateTime.utc(2024,3,15),today,isLunar:true),DateTime.utc(2026,3,24));
+    expect(LocalAnniversaryCalendar.nextOccurrence(DateTime.utc(2023,4,1),today,isLunar:true),DateTime.utc(2026,3,29));
+    expect(LocalAnniversaryCalendar.nextOccurrence(DateTime.utc(2024,2,9),today,isLunar:true),DateTime.utc(2026,2,16));
+    expect(LocalAnniversaryCalendar.daysUntil(today,today,isLunar:true),0);
+    expect(LocalAnniversaryCalendar.nextOccurrence(DateTime.utc(2024,2,29),today),DateTime.utc(2028,2,29));
+    expect(LocalAnniversaryCalendar.daysUntil(DateTime.utc(2024,3,15),DateTime(2026,3,14,23,59)),1);
+    clock=today;
+    final saved=Anniversary.fromJson(Map<String,dynamic>.from((await anniversary('POST',[],body:{'name':'农历','event_date':'2024-03-15','is_lunar':true})).data as Map));
+    expect(saved.isLunar,isTrue);expect(saved.daysUntil,DateTime.utc(2026,3,24).difference(today).inDays);expect(requests,isEmpty);
+  });
+  test('农历月首官方表回归与年表边界，不把不支持日期改成公历',()async{
+    for(final fixture in [
+      (DateTime.utc(1954,11,26),1954,11,1),(DateTime.utc(1978,9,3),1978,8,1),
+      (DateTime.utc(2057,9,28),2057,9,1),(DateTime.utc(2097,8,7),2097,7,1),
+    ]){
+      final lunar=LocalAnniversaryCalendar.fromSolar(fixture.$1);expect(lunar.year,fixture.$2);expect(lunar.month,fixture.$3);expect(lunar.day,fixture.$4);expect(lunar.leap,isFalse);
+      expect(LocalAnniversaryCalendar.toSolar(lunar.year,lunar.month,lunar.day,leap:lunar.leap),fixture.$1);
+    }
+    final first=LocalAnniversaryCalendar.fromSolar(DateTime.utc(1900,1,31));expect((first.year,first.month,first.day,first.leap),(1900,1,1,false));
+    final last=LocalAnniversaryCalendar.fromSolar(DateTime.utc(2100,2,8));expect(LocalAnniversaryCalendar.toSolar(last.year,last.month,last.day,leap:last.leap),DateTime.utc(2100,2,8));
+    expect(()=>LocalAnniversaryCalendar.fromSolar(DateTime.utc(1900,1,30)),throwsUnsupportedError);
+    expect(()=>LocalAnniversaryCalendar.fromSolar(DateTime.utc(2100,2,9)),throwsUnsupportedError);
+    await expectLater(anniversary('POST',[],body:{'name':'超表','event_date':'1800-01-01','is_lunar':true}),error(501));
+    expect((await anniversary('GET',[])).data,isEmpty);
+  });
+  test('重复日期记录与多卡绑定独立，删除绑定日期仅预览回退不删卡片',()async{
+    Future<Json> add(String name,String date,String emoji)async=>Map<String,dynamic>.from((await anniversary('POST',[],body:{'name':name,'event_date':date,'emoji':emoji})).data as Map);
+    final a=await add('允许同名','2020-05-20','🅰️'),b=await add('允许同名','2020-05-20','🅱️'),near=await add('近处','2020-12-01','🎉');
+    expect(a['id'],isNot(b['id']));expect((await anniversary('GET',[])).data,hasLength(3));
+    for(final entry in [('card-a',a['id']),('card-b',b['id'])]){await store.patch(fid,'/families/$fid/installed',entry.$1,{'plugin_id':'anniversary','config':{'anniversary_id':entry.$2}});}
+    expect((await routes.anniversaryPreview(fid,config:{'anniversary_id':a['id']}))['emoji'],'🅰️');
+    expect((await routes.anniversaryPreview(fid,config:{'anniversary_id':b['id']}))['emoji'],'🅱️');
+    expect((await routes.anniversaryPreview(fid))['primary'],'近处');
+    await anniversary('DELETE',[a['id'] as String]);
+    expect((await routes.anniversaryPreview(fid,config:{'anniversary_id':a['id']}))['primary'],'近处');
+    expect((await routes.anniversaryPreview(fid,config:{'anniversary_id':b['id']}))['emoji'],'🅱️');
+    expect((await store.get(fid,'/families/$fid/installed','card-a'))!['config'],{'anniversary_id':a['id']});
+    expect((await store.get(fid,'/families/$fid/installed','card-b'))!['config'],{'anniversary_id':b['id']});
+    expect((await anniversary('GET',[near['id'] as String])).data,isNotNull);
+  });
+  test('纪念日提醒只记录pending请求，每周年去重且不依卡片数量重复',()async{
+    await member(fid,'another-member');clock=DateTime.utc(2026,12,25);
+    final due=(await anniversary('POST',[],body:{'name':'明天','event_date':'2020-12-26','notify_enabled':true,'notify_days_before':1})).data as Map;
+    await anniversary('POST',[],body:{'name':'未开提醒','event_date':'2020-12-25'});
+    await anniversary('POST',[],body:{'name':'窗口外','event_date':'2020-12-31','notify_enabled':true,'notify_days_before':1});
+    expect(await routes.requestDueAnniversaryReminders(fid),1);expect(await routes.requestDueAnniversaryReminders(fid),0);
+    var notifications=await store.list(fid,'/families/$fid/notifications');expect(notifications,hasLength(1));expect(notifications.single['type'],'anniversary_due');expect(notifications.single['status'],'pending_local_delivery');
+    expect(notifications.single['recipient_ids'],containsAll([store.deviceId,'another-member']));expect(notifications.single['source_id'],due['id']);expect(notifications.single['source_occurrence'],'2026-12-26');
+    clock=DateTime.utc(2026,12,26);expect(await routes.requestDueAnniversaryReminders(fid),0);
+    clock=DateTime.utc(2027,12,25);expect(await routes.requestDueAnniversaryReminders(fid),1);
+    notifications=await store.list(fid,'/families/$fid/notifications');expect(notifications,hasLength(2));
+    expect(notifications.map((n)=>n['source_occurrence']),containsAll(['2026-12-26','2027-12-26']));expect(requests,isEmpty);
+  });
+  test('纪念日非法输入/伪造字段不落库，超范围不会返回假倒数零',()async{
+    for(final body in <Json>[
+      {'name':' ','event_date':'2026-01-01'},{'name':'x'*33,'event_date':'2026-01-01'},
+      {'name':'x','event_date':'2026-02-30'},{'name':'x','event_date':'2026-01-01','is_lunar':'true'},
+      {'name':'x','event_date':'2026-01-01','notify_days_before':366},{'name':'x','event_date':'2026-01-01','created_by':'forged'},
+    ]){await expectLater(anniversary('POST',[],body:body),error(400));}
+    expect((await anniversary('GET',[])).data,isEmpty);
+    final lunar=(await anniversary('POST',[],body:{'name':'农历','event_date':'2024-03-15','is_lunar':true})).data as Map;
+    clock=DateTime.utc(2101,1,1);await expectLater(anniversary('GET',[lunar['id'] as String]),error(501));
+    expect((await store.get(fid,'/families/$fid/plugins/anniversary/dates',lunar['id'] as String))!['is_lunar'],isTrue);
+    await expectLater(anniversary('DELETE',[]),error(405));expect(requests,isEmpty);
+  });
 }

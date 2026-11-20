@@ -19,7 +19,8 @@ class MovieChoreAnniversaryRoutes {
   static const syncFields=<String,Set<String>>{
     'plugins/movie/movies':{'family_id','created_by','created_at','title','note','watched','watched_at','intro','tmdb_rating','tmdb_id','tmdb_media_type','ai_status','poster_pending'},
     'plugins/chore/chores':{'family_id','created_by','created_at','title','note','emoji','assigned_to','done','recurring','completed_at'},
-    'notifications':{'type','title','body','icon_emoji','created_by','created_at','read_by','status','recipient_ids','source_plugin','source_id'},
+    'plugins/anniversary/dates':{'family_id','created_by','created_at','name','event_date','emoji','is_lunar','note','notify_enabled','notify_days_before'},
+    'notifications':{'type','title','body','icon_emoji','created_by','created_at','read_by','status','recipient_ids','source_plugin','source_id','source_occurrence'},
   };
   static const _uuid=Uuid();
   static final _id=RegExp(r'^[A-Za-z0-9_-]{1,100}$');
@@ -69,6 +70,12 @@ class MovieChoreAnniversaryRoutes {
   }
   Future<LocalResult?> request(String method,String fid,List<String> tail,{Json body=const{},Json query=const{}})async{
     if(tail.length<2)return null;
+    if(tail[0]=='anniversary'){
+      if(tail[1]!='dates'||!([2,3].contains(tail.length)))return null;
+      await _member(fid);final verb=method.toUpperCase();
+      if(verb=='GET')return _anniversary(verb,fid,tail,body,query);
+      return _serial(fid,()=>_anniversary(verb,fid,tail,body,query));
+    }
     if(tail[0]=='chore'){
       final known=tail[1]=='chores'&&(tail.length==2||tail.length==3||(tail.length==4&&['complete','reopen','remind'].contains(tail[3])));
       if(!known)return null;
@@ -314,4 +321,199 @@ class MovieChoreAnniversaryRoutes {
     if(mine>0)return {'primary':'$mine 件家务待做','secondary':'该你出手啦','color_token':'chore','secondary_tone':'warning','badge':'$mine','emoji':'🧹'};
     return {'primary':total==0?'家务都做完啦':'你没有待办家务','secondary':total==0?'干净又整齐 ✨':'家里还有 $total 件','color_token':'chore','emoji':'🧹'};
   }
+
+  static String _calendarDate(Object? value){
+    if(value is! String||!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value))_fail(400,'日期必须是 YYYY-MM-DD');
+    final parsed=DateTime.tryParse(value);if(parsed==null||parsed.year<1||parsed.year>9999)_fail(400,'日期不存在');
+    final normalized=[parsed.year.toString().padLeft(4,'0'),parsed.month.toString().padLeft(2,'0'),parsed.day.toString().padLeft(2,'0')].join('-');
+    if(value!=normalized)_fail(400,'日期不存在');return value;
+  }
+  static String _formatDay(DateTime d)=>[d.year.toString().padLeft(4,'0'),d.month.toString().padLeft(2,'0'),d.day.toString().padLeft(2,'0')].join('-');
+  DateTime _nextAnniversary(Json row){
+    final date=_calendarDate(row['event_date']),lunar=_bool(row['is_lunar']);
+    try{return LocalAnniversaryCalendar.nextOccurrence(DateTime.parse(date),_now(),isLunar:lunar);}
+    on UnsupportedError{_fail(501,'日期超出当前本地日历支持范围，未改用其他历法');}
+  }
+  Json _anniversaryValues(Json body,{required bool create}){
+    _only(body,{'name','event_date','emoji','is_lunar','note','notify_enabled','notify_days_before'});
+    final values=<String,dynamic>{};
+    if(create||body.containsKey('name'))values['name']=_text(body['name'],32,'纪念日名称');
+    if(create||body.containsKey('event_date'))values['event_date']=_calendarDate(body['event_date']);
+    if(create||body.containsKey('emoji'))values['emoji']=_text(body.containsKey('emoji')?body['emoji']:'💞',16,'图标');
+    if(create||body.containsKey('note'))values['note']=_optional(body['note'],200,'备注');
+    if(create||body.containsKey('is_lunar'))values['is_lunar']=_bool(body.containsKey('is_lunar')?body['is_lunar']:false);
+    if(create||body.containsKey('notify_enabled'))values['notify_enabled']=_bool(body.containsKey('notify_enabled')?body['notify_enabled']:false);
+    if(create||body.containsKey('notify_days_before'))values['notify_days_before']=_integer(body.containsKey('notify_days_before')?body['notify_days_before']:0,0,365,'提前天数');
+    return values;
+  }
+  Future<List<Json>> _anniversaryRows(String fid)async=>[for(final row in await store.list(fid,_col(fid,'anniversary','dates')))if(row['family_id']==fid)row];
+  Future<Json> _anniversaryRead(String fid,Json row)async{
+    final next=_nextAnniversary(row),today=_now(),creator=await _author(fid,row['created_by']);
+    return {'id':row['id'],'family_id':fid,'name':row['name'],'event_date':row['event_date'],'emoji':row['emoji'],
+      'is_lunar':row['is_lunar'],'note':row['note'],'notify_enabled':row['notify_enabled'],'notify_days_before':row['notify_days_before'],
+      'days_until':next.difference(DateTime.utc(today.year,today.month,today.day)).inDays,'next_occurrence':_formatDay(next),
+      'created_at':row['created_at'],'created_by':row['created_by'],
+      'creator_name':creator?['display_name'],'creator_emoji':creator?['avatar_emoji'],'creator_avatar_url':creator?['avatar_url']};
+  }
+  Future<LocalResult> _anniversary(String verb,String fid,List<String> tail,Json body,Json query)async{
+    _only(query,<String>{});
+    if(tail.length==2){
+      if(verb=='GET'){
+        final rows=await _anniversaryRows(fid);rows.sort((a,b){final d=(a['event_date'] as String).compareTo(b['event_date'] as String);return d!=0?d:(a['id'] as String).compareTo(b['id'] as String);});
+        return(data:[for(final row in rows)await _anniversaryRead(fid,row)],meta:null);
+      }
+      if(verb!='POST')_fail(405,'纪念日不支持该方法');
+      final fields=_anniversaryValues(body,create:true);_nextAnniversary(fields);
+      final id=_uuid.v4();await store.patch(fid,_col(fid,'anniversary','dates'),id,{...fields,'family_id':fid,'created_by':store.deviceId,'created_at':_stamp});
+      return(data:await _anniversaryRead(fid,await _load(fid,'anniversary','dates',id)),meta:null);
+    }
+    final row=await _load(fid,'anniversary','dates',tail[2]);
+    if(verb=='GET')return(data:await _anniversaryRead(fid,row),meta:null);
+    if(verb=='DELETE'){_only(body,<String>{});await store.patch(fid,_col(fid,'anniversary','dates'),tail[2],{},delete:true);return(data:null,meta:null);}
+    if(!['PUT','PATCH'].contains(verb))_fail(405,'纪念日不支持该方法');
+    final fields=_anniversaryValues(body,create:false);_nextAnniversary({...row,...fields});
+    if(fields.isNotEmpty)await store.patch(fid,_col(fid,'anniversary','dates'),tail[2],fields);
+    return(data:await _anniversaryRead(fid,await _load(fid,'anniversary','dates',tail[2])),meta:null);
+  }
+  Future<Json> anniversaryPreview(String fid,{Json config=const{}})async{
+    await _member(fid);final rows=[for(final row in await _anniversaryRows(fid))await _anniversaryRead(fid,row)];
+    if(rows.isEmpty)return {'primary':'还没有记录','secondary':'点击添加第一个纪念日','color_token':'anniv'};
+    rows.sort((a,b){final days=(a['days_until'] as int).compareTo(b['days_until'] as int);return days!=0?days:(a['id'] as String).compareTo(b['id'] as String);});
+    final pinned=config['anniversary_id'];final selected=rows.where((row)=>row['id']==pinned).firstOrNull??rows.first;
+    final days=selected['days_until'] as int;
+    return {'primary':selected['name'],'secondary':days==0?'就是今天 🎉':'还有 $days 天','color_token':'anniv','emoji':selected['emoji']};
+  }
+  /// 只生成可持久化的待投递请求；根执行器仍需复核来源、偏好和系统授权。
+  Future<int> requestDueAnniversaryReminders(String fid)=>_serial(fid,()async{
+    await _member(fid);final members=await store.list(fid,'/families/$fid/members');
+    final recipients={for(final m in members)if(m['family_id']==fid&&m['status']=='active'&&m['user_id'] is String&&m['id']==m['user_id'])m['user_id'] as String}.toList()..sort();
+    var requested=0;
+    for(final row in await _anniversaryRows(fid)){
+      if(row['notify_enabled']!=true)continue;
+      final next=_nextAnniversary(row),today=_now();
+      final delta=next.difference(DateTime.utc(today.year,today.month,today.day)).inDays;
+      if(delta<0||delta>(row['notify_days_before'] as int))continue;
+      final occurrence=_formatDay(next),sourceId=row['id'] as String;
+      final id=_uuid.v5('6ba7b811-9dad-11d1-80b4-00c04fd430c8','anniversary:$fid:$sourceId:$occurrence');
+      if(await store.revision(fid,'/families/$fid/notifications',id)>0)continue;
+      await store.patch(fid,'/families/$fid/notifications',id,{
+        'type':'anniversary_due','title':delta==0?'今天是「${row['name']}」':'「${row['name']}」还有 $delta 天',
+        'body':delta==0?'别忘了这个特别的日子 🎉':'记得提前准备哦 🎀','icon_emoji':row['emoji'],
+        'created_by':store.deviceId,'created_at':_stamp,'read_by':<String>[],'status':'pending_local_delivery',
+        'recipient_ids':recipients,'source_plugin':'anniversary','source_id':sourceId,'source_occurrence':occurrence,
+      });requested++;
+    }
+    return requested;
+  });
+}
+
+/*
+ * Calendar year-size facts adapted from yize/solarlunar const/lunarInfo.js.
+ * https://github.com/yize/solarlunar/blob/master/const/lunarInfo.js
+ * ISC License
+ * Copyright (c) 2015, yize
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+/// 无运行时外部依赖的月大小/闰月换算；1954/2057/2097月首按香港天文台校正。
+/// 日期只取年月日并在 UTC 计算，避免手机时区/DST 把日历天数算错。
+class LocalAnniversaryCalendar {
+  static const firstYear=1900,lastYear=2099;
+  static final _epoch=DateTime.utc(1900,1,31);
+  static const _yearInfo=<int>[
+    0x04bd8,0x04ae0,0x0a570,0x054d5,0x0d260,0x0d950,0x16554,0x056a0,0x09ad0,0x055d2,
+    0x04ae0,0x0a5b6,0x0a4d0,0x0d250,0x1d255,0x0b540,0x0d6a0,0x0ada2,0x095b0,0x14977,
+    0x04970,0x0a4b0,0x0b4b5,0x06a50,0x06d40,0x1ab54,0x02b60,0x09570,0x052f2,0x04970,
+    0x06566,0x0d4a0,0x0ea50,0x06e95,0x05ad0,0x02b60,0x186e3,0x092e0,0x1c8d7,0x0c950,
+    0x0d4a0,0x1d8a6,0x0b550,0x056a0,0x1a5b4,0x025d0,0x092d0,0x0d2b2,0x0a950,0x0b557,
+    0x06ca0,0x0b550,0x15355,0x04da0,0x0a5d0,0x14573,0x052b0,0x0a9a8,0x0e950,0x06aa0,
+    0x0aea6,0x0ab50,0x04b60,0x0aae4,0x0a570,0x05260,0x0f263,0x0d950,0x05b57,0x056a0,
+    0x096d0,0x04dd5,0x04ad0,0x0a4d0,0x0d4d4,0x0d250,0x0d558,0x0b540,0x0b6a0,0x195a6,
+    0x095b0,0x049b0,0x0a974,0x0a4b0,0x0b27a,0x06a50,0x06d40,0x0af46,0x0ab60,0x09570,
+    0x04af5,0x04970,0x064b0,0x074a3,0x0ea50,0x06b58,0x05ac0,0x0ab60,0x096d5,0x092e0,
+    0x0c960,0x0d954,0x0d4a0,0x0da50,0x07552,0x056a0,0x0abb7,0x025d0,0x092d0,0x0cab5,
+    0x0a950,0x0b4a0,0x0baa4,0x0ad50,0x055d9,0x04ba0,0x0a5b0,0x15176,0x052b0,0x0a930,
+    0x07954,0x06aa0,0x0ad50,0x05b52,0x04b60,0x0a6e6,0x0a4e0,0x0d260,0x0ea65,0x0d530,
+    0x05aa0,0x076a3,0x096d0,0x04afb,0x04ad0,0x0a4d0,0x1d0b6,0x0d250,0x0d520,0x0dd45,
+    0x0b5a0,0x056d0,0x055b2,0x049b0,0x0a577,0x0a4b0,0x0aa50,0x1b255,0x06d20,0x0ada0,
+    0x14b63,0x09370,0x049f8,0x04970,0x064b0,0x168a6,0x0ea50,0x06aa0,0x1a6c4,0x0aae0,
+    0x092e0,0x0d2e3,0x0c960,0x0d557,0x0d4a0,0x0da50,0x05d55,0x056a0,0x0a6d0,0x055d4,
+    0x052d0,0x0a9b8,0x0a950,0x0b4a0,0x0b6a6,0x0ad50,0x055a0,0x0aba4,0x0a5b0,0x052b0,
+    0x0b273,0x06930,0x07337,0x06aa0,0x0ad50,0x14b55,0x04b60,0x0a570,0x054e4,0x0d160,
+    0x0e968,0x0d520,0x0daa0,0x16aa6,0x056d0,0x04ae0,0x0a9d4,0x0a2d0,0x0d150,0x0f252,
+  ];
+  static final _starts=_yearStarts();
+  static List<int> _yearStarts(){
+    final starts=<int>[0];
+    for(var year=firstYear;year<=lastYear;year++){starts.add(starts.last+_months(year).fold<int>(0,(sum,m)=>sum+m.days));}
+    return starts;
+  }
+  static DateTime _day(DateTime value)=>DateTime.utc(value.year,value.month,value.day);
+  static Iterable<({int month,bool leap,int days})> _months(int year)sync*{
+    final info=_yearInfo[year-firstYear],leap=info&15;
+    for(var month=1;month<=12;month++){
+      yield(month:month,leap:false,days:29+((info&(0x10000>>month))==0?0:1));
+      if(month==leap)yield(month:month,leap:true,days:29+((info&0x10000)==0?0:1));
+    }
+  }
+  static ({int year,int month,int day,bool leap}) fromSolar(DateTime value){
+    var offset=_day(value).difference(_epoch).inDays;
+    if(offset<0||offset>=_starts.last)throw UnsupportedError('农历转换日期超出1900-01-31至2100-02-08范围');
+    var year=firstYear;
+    while(offset>=_starts[year-firstYear+1]){year++;}
+    offset-=_starts[year-firstYear];
+    for(final month in _months(year)){
+      if(offset<month.days)return(year:year,month:month.month,day:offset+1,leap:month.leap);
+      offset-=month.days;
+    }
+    throw StateError('农历年表结构不一致');
+  }
+  static DateTime? toSolar(int year,int month,int day,{bool leap=false}){
+    if(year<firstYear||year>lastYear||month<1||month>12||day<1)return null;
+    var offset=_starts[year-firstYear];
+    for(final entry in _months(year)){
+      if(entry.month==month&&entry.leap==leap){
+        if(day>entry.days)return null;
+        return _epoch.add(Duration(days:offset+day-1));
+      }
+      offset+=entry.days;
+    }
+    return null;
+  }
+  static DateTime nextOccurrence(DateTime eventDate,DateTime today,{bool isLunar=false}){
+    final current=_day(today),target=_day(eventDate);
+    if(!isLunar){
+      // 2月29日只在真实存在的日期发生，不能让 DateTime 静默归一化为3月1日。
+      for(var year=current.year;year<=current.year+8&&year<=9999;year++){
+        final candidate=DateTime.utc(year,target.month,target.day);
+        if(candidate.month!=target.month||candidate.day!=target.day)continue;
+        if(!candidate.isBefore(current))return candidate;
+      }
+      throw UnsupportedError('下次公历日期超出支持范围');
+    }
+    final original=fromSolar(target),thisLunarYear=fromSolar(current).year;
+    // 公历一月仍可能属于前一农历年，不能直接从 Gregorian year 开始。
+    for(var year=thisLunarYear;year<=lastYear;year++){
+      DateTime? selected;
+      for(final leap in original.leap?[true,false]:[false]){
+        for(final day in [original.day,original.day-1]){
+          selected=toSolar(year,original.month,day,leap:leap);
+          if(selected!=null)break;
+        }
+        if(selected!=null)break;
+      }
+      if(selected!=null&&!selected.isBefore(current))return selected;
+    }
+    throw UnsupportedError('下次农历周年超出年表范围，未改用公历');
+  }
+  static int daysUntil(DateTime eventDate,DateTime today,{bool isLunar=false})=>
+    nextOccurrence(eventDate,today,isLunar:isLunar).difference(_day(today)).inDays;
 }
