@@ -46,3 +46,18 @@ iOS Files 使用 open-in-place 与安全作用域 bookmark，访问前后配对 
 Python 静态检查：`python3 -m unittest discover -s tool/tests -p test_native_media_contract.py -v`。这是契约源码回归，不是 Kotlin/Swift/Dart 编译或运行测试。
 
 官方依据：[Android 媒体位置权限](https://developer.android.com/training/data-storage/shared/media#media-location-permission)、[SAF 持久授权](https://developer.android.com/training/data-storage/shared/documents-files#persist-permissions)、[MediaStore 原格式 FD](https://developer.android.com/reference/android/provider/MediaStore#getOriginalMediaFormatFileDescriptor(android.content.Context,%20android.os.ParcelFileDescriptor))、[Photos 禁止网络](https://developer.apple.com/documentation/photos/phassetresourcerequestoptions/isnetworkaccessallowed)、[原资源分块读取](https://developer.apple.com/documentation/photos/phassetresourcemanager/requestdata(for:options:datareceivedhandler:completionhandler:))、[需要网络的资源错误](https://developer.apple.com/documentation/photos/phphotoserror-swift.struct/code/networkaccessrequired)、[Files open-in-place](https://developer.apple.com/documentation/uikit/uidocumentpickerviewcontroller/init(foropeningcontenttypes:ascopy:))。这些 API 文档支持实现选择，不能替代本项目的原生实测。
+
+
+## sRGB 缩略图与 JPEG 元数据兼容修复
+
+现代 P3/HDR 图像即使重新编码，也可能被系统 JPEG 编码器自动附带 ICC APP2；同步层严格拒绝 APP1…15/COM 时不能直接提交这个结果。Android 现在把像素绘制到明确 `ColorSpace.Named.SRGB` 的8位 ARGB_8888 bitmap（API26以下为平台默认 sRGB）；iOS 使用明确 `CGColorSpace.sRGB` 的8位 CGContext 并保留 UIImage 的绘制方向。两端先转标准 SDR sRGB，再做新的 JPEG 像素编码，因此移除 ICC 不会仅删除 P3 色彩解释而把 P3 数值误当 sRGB。HDR→SDR 的观感、P3色差、EXIF旋转、透明边缘和真实设备编码行为仍未验证，不能称为色彩验收通过。
+
+私有 `stripThumbnailMetadata` 只接收上述新编码 JPEG，不接收原输入文件/Photos资源/Files字节。解析器完整读取 SOI、段长度、SOS、多 scan、熵流中的 FF00 stuffing/重启标记/TEM、EOI；按长度移除 APP1…15（含 EXIF/XMP/ICC/厂商段）及 COM，保留 APP0/JFIF 与全部编码数据。越界长度、截断熵流、缺 EOI、EOI 后额外字节均 fail closed；最终以清理后的 JPEG 检查96 KiB上限。原件 prepare/read 路径不调用此函数，原图/原视频字节不变。
+
+增加 Python 静态源码契约与独立合成 JPEG 段 oracle，覆盖包含假 EOI 的元数据、APP1…15/COM、两段 scan、FF00、重启/TEM、截断与非法长度。oracle 不是 Kotlin/Swift 执行，也不验证 JPEG 解码或真实 sRGB 色彩；仍未运行 SDK/模拟器/真机。实机需用 P3/HDR/标准sRGB+带GPS照片/视频分别选择，确认缩略图通过同步严格校验、可解码、方向正确、色彩可接受，同时原件导入前SHA与备份SHA仍相同。
+
+## 应用接线与私有暂存源码
+
+Android Activity 和 iOS 隐式Engine注册media/crypto/discovery桥；退后台停止发现。原件不可读取或授权被拒时，手机备份来源保留缩略图并返回缺件，不会用脱敏或转码流补位。
+
+备份暂存仅能请求固定名字的App私有目录：Android noBackupFilesDir/0700，iOS ApplicationSupport/FileProtection.complete/排除备份并读回确认。拒绝符号链接或目录别名。此源码核对不等于实际OS权限、原件字节或平台编译验收。iOS Keychain采用ThisDeviceOnly且不同步；卸载后可能残留不可达旧密钥，当前新UUID引用不会自动继承旧身份，未宣称物理擦除。

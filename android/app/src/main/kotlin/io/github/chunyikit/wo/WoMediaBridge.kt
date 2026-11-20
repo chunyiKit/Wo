@@ -7,6 +7,10 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorSpace
+import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -327,13 +331,87 @@ class WoMediaBridge private constructor(private val activity: Activity, messenge
                 val small = Bitmap.createScaledBitmap(current, maxOf(1, (current.width * scale).toInt()), maxOf(1, (current.height * scale).toInt()), true)
                 current.recycle(); current = small; bitmap = small
             }
-            // Encode only pixels into a new JPEG; never copy source EXIF or XMP.
-            for (quality in listOf(80, 65, 45, 25, 10)) {
-                val out = ByteArrayOutputStream()
-                if (current.compress(Bitmap.CompressFormat.JPEG, quality, out) && out.size() <= MAX_THUMBNAIL) return out.toByteArray()
+            // Explicit SDR sRGB pixels before removing ICC: deleting a P3 profile
+            // without color conversion would change displayed thumbnail colors.
+            val clean = if (Build.VERSION.SDK_INT >= 26) Bitmap.createBitmap(current.width, current.height,
+                Bitmap.Config.ARGB_8888, false, ColorSpace.get(ColorSpace.Named.SRGB))
+                else Bitmap.createBitmap(current.width, current.height, Bitmap.Config.ARGB_8888)
+            val pixels = if (Build.VERSION.SDK_INT >= 26 && current.config == Bitmap.Config.HARDWARE)
+                current.copy(Bitmap.Config.ARGB_8888, false) ?: throw MediaFailure("source_unavailable") else current
+            try {
+                val canvas = Canvas(clean)
+                canvas.drawColor(Color.BLACK)
+                canvas.drawBitmap(pixels, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG))
+                // This sanitizer receives ONLY this fresh encoder output. Original
+                // media bytes never pass through it (including prepare/read).
+                for (quality in listOf(80, 65, 45, 25, 10)) {
+                    val out = ByteArrayOutputStream()
+                    if (clean.compress(Bitmap.CompressFormat.JPEG, quality, out)) {
+                        val bytes = stripThumbnailMetadata(out.toByteArray())
+                        if (bytes.size <= MAX_THUMBNAIL) return bytes
+                    }
+                }
+                throw MediaFailure("thumbnail_limit")
+            } finally {
+                if (pixels !== current) pixels.recycle()
+                clean.recycle()
             }
-            throw MediaFailure("thumbnail_limit")
         } finally { bitmap?.recycle() }
+    }
+
+    /** Parses new encoder JPEG only; keeps all entropy/stuffed/restart bytes. */
+    private fun stripThumbnailMetadata(encoded: ByteArray): ByteArray {
+        fun value(index: Int) = encoded[index].toInt() and 0xff
+        fun invalid(): Nothing = throw MediaFailure("thumbnail_invalid")
+        if (encoded.size < 4 || value(0) != 0xff || value(1) != 0xd8) invalid()
+        val out = ByteArrayOutputStream(encoded.size)
+        out.write(encoded, 0, 2)
+        var position = 2
+        var inScan = false
+        var sawScan = false
+        while (position < encoded.size) {
+            if (inScan) {
+                val entropyStart = position
+                var foundMarker = false
+                while (position < encoded.size) {
+                    if (value(position) != 0xff) { position++; continue }
+                    val markerStart = position
+                    var next = position + 1
+                    while (next < encoded.size && value(next) == 0xff) next++
+                    if (next >= encoded.size) invalid()
+                    val marker = value(next)
+                    if (marker == 0x00 || marker == 0x01 || marker in 0xd0..0xd7) { position = next + 1; continue }
+                    out.write(encoded, entropyStart, markerStart - entropyStart)
+                    position = markerStart
+                    inScan = false
+                    foundMarker = true
+                    break
+                }
+                if (!foundMarker) invalid() // no EOI: do not return truncated entropy
+                continue
+            }
+            val markerStart = position
+            if (value(position) != 0xff) invalid()
+            while (position < encoded.size && value(position) == 0xff) position++
+            if (position >= encoded.size) invalid()
+            val marker = value(position++)
+            if (marker == 0xd9) {
+                if (!sawScan || position != encoded.size) invalid()
+                out.write(encoded, markerStart, position - markerStart)
+                return out.toByteArray()
+            }
+            if (marker == 0x00 || marker == 0xd8 || marker in 0xd0..0xd7) invalid()
+            if (marker == 0x01) { out.write(encoded, markerStart, position - markerStart); continue }
+            if (encoded.size - position < 2) invalid()
+            val length = (value(position) shl 8) or value(position + 1)
+            if (length < 2 || length > encoded.size - position) invalid()
+            val end = position + length
+            // Keep APP0 (JFIF); remove EXIF/XMP/ICC/vendor APP1..15 and COM.
+            if (marker !in 0xe1..0xef && marker != 0xfe) out.write(encoded, markerStart, end - markerStart)
+            position = end
+            if (marker == 0xda) { inScan = true; sawScan = true }
+        }
+        invalid()
     }
 
     private fun refs(): JSONObject {
@@ -363,4 +441,6 @@ class WoMediaBridge private constructor(private val activity: Activity, messenge
     private fun finish(value: Any?) { val result = pending; pending = null; pickedUri = null; result?.success(value) }
     private fun finishError(reason: String) { val result = pending; pending = null; pickedUri = null; result?.error("MEDIA_UNAVAILABLE", "本机媒体不可用", reason) }
     fun detach() { channel.setMethodCallHandler(null); finishError("source_unavailable"); worker.shutdown() }
+    fun close() { channel.setMethodCallHandler(null); pending?.error("MEDIA_CLOSED", "媒体选择已中断，可重试", null); pending = null; worker.shutdownNow() }
+
 }

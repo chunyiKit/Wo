@@ -4,6 +4,9 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var localPrivacyChannel: FlutterMethodChannel?
+  private var localBridge: WoLocalBridge?
+  private var mediaBridge: AnyObject?
+  private var backgroundObserver: NSObjectProtocol?
 
   override func application(
     _ application: UIApplication,
@@ -14,6 +17,21 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let messenger = engineBridge.applicationRegistrar.messenger()
+    localBridge?.close()
+    localBridge = WoLocalBridge(messenger: messenger)
+    if #available(iOS 14.0, *) {
+      mediaBridge = WoMediaBridge.attach(messenger: messenger) { [weak self] in
+        var controller = self?.window?.rootViewController ?? UIApplication.shared.connectedScenes
+          .compactMap { ($0 as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow })?.rootViewController }.first
+        while let presented = controller?.presentedViewController { controller = presented }
+        return controller
+      }
+    }
+    if backgroundObserver == nil {
+      backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+        object: nil, queue: .main) { [weak self] _ in self?.localBridge?.stop() }
+    }
     let channel = FlutterMethodChannel(
       name: "wo.local/privacy",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

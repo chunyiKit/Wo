@@ -99,6 +99,25 @@ final class WoLocalBridge: NSObject, FlutterStreamHandler, NetServiceBrowserDele
     private func cryptoCall(_ call: FlutterMethodCall) throws -> Any? {
         guard let args = call.arguments as? [String: Any] else { throw BridgeError.argument }
         switch call.method {
+        case "privateDirectory":
+            guard let name = args["name"] as? String,
+              name.range(of: "^[a-z0-9_-]{1,40}$", options: .regularExpression)?.upperBound == name.endIndex else { throw BridgeError.argument }
+            let manager = FileManager.default
+            let base = try manager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).resolvingSymlinksInPath()
+            var directory = base.appendingPathComponent("wo-private-" + name, isDirectory: true)
+            if manager.fileExists(atPath: directory.path) {
+                let current = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                guard current.isDirectory == true, current.isSymbolicLink != true else { throw BridgeError.operation }
+            } else {
+                try manager.createDirectory(at: directory, withIntermediateDirectories: false,
+                  attributes: [.posixPermissions: 0o700, .protectionKey: FileProtectionType.complete])
+            }
+            guard directory.resolvingSymlinksInPath().path == directory.path else { throw BridgeError.operation }
+            try manager.setAttributes([.posixPermissions: 0o700, .protectionKey: FileProtectionType.complete], ofItemAtPath: directory.path)
+            var flags = URLResourceValues(); flags.isExcludedFromBackup = true
+            try directory.setResourceValues(flags)
+            guard try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true else { throw BridgeError.operation }
+            return directory.path
         case "random":
             let count = try integer(args, "count")
             guard (1...64).contains(count) else { throw BridgeError.argument }
@@ -223,8 +242,11 @@ final class WoLocalBridge: NSObject, FlutterStreamHandler, NetServiceBrowserDele
     }
     func netServiceDidResolveAddress(_ sender: NetService) {
         guard services[sender.name] === sender, ownId != nil, (1...65535).contains(sender.port) else { return }
-        for raw in sender.addresses ?? [] {
-            if let address = numericAddress(raw) {
+        // 优先 Wi-Fi IPv4；地址仍只是提示，上层仅接受私有LAN并强制认证。
+        let addresses = (sender.addresses ?? []).compactMap { numericAddress($0) }
+        let ordered = addresses.filter { !$0.contains(":") } + addresses.filter { $0.contains(":") }
+        for address in ordered {
+            do {
                 let value: [String: Any] = ["event": "found", "deviceId": sender.name,
                     "address": address, "port": sender.port]
                 resolved[sender.name] = value

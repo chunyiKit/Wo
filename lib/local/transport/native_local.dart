@@ -51,6 +51,13 @@ final class NativeCrypto implements LocalCrypto {
     }
     return result;
   }
+  /// 只返回本App固定私有目录，名称不是路径；路径不得进入同步或普通配置。
+  Future<String> privateDirectory(String name)async{
+    final match=RegExp(r'^[a-z0-9_-]{1,40}$').firstMatch(name);
+    if(match==null||match.end!=name.length)throw ArgumentError('invalid private directory name');
+    final path=await _channel.invokeMethod<String>('privateDirectory',{'name':name});
+    if(path==null||!path.startsWith('/'))throw StateError('private directory unavailable');return path;
+  }
   @override
   Future<Uint8List> random(int count) {
     if (count < 1 || count > 64) throw ArgumentError('count must be 1..64');

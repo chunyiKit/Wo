@@ -11,6 +11,8 @@
     <!-- 植物日记：读取设备定位，作为家庭默认环境拉取当地天气。运行时申请。 -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- 仅为用户已选媒体读取未脱敏GPS EXIF；不授予全相册或设备定位访问。 -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
     <application
         android:allowBackup="false"
         android:fullBackupContent="@xml/wo_backup_rules"
@@ -18,7 +20,7 @@
         android:label="${WO_APP_LABEL}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"

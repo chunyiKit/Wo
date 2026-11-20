@@ -133,5 +133,16 @@ class NativeLocalContractTests(unittest.TestCase):
                          'b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7')
 
 
+    def test_private_staging_directory_is_app_scoped_and_fails_closed(self):
+        android = (ROOT / "android/app/src/main/kotlin/io/github/chunyikit/wo/WoLocalBridge.kt").read_text()
+        ios = (ROOT / "ios/Runner/WoLocalBridge.swift").read_text()
+        self.assertIn('val base = app.noBackupFilesDir.canonicalFile', android)
+        self.assertLess(android.index('check(directory.canonicalFile == directory.absoluteFile)'), android.index('android.system.Os.chmod(directory.path, 448)'))
+        self.assertIn('current.isSymbolicLink != true', ios)
+        self.assertIn('FileProtectionType.complete', ios)
+        self.assertIn('directory.setResourceValues(flags)', ios)
+        self.assertIn('isExcludedFromBackup == true', ios)
+
+
 if __name__ == '__main__':
     unittest.main()

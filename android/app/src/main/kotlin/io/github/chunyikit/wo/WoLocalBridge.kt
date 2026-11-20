@@ -126,6 +126,18 @@ class WoLocalBridge(context: Context, messenger: BinaryMessenger) : AutoCloseabl
         return value
     }
     private fun cryptoCall(call: MethodCall): Any? = when (call.method) {
+        "privateDirectory" -> {
+            val name = call.argument<String>("name") ?: throw IllegalArgumentException()
+            require(Regex("[a-z0-9_-]{1,40}").matches(name))
+            val base = app.noBackupFilesDir.canonicalFile
+            val directory = File(base, "wo-private-$name")
+            check(directory.canonicalFile == directory.absoluteFile)
+            require(!directory.exists() || directory.isDirectory)
+            if (!directory.exists()) check(directory.mkdir())
+            android.system.Os.chmod(directory.path, 448) // 0700，且仅本App固定子目录
+            check(directory.canonicalFile.parentFile == base)
+            directory.canonicalPath
+        }
         "random" -> {
             val count = integer(call, "count")
             require(count in 1..64)

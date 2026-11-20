@@ -422,12 +422,80 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     }
     let scale = min(1, 512 / max(image.size.width, image.size.height))
     let size = CGSize(width: max(1, image.size.width * scale), height: max(1, image.size.height * scale))
-    let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
-    // Redraw pixels only: no source EXIF, GPS, filename, XMP or asset properties.
-    let clean = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+    // Redraw into explicit standard SDR sRGB before discarding any ICC profile.
+    // UIKit renderer defaults can preserve Display P3 / HDR color spaces.
+    let width = Int(ceil(size.width)), height = Int(ceil(size.height))
+    guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+        let context = CGContext(data: nil, width: width, height: height,
+          bitsPerComponent: 8, bytesPerRow: width * 4, space: srgb,
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { throw fail("thumbnail_invalid") }
+    context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+    context.translateBy(x: 0, y: CGFloat(height)); context.scaleBy(x: 1, y: -1)
+    UIGraphicsPushContext(context)
+    image.draw(in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+    UIGraphicsPopContext()
+    guard let cg = context.makeImage() else { throw fail("thumbnail_invalid") }
+    let clean = UIImage(cgImage: cg)
+    // ONLY a fresh pixel encode may enter the marker sanitizer; no original
+    // Photos/Files bytes are passed here or rewritten by prepare/read.
     for quality in [CGFloat(0.8), CGFloat(0.65), CGFloat(0.45), CGFloat(0.25), CGFloat(0.1)] {
-      if let bytes = clean.jpegData(compressionQuality: quality), bytes.count <= Self.maxThumbnail { return bytes }
+      if let encoded = clean.jpegData(compressionQuality: quality) {
+        let bytes = try stripThumbnailMetadata(encoded)
+        if bytes.count <= Self.maxThumbnail { return bytes }
+      }
     }
     throw fail("thumbnail_limit")
   }
+
+  /// Structural parser for fresh encoder output, preserving every entropy byte.
+  private func stripThumbnailMetadata(_ encoded: Data) throws -> Data {
+    let bytes = [UInt8](encoded)
+    guard bytes.count >= 4, bytes[0] == 0xff, bytes[1] == 0xd8 else { throw fail("thumbnail_invalid") }
+    var output = Data(bytes[0..<2])
+    var position = 2
+    var inScan = false
+    var sawScan = false
+    while position < bytes.count {
+      if inScan {
+        let entropyStart = position
+        var foundMarker = false
+        while position < bytes.count {
+          if bytes[position] != 0xff { position += 1; continue }
+          let markerStart = position
+          var next = position + 1
+          while next < bytes.count && bytes[next] == 0xff { next += 1 }
+          guard next < bytes.count else { throw fail("thumbnail_invalid") }
+          let marker = bytes[next]
+          if marker == 0x00 || marker == 0x01 || (0xd0...0xd7).contains(marker) { position = next + 1; continue }
+          output.append(contentsOf: bytes[entropyStart..<markerStart])
+          position = markerStart; inScan = false; foundMarker = true
+          break
+        }
+        guard foundMarker else { throw fail("thumbnail_invalid") }
+        continue
+      }
+      let markerStart = position
+      guard bytes[position] == 0xff else { throw fail("thumbnail_invalid") }
+      while position < bytes.count && bytes[position] == 0xff { position += 1 }
+      guard position < bytes.count else { throw fail("thumbnail_invalid") }
+      let marker = bytes[position]; position += 1
+      if marker == 0xd9 {
+        guard sawScan, position == bytes.count else { throw fail("thumbnail_invalid") }
+        output.append(contentsOf: bytes[markerStart..<position]); return output
+      }
+      guard marker != 0x00, marker != 0xd8, !(0xd0...0xd7).contains(marker) else { throw fail("thumbnail_invalid") }
+      if marker == 0x01 { output.append(contentsOf: bytes[markerStart..<position]); continue }
+      guard bytes.count - position >= 2 else { throw fail("thumbnail_invalid") }
+      let length = (Int(bytes[position]) << 8) | Int(bytes[position + 1])
+      guard length >= 2, length <= bytes.count - position else { throw fail("thumbnail_invalid") }
+      let end = position + length
+      // APP0 JFIF remains; APP1..15 (including ICC APP2) and COM are removed.
+      if !(0xe1...0xef).contains(marker) && marker != 0xfe { output.append(contentsOf: bytes[markerStart..<end]) }
+      position = end
+      if marker == 0xda { inScan = true; sawScan = true }
+    }
+    throw fail("thumbnail_invalid")
+  }
+
 }

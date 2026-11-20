@@ -46,7 +46,9 @@ class PlatformBackupPolicyTest(unittest.TestCase):
         current = ET.parse(ANDROID / 'AndroidManifest.xml').getroot()
         def permissions(node):
             return {tuple(sorted(row.attrib.items())) for row in node.findall('uses-permission')}
-        self.assertEqual(permissions(base), permissions(current))
+        # 原媒体功能唯一新增ACCESS_MEDIA_LOCATION；它不授予全相册读取或设备GPS。
+        expected = permissions(base) | {((NS + 'name', 'android.permission.ACCESS_MEDIA_LOCATION'),)}
+        self.assertEqual(expected, permissions(current))
 
     def test_source_has_explicit_test_opt_in_and_unchanged_default_app_id(self):
         # 源码契约，不把这些断言当作实际 Gradle 变体或 APK 验签结果。
