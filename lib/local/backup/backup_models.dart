@@ -64,7 +64,7 @@ class BackupManifest {
       if (!seen.add(e.id.toLowerCase())) throw const BackupException('duplicate_entry');
       total += e.size; if (e.kind == 'sealed') sealed++;
     }
-    if (total > 1 << 40 || sealed > 1 || utf8.encode(canonicalJson).length > 2 << 20) {
+    if (total > (1 << 40) || sealed > 1 || utf8.encode(canonicalJson).length > (2 << 20)) {
       throw const BackupException('manifest_limit');
     }
   }
@@ -104,8 +104,8 @@ class BackupStatus {
     : familyId=_string(j,'family_id'),backupId=_string(j,'backup_id'),state=_string(j,'state'),
       scope=_string(j,'scope'),complete=j['complete']==true,
       verifiedAt=_optionalString(j,'verified_at'),
-      issues=List.unmodifiable((j['issues'] as List).map((e)=>e as String)),
-      entries=List.unmodifiable((j['entries'] as List).map((e)=>BackupEntryProgress.fromJson(backupObject(e)))) {
+      issues=List.unmodifiable(_stringList(j,'issues')),
+      entries=List.unmodifiable(_progressList(j)) {
     _fields(j, {'family_id','backup_id','state','scope','complete','full_device_complete','issues','entries'}, {'verified_at'});
     if (j['complete'] is! bool || j['full_device_complete'] != false ||
       !validBackupId(familyId) || !validBackupId(backupId) ||
@@ -131,6 +131,7 @@ class BackupStatus {
         throw const BackupException('invalid_remote_offset');
       }
       if (e.kind=='sealed' && complete) throw const BackupException('opaque_is_not_complete');
+      if (complete && (e.missing.isNotEmpty || ((e.kind=='photo'||e.kind=='video')&&!e.sourceExact))) throw const BackupException('incomplete_source_claim');
     }
   }
 }
@@ -189,4 +190,13 @@ class _JsonShape {
     else if(text[index]=='"'){string();}
     else{final start=index;while(index<text.length&&!' \r\n\t,]}'.contains(text[index])){index++;}if(start==index)throw const BackupException('invalid_json');jsonDecode(text.substring(start,index));}
   }
+}
+
+List<String> _stringList(Map<String,dynamic> j,String key) {
+ final values=j[key];if(values is! List||values.length>8192||values.any((v)=>v is! String))throw const BackupException('invalid_status');
+ return values.cast<String>();
+}
+List<BackupEntryProgress> _progressList(Map<String,dynamic> j) {
+ final values=j['entries'];if(values is! List||values.length>4096)throw const BackupException('invalid_status');
+ return values.map((v)=>BackupEntryProgress.fromJson(backupObject(v))).toList(growable:false);
 }

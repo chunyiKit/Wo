@@ -82,6 +82,29 @@ void main(){
     };
     final result=await (await client(t,c)).upload(manifest,[source]);expect(result.complete,true);expect(result.fullDeviceComplete,false);
   });
+  test('lost acknowledgement resumes only from server status with same frozen source',()async{
+    final t=FakeTransport(),c=TestCrypto();final source=MemorySource(Uint8List(backupChunkBytes+17));
+    final manifest=BackupManifest(familyId:'family',backupId:'backup',entries:[source.entry]);var remoteOffset=0;var lost=false;final putOffsets=<int>[];
+    t.handle=(m,p,h,b)async{
+      if(m=='POST'&&p=='/v1/backups')return jsonReply({'ok':true},status:201);
+      if(m=='GET')return jsonReply(statusJson(source.entry,remoteOffset));
+      if(m=='PUT'){
+        final offset=int.parse(Uri.parse(p).queryParameters['offset']!);putOffsets.add(offset);
+        expect(b!.length,lessThanOrEqualTo(backupChunkBytes));expect(h['X-Chunk-SHA256'],crypto.sha256.convert(b).toString());
+        remoteOffset=offset+b.length;
+        if(!lost){lost=true;throw const BackupException('lost_ack',retryable:true);}
+        return jsonReply({'offset':remoteOffset});
+      }
+      return jsonReply(statusJson(source.entry,source.entry.size,done:true));
+    };
+    final api=await client(t,c);await expectLater(api.upload(manifest,[source]),throwsA(isA<BackupException>()));
+    final result=await api.upload(manifest,[source]);expect(result.complete,true);expect(putOffsets,[0,backupChunkBytes]);
+  });
+  test('source mutation fails before creating remote backup',()async{
+    final t=FakeTransport(),c=TestCrypto();final source=MemorySource(Uint8List.fromList([1,2]));source.bytes[0]=9;
+    final m=BackupManifest(familyId:'family',backupId:'backup',entries:[source.entry]);
+    await expectLater((await client(t,c)).upload(m,[source]),throwsA(isA<BackupException>().having((e)=>e.code,'code','source_changed')));expect(t.calls,isEmpty);
+  });
   test('restricted raw source cannot be uploaded as public',()async{
     final t=FakeTransport(),c=TestCrypto();final source=MemorySource(Uint8List.fromList([1]),privacy:BackupPrivacy.restricted);
     final m=BackupManifest(familyId:'family',backupId:'backup',entries:[source.entry]);
@@ -103,7 +126,7 @@ void main(){
     t.handle=(method,p,h,b)async=>p.endsWith('/manifest')?jsonReply(m.toJson()):BackupReply(200,{},[1]);
     final receive=MemoryReceive();await expectLater((await client(t,c)).fetch(m,receive),throwsA(isA<BackupException>()));expect(receive.data.length,0);expect(receive.finished,false);
   });
-  test('case duplicates, nonopaque sealed, missing claims and cross-family rejected',(){
+  test('case duplicates, nonopaque sealed, missing claims and insecure origin rejected',(){
     BackupEntry e(String id)=>BackupEntry(id:id,kind:'records',size:1,sha256:'a'*64,sourceExact:false);
     expect(()=>BackupManifest(familyId:'family',backupId:'backup',entries:[e('ID'),e('id')]),throwsA(isA<BackupException>()));
     expect(()=>BackupEntry(id:'sealed',kind:'sealed',size:121,sha256:'a'*64,sourceExact:false,label:'private title'),throwsA(isA<BackupException>()));
