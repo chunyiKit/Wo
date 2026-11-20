@@ -203,9 +203,16 @@ class LocalSyncCoordinator extends ChangeNotifier {
     await store.batch([{'space':fid,'collection':'/families/$fid/members','id':store.deviceId,'fields':{'display_name':profile['display_name'],'avatar_emoji':profile['avatar_emoji']}}],
       privateUpdates:{'families':families.toList(),'current-family':fid,'sync-pending-family:${peer.id}':null});return true;
   }
+  Future<void> coupleConsent(String id,{required bool local})async{
+    if(_disposed)return;await registry.coupleConsent(id,local:local);if(_disposed)return;
+    // 当前授权变更后关闭全部在途连接，下一轮重新交换双方当前同意；不重启后台发现。
+    for(final socket in {..._sockets,..._incomingSockets}){socket.destroy();}
+    _message(local?'本机已确认伴侣范围，仍需对方确认':'已停止后续伴侣同步；旧副本无法收回');
+    await onChanged?.call();
+  }
   Future<void> revoke(String id)async{
     if(_disposed)return;await registry.revoke(id);if(_disposed)return;
-    for(final s in _sockets.toList()){s.destroy();}_message('后续同步已撤销；已复制的数据无法收回');
+    for(final s in {..._sockets,..._incomingSockets}){s.destroy();}_message('后续同步已撤销；已复制的数据无法收回');
   }
   @override void dispose(){if(_disposed)return;_disposed=true;unawaited(stop());super.dispose();}
 }

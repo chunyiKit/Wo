@@ -294,8 +294,9 @@ class TravelRoutes {
     await _trip(fid,descriptor['trip_id'] as String);
     await _localBinding(fid,id,descriptor['trip_id'] as String);
     final file=await media.thumbnailFile(id);if(file==null)return null;
-    final bytes=await file.readAsBytes();LocalMediaRepository.validateThumbnail(bytes);
-    if(bytes.length!=descriptor['thumbnail_bytes']||LocalMediaRepository.hash(bytes)!=descriptor['thumbnail_sha256'])throw const FormatException('旅行缩略图摘要不符');return bytes;
+    if(await file.length()>LocalMediaRepository.maxThumbnailBytes)throw const ThumbnailUnavailable();
+    final bytes=await file.readAsBytes();try{LocalMediaRepository.validateThumbnail(bytes);}on FormatException{throw const ThumbnailUnavailable();}
+    if(bytes.length!=descriptor['thumbnail_bytes']||LocalMediaRepository.hash(bytes)!=descriptor['thumbnail_sha256'])throw const ThumbnailUnavailable();return bytes;
   }
   Future<Json?> thumbnailForWire(String fid,String id)async{
     final bytes=await thumbnailBytes(fid,id);if(bytes==null)return null;

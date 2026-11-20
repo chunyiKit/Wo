@@ -80,12 +80,20 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _wasLoggedIn = widget.session.isLoggedIn;
     widget.session.addListener(_onSessionChanged);
+    LocalRuntime.instance?.changes.addListener(_onLocalChanged);
+    unawaited(LocalRuntime.instance?.foreground(true));
     widget.session.push?.onOpenNotification = _openPushTarget;
     // APK 应用内更新仅适用于 Android。检查与启动数据并行，不阻塞 Splash；
     // 弹窗会等 Splash 完成导航后再显示，避免被路由替换带走。
     if (Platform.isAndroid && !widget.session.api.isLocal) {
       _launchUpdateCheck = widget.session.appUpdate.check();
     }
+  }
+
+  void _onLocalChanged(){
+    if(!mounted)return;
+    widget.session.requestMessagesRefresh();
+    widget.session.requestChatRefresh();
   }
 
   void _onSessionChanged() {
@@ -142,6 +150,7 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    unawaited(LocalRuntime.instance?.foreground(state==AppLifecycleState.resumed));
     if (state == AppLifecycleState.resumed) {
       // 部分 OEM 退后台会把刷新率重置回 60Hz，回前台重申请一次。
       unawaited(_applyHighRefreshRate());
@@ -184,6 +193,8 @@ class _WoAppState extends State<WoApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.push?.onOpenNotification = null;
+    LocalRuntime.instance?.changes.removeListener(_onLocalChanged);
+    unawaited(LocalRuntime.instance?.foreground(false));
     widget.session.removeListener(_onSessionChanged);
     widget.session.dispose();
     super.dispose();

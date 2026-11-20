@@ -62,7 +62,8 @@ void main() {
   test('未接入的业务、旧云认证和跨家庭调用明确拒绝，不会自动回退云端',() async {
     await expectLater(local.request('POST','/auth/login',body:{'phone':'synthetic'}),throwsA(isA<ApiException>()));
     await expectLater(local.request('POST','/families/not-joined/plugins/movie/movies',body:{}),throwsA(isA<ApiException>()));
-    await expectLater(local.request('GET','/families/${local.familyId}/plugins/stock/items'),throwsA(isA<ApiException>().having((e)=>e.code,'code','LOCAL_MODULE_PENDING')));
+    expect((await local.request('GET','/families/${local.familyId}/plugins/stock/items')).data,isEmpty);
+    await expectLater(local.request('GET','/families/${local.familyId}/plugins/not-implemented/items'),throwsA(isA<ApiException>().having((e)=>e.code,'code','LOCAL_MODULE_PENDING')));
     await expectLater(local.request('POST','/families/${local.familyId}/background',files:[([1,2],'a.jpg')]),throwsA(isA<ApiException>()));
   });
 }

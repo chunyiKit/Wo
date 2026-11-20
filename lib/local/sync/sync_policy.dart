@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import '../local_media_repository.dart';
 import '../local_store.dart';
@@ -7,6 +8,7 @@ import '../plugins/retirement_subscription.dart';
 import 'strict_json.dart';
 import 'peer_registry.dart';
 import 'sync_wire.dart';
+import 'travel_sync_adapter.dart';
 
 /// 集合适配与连接分离。未知业务集合明确失败，不降级发送原始SQLite或设备引用。
 abstract interface class IncrementalSyncStrategy {
@@ -15,9 +17,10 @@ abstract interface class IncrementalSyncStrategy {
   Future<void> apply(PeerLink peer,Map<String,dynamic> delta);
 }
 class LocalIncrementalStrategy implements IncrementalSyncStrategy {
-  LocalIncrementalStrategy(this.store,this.registry,this.media,{this.additionalSchemas=const{}});
+  LocalIncrementalStrategy(this.store,this.registry,this.media,{this.additionalSchemas=const{},this.travel});
   final LocalStore store;final PeerRegistry registry;final LocalMediaRepository media;
-  final Map<String,Set<String>> additionalSchemas;
+  final Map<String,Set<String>> additionalSchemas;final TravelSyncAdapter? travel;
+  final _missingCursor=<String,int>{};
   static const baseSchemas=<String,Set<String>>{
     'family':{'name','slogan','emoji','background_url','created_at'},
     'members':{'family_id','user_id','role','status','display_name','avatar_emoji','avatar_url','joined_at'},
@@ -464,15 +467,45 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     return value;
   }
   @override Future<Map<String,dynamic>> state(PeerLink peer)async{
-    final allowed=(await _allowed(peer)).toList()..sort();final vectors=<String,dynamic>{},missing=<Map<String,dynamic>>[];
-    for(final scope in allowed){vectors[scope]=await store.vector(scope);for(final row in await store.list(scope,'/families/$scope/plugins/memory/media')){
-      if(missing.length>=16)break;final parent=await store.get(scope,'/families/$scope/plugins/memory/memories',row['memory_id'] as String);if(parent==null)continue;
-      final file=await media.thumbnailFile(row['id'] as String);if(file==null||await file.length()>LocalMediaRepository.maxThumbnailBytes||LocalMediaRepository.hash(await file.readAsBytes())!=row['thumbnail_sha256'])missing.add({'space':scope,'id':row['id'],'sha256':row['thumbnail_sha256']});
-    }}return {'t':'state','vectors':vectors,'missing':missing};
+    final allowed=(await _allowed(peer)).toList()..sort();final vectors=<String,dynamic>{},missing=<Json>[];
+    final candidates=<({String scope,Json row,bool travel})>[];
+    for(final scope in allowed){
+      vectors[scope]=await store.vector(scope);
+      for(final row in await store.list(scope,'/families/$scope/plugins/memory/media')){
+        final parent=await store.get(scope,'/families/$scope/plugins/memory/memories',row['memory_id'] as String);
+        if(parent!=null)candidates.add((scope:scope,row:row,travel:false));
+      }
+      if(scope==peer.familyId&&travel!=null){for(final row in await travel!.descriptions(scope)){candidates.add((scope:scope,row:row,travel:true));}}
+    }
+    // 有界轮转：永久缺件不能让后续媒体一直得不到请求，健康大图库也不每3秒全盘读图。
+    if(candidates.isNotEmpty){
+      var cursor=(_missingCursor[peer.id]??0)%candidates.length,examined=0;
+      while(examined<64&&examined<candidates.length&&missing.length<16){
+        final candidate=candidates[cursor],scope=candidate.scope,row=candidate.row,id=row['id'] as String;
+        var absent=false;
+        try{
+          if(candidate.travel){absent=await travel!.routes.thumbnailBytes(scope,id)==null;}
+          else{final file=await media.thumbnailFile(id);absent=file==null||await file.length()>LocalMediaRepository.maxThumbnailBytes||LocalMediaRepository.hash(await file.readAsBytes())!=row['thumbnail_sha256'];}
+        }on FileSystemException{absent=true;}on ThumbnailUnavailable{absent=true;}
+        if(absent)missing.add({'space':scope,'id':id,'sha256':row['thumbnail_sha256']});
+        examined++;cursor=(cursor+1)%candidates.length;
+      }
+      _missingCursor[peer.id]=cursor;
+    }
+    final current=await _allowed(peer);if(!current.containsAll(allowed))throw const FormatException('同步授权在状态生成期间已变化');
+    return {'t':'state','vectors':vectors,'missing':missing};
   }
   @override Future<Map<String,dynamic>> delta(PeerLink peer,Map<String,dynamic> remoteState)async{
     await _validateState(peer,remoteState);final scopes=(await _allowed(peer)).toList()..sort();final ops=<Json>[],thumbs=<Json>[],sent=<String>{};var more=false;
-    Future<void> addThumb(String scope,String id,String expected)async{if(thumbs.length>=16||!sent.add('$scope:$id'))return;final thumb=await media.thumbnailForWire(scope,id);if(thumb==null||thumb['sha256']!=expected)return;final trial={'t':'delta','ops':ops,'thumbs':[...thumbs,thumb],'more':false};if(wireBytes(trial).length<=syncMaxPlainBytes)thumbs.add(thumb);}
+    Future<void> addThumb(String scope,String id,String expected)async{
+      if(thumbs.length>=16||!sent.add('$scope:$id'))return;
+      final memory=await store.get(scope,'/families/$scope/plugins/memory/media',id);
+      final trip=scope==peer.familyId&&travel!=null?await travel!.lookup(scope,'/families/$scope/plugins/travel/media',id):null;
+      if(memory!=null&&trip!=null)throw const FormatException('媒体ID不能跨插件复用');
+      Json? thumb;try{thumb=memory!=null?await media.thumbnailForWire(scope,id):trip!=null?await travel!.thumbnailForWire(scope,id):null;}on ThumbnailUnavailable{return;}on FileSystemException{return;}
+      if(thumb==null||thumb['sha256']!=expected)return;
+      final trial={'t':'delta','ops':ops,'thumbs':[...thumbs,thumb],'more':false};if(wireBytes(trial).length<=syncMaxPlainBytes)thumbs.add(thumb);
+    }
     for(final scope in scopes){final vector=Map<String,dynamic>.from((remoteState['vectors'] as Map)[scope] as Map);final rows=await store.exportOwnSince(scope,vector[store.deviceId] as int? ??0);
       for(final op in rows){if(ops.length>=64||wireBytes({'t':'delta','ops':[...ops,op],'thumbs':thumbs,'more':true}).length>syncMaxPlainBytes){more=true;break;}
         final suffix=_suffix(scope,op['collection'] as String),schema=_schema(suffix),fields=Map<String,dynamic>.from(op['fields'] as Map);
@@ -484,12 +517,15 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
         final previous=existingRows.isEmpty?null:Json.from(jsonDecode(existingRows.single['data'] as String) as Map);
         final complete=<String,dynamic>{...?previous,...fields};
         final verified=suffix=='plugins/accounting/transactions'&&op['kind']=='patch'?await _automaticSource(peer.familyId,scope,op['id'] as String,complete,previous,store.deviceId,op['clock'] as int,{}):(initial:false,priorOrigin:false);
-        validatePortableFields(familyId:peer.familyId,suffix:suffix,id:op['id'] as String,fields:complete,previous:previous,actor:store.deviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);ops.add(op);
-        if((op['collection'] as String).endsWith('/plugins/memory/media')&&op['kind']=='patch'){final fields=op['fields'] as Map;if(fields['thumbnail_sha256'] is String)await addThumb(scope,op['id'] as String,fields['thumbnail_sha256'] as String);}
+        validatePortableFields(familyId:peer.familyId,suffix:suffix,id:op['id'] as String,fields:complete,previous:previous,actor:store.deviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);
+        if(suffix.startsWith('plugins/travel/')){if(travel==null)throw const FormatException('旅行尚无安全同步适配');await travel!.validateOp(op,lookup:travel!.lookup,previous:previous);}
+        ops.add(op);
+        if(((op['collection'] as String).endsWith('/plugins/memory/media')||(op['collection'] as String).endsWith('/plugins/travel/media'))&&op['kind']=='patch'){final fields=op['fields'] as Map;if(fields['thumbnail_sha256'] is String)await addThumb(scope,op['id'] as String,fields['thumbnail_sha256'] as String);}
       }
       if(rows.length==64)more=true;
     }
     for(final raw in remoteState['missing'] as List){final item=Map<String,dynamic>.from(raw as Map);await addThumb(item['space'] as String,item['id'] as String,item['sha256'] as String);}
+    final current=await _allowed(peer);if(ops.any((op)=>!current.contains(op['space']))||thumbs.any((t)=>!current.contains(t['space'])))throw const FormatException('同步授权在发送前已变化');
     return {'t':'delta','ops':ops,'thumbs':thumbs,'more':more};
   }
   @override Future<void> apply(PeerLink peer,Map<String,dynamic> value)async{
@@ -497,10 +533,25 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     final allowed=await _allowed(peer);final pendingProofs=<String,Json>{};final grouped=<String,List<Json>>{},shadow=<String,Json?>{},deleted=<String,bool>{},prefix=<String,int>{};
     Future<Json?> row(String s,String c,String id)async{final k='$s|$c|$id';if(shadow.containsKey(k))return shadow[k];
       final rows=await store.db.query('documents',columns:['data','deleted'],where:'space=? AND collection=? AND id=?',whereArgs:[s,c,id]);if(rows.isEmpty)return null;deleted[k]=rows.single['deleted']==1;return {...Map<String,dynamic>.from(jsonDecode(rows.single['data'] as String) as Map),'id':id};}
+    // 最终shadow仅用于交叉文档约束；每个原操作仍必须通过下面完整身份/来源校验才允许提交。
+    final finalView=<String,Json>{},mediaBindings=<String,String>{};
+    Future<Json?> finalLookup(String scope,String collection,String id)async{
+      final key='$scope|$collection|$id';return finalView[key]??(travel==null?null:await travel!.lookup(scope,collection,id));
+    }
+    if(travel!=null){for(final raw in value['ops'] as List){
+      if(raw is! Map)throw const FormatException('同步操作不是对象');final op=Json.from(raw);
+      final scope=op['space'],collection=op['collection'],id=op['id'],fields=op['fields'];
+      if(scope is! String||!allowed.contains(scope)||collection is! String||id is! String||!syncId(id)||fields is! Map||!['patch','delete'].contains(op['kind']))throw const FormatException('交叉文档视图字段无效');
+      final old=await finalLookup(scope,collection,id),key='$scope|$collection|$id';
+      finalView[key]={'id':id,...?old,...Json.from(fields),'_deleted':old?['_deleted']==true||op['kind']=='delete'};
+    }}
     for(final raw in value['ops'] as List){final op=Map<String,dynamic>.from(raw as Map);_object(op,{'space','actor','sequence','clock','collection','id','kind','fields'});
       final scope=op['space'],collection=op['collection'],id=op['id'];
       if(scope is! String||!allowed.contains(scope)||scope.startsWith('p_')||op['actor']!=peer.remoteDeviceId||collection is! String||id is! String||!syncId(id)||op['sequence'] is! int||op['clock'] is! int||(op['sequence'] as int)<1||(op['sequence'] as int)>1<<40||(op['clock'] as int)<1||(op['clock'] as int)>1<<40||!['patch','delete'].contains(op['kind'])||op['fields'] is! Map)throw const FormatException('增量身份或范围无效');
       final known=prefix[scope]??((await store.vector(scope))[peer.remoteDeviceId]??0);final sequence=op['sequence'] as int;if(sequence>known+1)throw const FormatException('增量不能跳过未确认序号');if(sequence==known+1)prefix[scope]=sequence;
+      if(collection.endsWith('/plugins/memory/media')||collection.endsWith('/plugins/travel/media')){
+        final binding='$scope|$collection';if(mediaBindings[id]!=null&&mediaBindings[id]!=binding)throw const FormatException('同批媒体ID跨权限空间或插件');mediaBindings[id]=binding;
+      }
       final suffix=_suffix(scope,collection);if(scope!=peer.familyId&&!suffix.startsWith('plugins/memory/'))throw const FormatException('伴侣空间只接受明确回忆适配');
       final fields=Map<String,dynamic>.from(op['fields'] as Map),schema=_schema(suffix);if(fields.keys.any((k)=>!schema.contains(k))||op['kind']=='delete'&&fields.isNotEmpty)throw const FormatException('同步业务字段无效');_noOriginal(fields);
       if(wireBytes(op).length>LocalStore.maxOperationBytes)throw const FormatException('单个操作过大');
@@ -530,6 +581,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       if(suffix=='plugins/memory/media'&&fields.containsKey('sort_key')&&(fields['sort_key'] is! String||(fields['sort_key'] as String).isEmpty||(fields['sort_key'] as String).length>160||old!=null&&old['sort_key']!=null&&fields['sort_key']!=old['sort_key']))throw const FormatException('媒体排序键不可改变');
       if(old!=null&&suffix=='plugins/memory/media'&&fields.containsKey('memory_id')&&fields['memory_id']!=old['memory_id'])throw const FormatException('媒体绑定不可改变');
       if(suffix=='plugins/memory/media'){
+        if(merged['memory_id'] is String)await media.verifyMediaOwnership(scope,id,merged['memory_id'] as String);
         final localRef=await store.deviceReference(id);
         if(localRef!=null){final meta=Json.from(jsonDecode(localRef['metadata'] as String) as Map);
           if(meta['scope']!=scope||meta['memory_id']!=merged['memory_id'])throw const FormatException('同步媒体ID与本机受限引用冲突');}
@@ -538,17 +590,36 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       final previous=old==null?null:(<String,dynamic>{...old}..remove('id'));
       final verified=suffix=='plugins/accounting/transactions'&&op['kind']=='patch'?await _automaticSource(peer.familyId,scope,id,embedded,previous,peer.remoteDeviceId,op['clock'] as int,pendingProofs):(initial:false,priorOrigin:false);
       validatePortableFields(familyId:peer.familyId,suffix:suffix,id:id,fields:embedded,previous:previous,actor:peer.remoteDeviceId,clock:op['clock'] as int,deletion:op['kind']=='delete',verifiedAutomaticSource:verified.initial,verifiedPriorOrigin:verified.priorOrigin);
+      if(suffix.startsWith('plugins/travel/')){if(travel==null)throw const FormatException('旅行尚无安全同步适配');await travel!.validateOp(op,lookup:finalLookup,previous:previous);}
       if(suffix=='plugins/subscription/charges'&&op['kind']=='patch')pendingProofs['$scope|$id|${op['actor']}']=op;
       if(suffix=='plugins/accounting/transactions'&&op['kind']=='patch')pendingProofs['entry|$scope|$id|${op['actor']}|${op['sequence']}']=op;
       shadow['$scope|$collection|$id']=merged;if(op['kind']=='delete')deleted['$scope|$collection|$id']=true;(grouped[scope]??=[]).add(op);
     }
-    final incoming=<({String scope,String id,String hash,Uint8List bytes})>[];
-    for(final raw in value['thumbs'] as List){final t=Map<String,dynamic>.from(raw as Map);_object(t,{'space','id','sha256','bytes'});final scope=t['space'],id=t['id'],hash=t['sha256'];if(scope is! String||!allowed.contains(scope)||id is! String||!syncId(id)||hash is! String||!_sha.hasMatch(hash)||t['bytes'] is! String||(t['bytes'] as String).length>132000)throw const FormatException('缩略图范围无效');
-      final descriptor=await row(scope,'/families/$scope/plugins/memory/media',id);if(descriptor==null||descriptor['thumbnail_sha256']!=hash)throw const FormatException('缩略图必须绑定授权描述');
-      final bytes=Uint8List.fromList(base64Url.decode(base64Url.normalize(t['bytes'] as String)));LocalMediaRepository.validateThumbnail(bytes);if(LocalMediaRepository.hash(bytes)!=hash||descriptor['thumbnail_bytes']!=bytes.length)throw const FormatException('缩略图摘要或长度无效');if(deleted['$scope|/families/$scope/plugins/memory/media|$id']!=true)incoming.add((scope:scope,id:id,hash:hash,bytes:bytes));
+    final incoming=<({String scope,String id,String hash,Uint8List bytes,bool travel})>[];
+    for(final raw in value['thumbs'] as List){
+      final t=Json.from(raw as Map);_object(t,{'space','id','sha256','bytes'});final scope=t['space'],id=t['id'],hash=t['sha256'];
+      if(scope is! String||!allowed.contains(scope)||id is! String||!syncId(id)||hash is! String||!_sha.hasMatch(hash)||t['bytes'] is! String||(t['bytes'] as String).length>132000)throw const FormatException('缩略图范围无效');
+      final bytes=Uint8List.fromList(base64Url.decode(base64Url.normalize(t['bytes'] as String)));LocalMediaRepository.validateThumbnail(bytes);
+      if(LocalMediaRepository.hash(bytes)!=hash)throw const FormatException('缩略图摘要无效');
+      final descriptor=await row(scope,'/families/$scope/plugins/memory/media',id);
+      final trip=scope==peer.familyId&&travel!=null?await finalLookup(scope,'/families/$scope/plugins/travel/media',id):null;
+      if(descriptor!=null&&trip!=null)throw const FormatException('缩略图ID跨插件冲突');
+      if(descriptor!=null){
+        if(descriptor['thumbnail_sha256']!=hash||descriptor['thumbnail_bytes']!=bytes.length||descriptor['memory_id'] is! String)throw const FormatException('缩略图必须绑定授权描述');
+        await media.verifyMediaOwnership(scope,id,descriptor['memory_id'] as String,expectedDigest:hash);
+        final parent=await row(scope,'/families/$scope/plugins/memory/memories',descriptor['memory_id'] as String);
+        if(parent!=null&&deleted['$scope|/families/$scope/plugins/memory/media|$id']!=true&&deleted['$scope|/families/$scope/plugins/memory/memories|${descriptor['memory_id']}']!=true)incoming.add((scope:scope,id:id,hash:hash,bytes:bytes,travel:false));
+      }else if(trip!=null){
+        if(trip['thumbnail_sha256']!=hash||trip['thumbnail_bytes']!=bytes.length)throw const FormatException('旅行缩略图描述不匹配');
+        if(!await travel!.thumbnailParentActive(scope,id,lookup:finalLookup))continue;
+        await travel!.validateThumbnail(scope,id,hash,bytes,lookup:finalLookup);
+        incoming.add((scope:scope,id:id,hash:hash,bytes:bytes,travel:true));
+      }else{throw const FormatException('缩略图缺少授权描述');}
     }
-    await _allowed(peer);for(final entry in grouped.entries){await store.merge(entry.key,entry.value);}
-    // 文件失败不伪报完成；下轮state独立请求缺图，不依赖已经推进的操作游标。
-    for(final t in incoming){await media.receiveThumbnail(t.scope,t.id,t.hash,t.bytes);}
+    final current=await _allowed(peer);if(grouped.keys.any((scope)=>!current.contains(scope))||incoming.any((t)=>!current.contains(t.scope)))throw const FormatException('合并前同步授权已变化');
+    for(final entry in grouped.entries){await store.merge(entry.key,entry.value);}
+    // 文件失败不伪报完成；下轮有界轮转独立请求缺图，不依赖已经推进的操作游标。
+    for(final t in incoming){if(t.travel){await travel!.receiveThumbnail(t.scope,t.id,t.bytes,t.hash);}else{await media.receiveThumbnail(t.scope,t.id,t.hash,t.bytes);}}
+
   }
 }

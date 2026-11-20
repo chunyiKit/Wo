@@ -61,6 +61,15 @@ void main(){
     await put('media','orphan-photo',desc);expect(await adapter.thumbnailForWire(fid,'orphan-photo'),isNull);
     await expectLater(adapter.validateThumbnail(fid,'orphan-photo',LocalMediaRepository.hash(jpeg),jpeg,lookup:adapter.lookup),throwsFormatException);
   });
+  test('delete先到空墓碑父仍允许descriptor惰性同步且不输出thumb',()async{
+    Future<Json?> deletedBeforeBirth(String s,String c,String id)async{
+      if(id=='never-born-trip')return {'id':id,'_deleted':true};
+      if(id=='late-photo')return {'id':id,...descriptor('never-born-trip')};
+      return adapter.lookup(s,c,id);
+    }
+    await adapter.validateOp(op('media','late-photo',descriptor('never-born-trip')),lookup:deletedBeforeBirth);
+    await expectLater(adapter.validateThumbnail(fid,'late-photo',LocalMediaRepository.hash(jpeg),jpeg,lookup:deletedBeforeBirth),throwsFormatException);
+  });
   test('thumb要求最终alive引用，pending tombstone不读取旧像素',()async{
     Future<Json?> deleted(String s,String c,String id)async{final row=await adapter.lookup(s,c,id);return id==trip?{...row!,'_deleted':true}:row;}
     await expectLater(adapter.validateThumbnail(fid,original,LocalMediaRepository.hash(jpeg),jpeg,lookup:deleted),throwsFormatException);

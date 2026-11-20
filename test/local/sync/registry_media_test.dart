@@ -131,4 +131,54 @@ void main(){
     await a.patch(fid,'/families/$fid/plugins/memory/media','thumb',{},delete:true);
     await expectLater(repo.receiveThumbnail(fid,'thumb',sha,jpeg),throwsFormatException);
   });
+  test('两成员remote-only伴侣缩略图ID不能被全家descriptor重挂',()async{
+    const couple='c_pair_ab',mediaId='remote-only-couple';final sha=LocalMediaRepository.hash(jpeg);
+    final dir=Directory('${temp.path}/b-media');await dir.create();
+    final repo=LocalMediaRepository(b,native:NativeMedia(),directory:dir);
+    await a.patch(couple,'/families/$couple/plugins/memory/media',mediaId,{'kind':'photo','memory_id':'secret-memory','thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length});
+    await b.merge(couple,await a.exportSince(couple,{}));
+    expect(a.deviceId,isNot(b.deviceId));expect(await b.deviceReference(mediaId),isNull);
+    await repo.receiveThumbnail(couple,mediaId,sha,jpeg);
+    await a.patch(fid,'/families/$fid/plugins/memory/media',mediaId,{'kind':'photo','memory_id':'family-memory','thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length});
+    await b.merge(fid,await a.exportSince(fid,{}));
+    await expectLater(repo.thumbnailForWire(fid,mediaId),throwsFormatException);
+    await expectLater(repo.receiveThumbnail(fid,mediaId,sha,jpeg),throwsFormatException);
+    expect(await File('${dir.path}/$mediaId.jpg').readAsBytes(),jpeg);
+  });
+  test('远端伴侣媒体墓碑仍保留归属，fresh本机引用也不能借ID改绑',()async{
+    const couple='c_pair_ab',mediaId='deleted-couple-thumb';final sha=LocalMediaRepository.hash(jpeg);
+    final dir=Directory('${temp.path}/b-media');await dir.create();final repo=LocalMediaRepository(b,native:NativeMedia(),directory:dir);
+    final collection='/families/$couple/plugins/memory/media';
+    await a.patch(couple,collection,mediaId,{'kind':'photo','memory_id':'secret-memory','thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length});
+    await b.merge(couple,await a.exportSince(couple,{}));await repo.receiveThumbnail(couple,mediaId,sha,jpeg);
+    await a.patch(couple,collection,mediaId,{},delete:true);await b.merge(couple,await a.exportSince(couple,await b.vector(couple)));
+    expect(await b.get(couple,collection,mediaId),isNull);expect(await b.deviceReference(mediaId),isNull);
+    await b.saveDeviceReference(mediaId,'photo',id1,{'kind':'photo','scope':null,'memory_id':null,'thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length,'selected_at':'2026-11-20T00:00:00.000Z'});
+    await expectLater(repo.attach(fid,'new-family-memory',mediaId),throwsFormatException);
+    expect(jsonDecode((await b.deviceReference(mediaId))!['metadata'] as String)['scope'],isNull);
+    await a.patch(fid,'/families/$fid/plugins/memory/media',mediaId,{'kind':'photo','memory_id':'new-family-memory','thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length});await b.merge(fid,await a.exportSince(fid,{}));
+    await expectLater(repo.thumbnailForWire(fid,mediaId),throwsFormatException);
+    await expectLater(repo.receiveThumbnail(fid,mediaId,sha,jpeg),throwsFormatException);
+    expect(await File('${dir.path}/$mediaId.jpg').readAsBytes(),jpeg);
+  });
+  test('当前descriptor也须匹配本机父记录，旅行墓碑不能复用成回忆',()async{
+    final dir=Directory('${temp.path}/media');await dir.create();final repo=LocalMediaRepository(a,native:NativeMedia(),directory:dir),sha=LocalMediaRepository.hash(jpeg);
+    await a.patch(fid,'/families/$fid/plugins/memory/media','local-thumb',{'kind':'photo','memory_id':'one','thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length});
+    await a.saveDeviceReference('local-thumb','photo',id1,{'scope':fid,'memory_id':'other','thumbnail_sha256':sha});
+    await expectLater(repo.receiveThumbnail(fid,'local-thumb',sha,jpeg),throwsFormatException);
+    await expectLater(repo.thumbnailForWire(fid,'local-thumb'),throwsFormatException);
+    await a.patch(fid,'/families/$fid/plugins/travel/media','travel-thumb',{},delete:true);
+    await a.patch(fid,'/families/$fid/plugins/memory/media','travel-thumb',{'kind':'photo','memory_id':'one','thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length});
+    await expectLater(repo.receiveThumbnail(fid,'travel-thumb',sha,jpeg),throwsFormatException);
+  });
+  test('并发跨实例attach同一fresh媒体只能绑定一个权限空间',()async{
+    final dir=Directory('${temp.path}/media');await dir.create();
+    final one=LocalMediaRepository(a,native:NativeMedia(),directory:dir),two=LocalMediaRepository(a,native:NativeMedia(),directory:dir),sha=LocalMediaRepository.hash(jpeg);
+    await a.saveDeviceReference('fresh-thumb','photo',id1,{'kind':'photo','scope':null,'memory_id':null,'thumbnail_sha256':sha,'thumbnail_bytes':jpeg.length,'selected_at':'2026-11-20T00:00:00.000Z'});
+    Future<bool> attempt(LocalMediaRepository repo,String scope)async{try{await repo.attach(scope,'memory','fresh-thumb');return true;}on FormatException{return false;}}
+    final results=await Future.wait([attempt(one,fid),attempt(two,'c_pair_ab')]);expect(results.where((v)=>v),hasLength(1));
+    final rows=await a.db.query('documents',where:'id=?',whereArgs:['fresh-thumb']);expect(rows,hasLength(1));
+    final meta=jsonDecode((await a.deviceReference('fresh-thumb'))!['metadata'] as String) as Map;expect(meta['scope'],rows.single['space']);expect(meta['memory_id'],'memory');
+  });
+
 }

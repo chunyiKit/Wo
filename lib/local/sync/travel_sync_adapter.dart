@@ -87,6 +87,8 @@ class TravelSyncAdapter {
   }
   Future<Json?> _parent(String scope,String tripId,TravelDocumentLookup read)async{
     final trip=await read(scope,_col(scope,'trips'),tripId);if(trip==null)return null;
+    // delete先于birth时父文档可能只有墓碑；保留删除惰性，不能因此输出任何媒体。
+    if(trip['_deleted']==true)return {'id':tripId,'_deleted':true};
     _required('trips',trip);if(trip['family_id']!=scope)_bad();return trip;
   }
   Future<bool> _memoryReference(String scope,Object? memoryId,TravelDocumentLookup read)async{
@@ -121,7 +123,7 @@ class TravelSyncAdapter {
     }
     final tripId=merged['trip_id'] as String;await _binding(scope,id,tripId);
     final trip=await _parent(scope,tripId,lookup);
-    if(trip==null)return; // 分页可先到孤立descriptor；保持惰性，不展示/备份/发缩略图。
+    if(trip==null||trip['_deleted']==true)return; // 分页可先到孤立descriptor；保持惰性，不展示/备份/发缩略图。
     if(kind=='media'&&trip['original_media_id']!=id){
       final artifact=await lookup(scope,_col(scope,'artifacts'),id);
       if(artifact!=null){_required('artifacts',artifact);if(artifact['trip_id']!=tripId||artifact['thumbnail_ready']!=true)_bad();}
@@ -143,6 +145,13 @@ class TravelSyncAdapter {
     _scope(scope);final result=<Json>[];
     for(final row in await store.list(scope,_col(scope,'media'))){final descriptor=await _descriptor(scope,row['id'] as String,lookup);if(descriptor!=null)result.add(descriptor);}
     result.sort((a,b)=>(a['id'] as String).compareTo(b['id'] as String));return result;
+  }
+  /// 已到达删除或跨页未知父时，仅暂存元数据，不安装小图；归属错误仍严格失败。
+  Future<bool> thumbnailParentActive(String scope,String id,{required TravelDocumentLookup lookup})async{
+    _scope(scope);if(!_id(id))_bad();
+    final row=await lookup(scope,_col(scope,'media'),id);if(row==null)_bad();
+    _required('media',row);await _binding(scope,id,row['trip_id'] as String);
+    return await _descriptor(scope,id,lookup)!=null;
   }
   Future<void> validateThumbnail(String scope,String id,String digest,Uint8List bytes,{required TravelDocumentLookup lookup})async{
     _scope(scope);if(!_id(id)||!_sha(digest))_bad();LocalMediaRepository.validateThumbnail(bytes);

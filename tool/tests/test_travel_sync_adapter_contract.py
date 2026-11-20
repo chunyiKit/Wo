@@ -29,12 +29,19 @@ class TravelSyncAdapterContracts(unittest.TestCase):
         self.assertLess(backup.index('await _binding(scope,id,'),backup.index('routes.media.prepareBackupSource('))
         self.assertIn("member['status']!='active'",backup)
     def test_orphans_inert_and_thumbnails_require_live_parent_and_reference(self):
-        self.assertIn('if(trip==null)return;',self.source)
+        self.assertIn("if(trip==null||trip['_deleted']==true)return;",self.source)
         desc=self.source.split('Future<Json?> _descriptor(',1)[1].split('Future<List<Json>> descriptions',1)[0]
         self.assertIn("row['_deleted']==true",desc)
         self.assertIn("trip['_deleted']==true",desc)
         self.assertIn("artifact['_deleted']==true",desc)
         self.assertIn("artifact['thumbnail_ready']!=true",desc)
+    def test_empty_parent_tombstone_is_inert_before_shape_validation(self):
+        parent=self.source.split('Future<Json?> _parent(',1)[1].split('Future<bool> _memoryReference',1)[0]
+        self.assertIn("if(trip['_deleted']==true)return {'id':tripId,'_deleted':true}",parent)
+        self.assertLess(parent.index("if(trip['_deleted']==true)"),parent.index("_required('trips',trip)"))
+        operations=self.source.split('Future<void> validateOp(',1)[1].split('Future<Json?> _descriptor',1)[0]
+        self.assertLess(operations.index('await _binding(scope,id,tripId)'),operations.index('await _parent(scope,tripId,lookup)'))
+
     def test_thumbnail_wire_no_original_or_backup_sources(self):
         wire=self.source.split('Future<Json?> thumbnailForWire(',1)[1].split('static String thumbnailBackupId',1)[0]
         self.assertIn('routes.thumbnailForWire(scope,id)',wire)

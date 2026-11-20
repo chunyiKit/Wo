@@ -106,6 +106,31 @@ class PeerMediaContractTests(unittest.TestCase):
         self.assertIn("key(a).compareTo(key(b))", self.media)
         self.assertIn("(a['id'] as String).compareTo(b['id'] as String)", self.media)
 
+    def test_global_id_ownership_includes_all_spaces_plugins_and_tombstones(self):
+        guard=self.media.split('Future<void> verifyMediaOwnership(',1)[1].split('Future<void> attach(',1)[0]
+        self.assertIn("columns:['space','collection','data','deleted']",guard)
+        self.assertIn("where:'id=? AND (collection LIKE ? OR collection LIKE ?)'",guard)
+        self.assertIn("'/families/%/plugins/memory/media'",guard)
+        self.assertIn("'/families/%/plugins/travel/media'",guard)
+        self.assertNotIn('deleted=0',guard)
+        self.assertNotIn('space=?',guard)
+        for field in ("row['space']!=scope", "row['collection']!=expectedCollection", "fields['memory_id']!=memoryId", "meta['scope']!=scope", "meta['memory_id']!=memoryId", "travel-artifact:$mediaId", "travel-received:$mediaId"):
+            self.assertIn(field,guard)
+        self.assertIn('allowUnboundLocal&&',guard)
+        self.assertIn('rejectDeleted&&',guard)
+
+    def test_ownership_precedes_attach_wire_and_badthumb_repair(self):
+        attach=self.media.split('Future<void> attach(',1)[1].split('Future<void> detach(',1)[0]
+        self.assertIn('_serializeThumbnail(mediaId',attach)
+        self.assertLess(attach.index('await verifyMediaOwnership('),attach.index('await store.saveDeviceReference('))
+        wire=self.media.split('Future<Map<String,dynamic>?> thumbnailForWire(',1)[1].split('Future<void> receiveThumbnail(',1)[0]
+        self.assertLess(wire.index('await verifyMediaOwnership('),wire.index('await thumbnailFile('))
+        receive=self.media.split('Future<void> receiveThumbnail(',1)[1].split('Future<BackupSource> prepareBackupSource(',1)[0]
+        self.assertLess(receive.index('await verifyMediaOwnership('),receive.index('repair:true'))
+        self.assertIn("meta['memory_id']!=parent",receive)
+        for case in ('两成员remote-only伴侣缩略图ID', '远端伴侣媒体墓碑仍保留归属', '并发跨实例attach同一fresh媒体'):
+            self.assertIn(case,self.regression)
+
     def test_prepared_dart_regressions_use_only_synthetic_jpeg(self):
         match = re.search(r"base64.decode\('([A-Za-z0-9+/=]+)'\)", self.regression)
         self.assertIsNotNone(match)

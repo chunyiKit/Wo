@@ -10,6 +10,9 @@ import 'local_store.dart';
 import 'media/native_media.dart';
 import 'backup/backup_models.dart';
 
+/// 只表示已核归属后的派生小图损坏或不可用，不表示权限/绑定校验失败。
+class ThumbnailUnavailable implements Exception { const ThumbnailUnavailable(); }
+
 /// 公开操作只含缩略图描述；原件的原生句柄与保真状态仅存本机device_refs。
 class LocalMediaItem {
   const LocalMediaItem({required this.id,required this.kind,required this.thumbnailSha256,
@@ -157,7 +160,36 @@ class LocalMediaRepository {
     return LocalMediaItem.fromJson({'id':id,...metadata});
   }
   Map<String,dynamic> _metadata(Map<String,dynamic> ref)=>Map<String,dynamic>.from(jsonDecode(ref['metadata'] as String) as Map);
-  Future<void> attach(String space,String memoryId,String mediaId)async{
+  /// 全局媒体ID终身只属于同一space/插件/父记录；已删除描述也保留归属。
+  /// 远端接收的小图可能没有device_ref，不能仅凭没有原生句柄就视为可重新绑定。
+  Future<void> verifyMediaOwnership(String scope,String mediaId,String memoryId,{
+    bool allowUnboundLocal=false,bool rejectDeleted=false,String? expectedDigest,
+  })async{
+    if(!_full(_id,scope)||!_full(_id,mediaId)||!_full(_id,memoryId))throw const FormatException('媒体归属标识无效');
+    final expectedCollection=_collection(scope);
+    final rows=await store.db.query('documents',columns:['space','collection','data','deleted'],
+      where:'id=? AND (collection LIKE ? OR collection LIKE ?)',
+      whereArgs:[mediaId,'/families/%/plugins/memory/media','/families/%/plugins/travel/media']);
+    for(final row in rows){
+      if(row['space']!=scope||row['collection']!=expectedCollection)throw const FormatException('媒体ID已属于其它权限空间或插件');
+      final fields=Map<String,dynamic>.from(jsonDecode(row['data'] as String) as Map);
+      if(fields['memory_id']!=memoryId)throw const FormatException('媒体ID已属于其它父记录或历史墓碑');
+      if(rejectDeleted&&row['deleted']==1)throw const FormatException('已删除的媒体ID不可重新绑定，请重新选择');
+    }
+    final ref=await store.deviceReference(mediaId);
+    if(ref!=null){
+      final meta=_metadata(ref);
+      final fresh=allowUnboundLocal&&meta['scope']==null&&meta['memory_id']==null&&meta['plugin']==null&&meta['trip_id']==null;
+      if(!fresh&&(meta['scope']!=scope||meta['memory_id']!=memoryId||meta['trip_id']!=null||
+          meta['plugin']!=null&&meta['plugin']!='memory'))throw const FormatException('本机媒体绑定范围不可改变');
+      if(expectedDigest!=null&&meta['thumbnail_sha256']!=expectedDigest)throw const FormatException('本机媒体缩略图摘要绑定不符');
+    }
+    // 生成结果与已接收旅行小图没有原生引用时，也不能挂接进回忆。
+    if(await store.privateValue('travel-artifact:$mediaId')!=null||await store.privateValue('travel-received:$mediaId')!=null)
+      throw const FormatException('旅行媒体ID不能重新挂接到回忆');
+  }
+  Future<void> attach(String space,String memoryId,String mediaId)=>_serializeThumbnail(mediaId,()async{
+    await verifyMediaOwnership(space,mediaId,memoryId,allowUnboundLocal:true,rejectDeleted:true);
     if(!_full(_id,space)||!_full(_id,memoryId))throw const FormatException('媒体范围无效');final ref=await store.deviceReference(mediaId);if(ref==null)throw const FormatException('没有本机已选媒体');
     final meta=_metadata(ref);if(meta['scope']!=null&&(meta['scope']!=space||meta['memory_id']!=memoryId))throw const FormatException('媒体绑定范围不可改变，请重新明确选择');
     final existing=await store.get(space,_collection(space),mediaId);if(existing!=null){if(existing['memory_id']!=memoryId)throw const FormatException('媒体已绑定其它回忆');return;}
@@ -167,7 +199,7 @@ class LocalMediaRepository {
     meta['scope']=space;meta['memory_id']=memoryId;meta['sort_key']=sortKey;await store.saveDeviceReference(mediaId,ref['kind'] as String,ref['locator'] as String,meta);
     await store.patch(space,_collection(space),mediaId,{'memory_id':memoryId,'kind':meta['kind'],'thumbnail_sha256':meta['thumbnail_sha256'],
       'thumbnail_bytes':meta['thumbnail_bytes'],'sort_key':sortKey,'width':meta['width'],'height':meta['height'],'duration_ms':meta['duration_ms'],'created_by':store.deviceId});
-  }
+  });
   Future<void> detach(String space,String memoryId,String mediaId)async{final row=await store.get(space,_collection(space),mediaId);if(row==null||row['memory_id']!=memoryId)throw const FormatException('媒体不属于回忆');await store.patch(space,_collection(space),mediaId,{},delete:true);}
   Future<List<LocalMediaItem>> forMemory(String space,String memoryId)async{
     final rows=(await store.list(space,_collection(space))).where((row)=>row['memory_id']==memoryId).toList();
@@ -184,9 +216,12 @@ class LocalMediaRepository {
   Future<Map<String,dynamic>?> thumbnailForWire(String scope,String mediaId)async{
     if(!_full(_id,scope)||scope.startsWith('p_'))throw const FormatException('不能同步私密或无效空间');
     final row=await store.get(scope,_collection(scope),mediaId);if(row==null)return null;
+    final parent=row['memory_id'],digest=row['thumbnail_sha256'];
+    if(parent is! String||digest is! String||!_full(_sha,digest))throw const FormatException('媒体父记录或摘要无效');
+    await verifyMediaOwnership(scope,mediaId,parent,expectedDigest:digest);
     final f=await thumbnailFile(mediaId);if(f==null||await f.length()>maxThumbnailBytes)return null;
-    final bytes=await f.readAsBytes();validateThumbnail(bytes);
-    if(hash(bytes)!=row['thumbnail_sha256']||bytes.length!=row['thumbnail_bytes'])throw const FormatException('缩略图摘要不符');
+    final bytes=await f.readAsBytes();try{validateThumbnail(bytes);}on FormatException{throw const ThumbnailUnavailable();}
+    if(hash(bytes)!=row['thumbnail_sha256']||bytes.length!=row['thumbnail_bytes'])throw const ThumbnailUnavailable();
     return {'space':scope,'id':mediaId,'sha256':row['thumbnail_sha256'],'bytes':base64Url.encode(bytes)};
   }
   Future<void> receiveThumbnail(String scope,String id,String digest,Uint8List bytes)=>_serializeThumbnail(id,()async{
@@ -195,8 +230,10 @@ class LocalMediaRepository {
     final row=await store.get(scope,_collection(scope),id);
     if(row==null||row['thumbnail_sha256']!=digest||row['thumbnail_bytes']!=bytes.length||
         !['photo','video'].contains(row['kind']))throw const FormatException('缩略图未绑定本轮已授权媒体记录');
+    final parent=row['memory_id'];if(parent is! String)throw const FormatException('媒体父记录无效');
+    await verifyMediaOwnership(scope,id,parent,expectedDigest:digest);
     final local=await store.deviceReference(id);
-    if(local!=null){final meta=_metadata(local);if(meta['scope']!=scope||meta['thumbnail_sha256']!=digest)throw const FormatException('远端不能覆盖其它本机媒体引用');}
+    if(local!=null){final meta=_metadata(local);if(meta['scope']!=scope||meta['memory_id']!=parent||meta['thumbnail_sha256']!=digest)throw const FormatException('远端不能覆盖其它本机媒体引用');}
     await _saveThumbnailUnlocked(id,bytes,repair:true);
   });
   Future<BackupSource> prepareBackupSource(String id,{required BackupPrivacy privacy,String kindIfMissing='photo'})async{

@@ -159,7 +159,7 @@ class PetRoutes {
     if(grams<1||grams>1000000)_fail(400,'体重超出0.001至1000公斤范围');return grams;
   }
   static DateTime? advance(DateTime date,String unit,int interval){
-    if(unit=='none')return null;if(unit=='day'||unit=='week')return date.add(Duration(days:interval*(unit=='week'?7:1)));
+    if(unit=='none')return null;if(unit=='day'||unit=='week'){final next=date.add(Duration(days:interval*(unit=='week'?7:1)));if(next.year>9999)_fail(400,'下一次日期超出支持范围');return next;}
     final month=unit=='month'?date.month+interval:date.month,year=unit=='year'?date.year+interval:date.year;
     final first=DateTime.utc(year,month,1),last=DateTime.utc(first.year,first.month+1,0).day;
     final next=DateTime.utc(first.year,first.month,date.day>last?last:date.day);if(next.year>9999)_fail(400,'下一次日期超出支持范围');return next;
