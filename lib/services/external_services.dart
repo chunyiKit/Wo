@@ -345,7 +345,8 @@ class ImageModelConfig {
 
 class ImageGenerationConsent {
   const ImageGenerationConsent({required this.endpoint, required this.retentionNotice,
-    required this.allowSourceUpload, required this.providerPolicyReviewed});
+    required this.allowSourceUpload, required this.providerPolicyReviewed, this.expectedModel});
+  final String? expectedModel;
   final Uri endpoint;
   final String retentionNotice;
   final bool allowSourceUpload, providerPolicyReviewed;
@@ -374,7 +375,8 @@ class ConfiguredImageClient {
     }
     if (!consent.allowSourceUpload || !consent.providerPolicyReviewed ||
         consent.endpoint != config.baseUrl || config.retentionNotice.trim().isEmpty ||
-        consent.retentionNotice != config.retentionNotice) {
+        consent.retentionNotice != config.retentionNotice ||
+        (consent.expectedModel != null && consent.expectedModel != config.model)) {
       throw const ExternalServiceException('图片生成', ServiceFailure.consentRequired);
     }
     if (prompt.trim().isEmpty || prompt.length > 12000) throw const ExternalServiceException('图片生成', ServiceFailure.invalidInput);

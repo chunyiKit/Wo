@@ -143,6 +143,15 @@ void main() {
     await expectLater(client.current(), throwsA(failure(ServiceFailure.invalidResponse)));
   });
 
+  test('模型同endpoint切换后，带expectedModel的旧授权不发送请求', () async {
+    var calls=0;final config=modelConfig();
+    final client=ConfiguredImageClient(loadConfig:()async=>config,client:MockClient((_)async{calls++;return jsonResponse({});}));
+    final old=ImageGenerationConsent(endpoint:config.baseUrl,retentionNotice:config.retentionNotice,
+      allowSourceUpload:true,providerPolicyReviewed:true,expectedModel:'old-model-synthetic');
+    await expectLater(client.generate(image:PreparedModelImage(pixel),prompt:'synthetic',consent:old),throwsA(failure(ServiceFailure.consentRequired)));
+    expect(calls,0);
+  });
+
   test('模型输入副本不可变，拒绝 EXIF、PNG 文本和不支持的格式', () {
     final raw = Uint8List.fromList(pixel);
     final prepared = PreparedModelImage(raw);

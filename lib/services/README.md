@@ -36,7 +36,7 @@
 
 - `loadConfig()` 返回当前启用的 app 图片模型：baseUrl、model、私有 key、已向用户展示的供应商输入留存说明，以及可选结果下载 origin 白名单。
 - `PreparedModelImage` 是仅供模型的图片副本，调用者先用设备编码器重新编码、明确移除元数据；不会改动本地原照。本边界支持 PNG/JPEG/WebP，并拒绝已列明 JPEG APP1/APP13/COM、PNG EXIF/文本、WebP EXIF/XMP；不支持的格式拒绝。这个字节扫描不等于全格式解码，也不保证识别所有私有/隐写数据，不能声称所有文件的 metadata 已清除。图像解码/实际渲染校验仍由手机控制器负责。
-- 每次必须传 `ImageGenerationConsent`，同意项绑定当前配置 endpoint 与留存说明，且必须明确允许源图提交、已查看供应商政策。更换 endpoint/说明时旧同意失效。不能在启动、保存旅行记录或加载列表时自动提交。
+- 每次必须传 `ImageGenerationConsent`，同意项绑定当前配置 endpoint 与留存说明，且必须明确允许源图提交、已查看供应商政策。更换 endpoint/说明时旧同意失效。提供 `expectedModel` 时也须与当前模型一致；旅行调用必须绑定计划中展示的模型，防止同地址切模型后沿用旧授权。不能在启动、保存旅行记录或加载列表时自动提交。
 - JSON 与仓库现有图片模型契约一致：`model,prompt,image(data URI),size,response_format=b64_json,watermark=false`。不发送 family/device/旅行记录，也不调用 `/files` 等输入持久化接口。请求 `Cache-Control: no-store` 仅是缓存提示，**不能保证供应商不记录/不保留输入**；不发送并不能保证有效的未知 `store=false` 参数。UI 必须展示所选服务的真实政策，不能把客户端无写库方法冒充供应商零留存。
 - 返回图像字节与由 magic 检测的 MIME，调用者保存到本地并保持原照。返回下载 URL 仅允许配置 endpoint origin 或明确 allowlist，下载请求不含模型 key，也不跟随重定向。
 
