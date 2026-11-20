@@ -15,6 +15,12 @@ class MovieChoreAnniversaryRoutes {
   final LocalStore store;
   final MovieCatalogueClient? catalogue;
   final DateTime Function() _now;
+  /// 仅操作日志字段；头像展示、查询缓存和原件/凭据不在此表。
+  static const syncFields=<String,Set<String>>{
+    'plugins/movie/movies':{'family_id','created_by','created_at','title','note','watched','watched_at','intro','tmdb_rating','tmdb_id','tmdb_media_type','ai_status','poster_pending'},
+    'plugins/chore/chores':{'family_id','created_by','created_at','title','note','emoji','assigned_to','done','recurring','completed_at'},
+    'notifications':{'type','title','body','icon_emoji','created_by','created_at','read_by','status','recipient_ids','source_plugin','source_id'},
+  };
   static const _uuid=Uuid();
   static final _id=RegExp(r'^[A-Za-z0-9_-]{1,100}$');
   static final _poster=RegExp(r'^/[a-zA-Z0-9_-]+\.(jpg|jpeg|png|webp)$',caseSensitive:false);
@@ -62,7 +68,15 @@ class MovieChoreAnniversaryRoutes {
     if(row==null||row['family_id']!=fid)_fail(404,'记录不存在');return row;
   }
   Future<LocalResult?> request(String method,String fid,List<String> tail,{Json body=const{},Json query=const{}})async{
-    if(tail.length<2||tail[0]!='movie')return null;
+    if(tail.length<2)return null;
+    if(tail[0]=='chore'){
+      final known=tail[1]=='chores'&&(tail.length==2||tail.length==3||(tail.length==4&&['complete','reopen','remind'].contains(tail[3])));
+      if(!known)return null;
+      await _member(fid);final verb=method.toUpperCase();
+      if(verb=='GET')return _chore(verb,fid,tail,body,query);
+      return _serial(fid,()=>_chore(verb,fid,tail,body,query));
+    }
+    if(tail[0]!='movie')return null;
     final known=(tail[1]=='movies'&&(tail.length==2||tail.length==3||(tail.length==4&&['enrich','poster'].contains(tail[3]))))||
       (tail[1]=='discover'&&(tail.length==2||(tail.length==3&&['genres','poster'].contains(tail[2]))));
     if(!known)return null;
@@ -199,5 +213,105 @@ class MovieChoreAnniversaryRoutes {
     final stats=await movieStats(fid);
     return {'primary':stats['to_watch']==0?'片单清空啦':'${stats['to_watch']} 部想看',
       'secondary':'已看 ${stats['watched']} 部','color_token':'movie','emoji':'🎬'};
+  }
+
+  Future<List<Json>> _choreRows(String fid)async=>[for(final row in await store.list(fid,_col(fid,'chore','chores')))if(row['family_id']==fid)row];
+  Future<Json> _choreRead(String fid,Json row)async{
+    final assignee=await _author(fid,row['assigned_to']),creator=await _author(fid,row['created_by']);
+    return {'id':row['id'],'family_id':fid,'title':row['title'],'note':row['note'],'emoji':row['emoji'],
+      'assigned_to':row['assigned_to'],'done':row['done'],'recurring':row['recurring'],'completed_at':row['completed_at'],
+      'created_at':row['created_at'],'created_by':row['created_by'],
+      'assignee_name':assignee?['display_name'],'assignee_emoji':assignee?['avatar_emoji'],'assignee_avatar_url':assignee?['avatar_url'],
+      'creator_name':creator?['display_name'],'creator_emoji':creator?['avatar_emoji'],'creator_avatar_url':creator?['avatar_url']};
+  }
+  Future<Json> _choreValues(String fid,Json body,{required bool create})async{
+    _only(body,{'title','note','emoji','assigned_to','recurring',if(!create)'done'});
+    final fields=<String,dynamic>{};
+    if(create||body.containsKey('title'))fields['title']=_text(body['title'],64,'家务名');
+    if(create||body.containsKey('note'))fields['note']=_optional(body['note'],500,'备注');
+    if(create||body.containsKey('emoji'))fields['emoji']=_text(body.containsKey('emoji')?body['emoji']:'🧹',16,'图标');
+    if(create||body.containsKey('recurring'))fields['recurring']=_bool(body.containsKey('recurring')?body['recurring']:false);
+    if(!create&&body.containsKey('done'))fields['done']=_bool(body['done']);
+    if(create||body.containsKey('assigned_to')){
+      final id=body['assigned_to'];
+      if(id!=null){if(id is! String)_fail(400,'负责人标识无效');await _member(fid,id);}
+      fields['assigned_to']=id;
+    }
+    return fields;
+  }
+  Future<Json> _choreNotification(String fid,Json chore,String type)async{
+    final actor=await _member(fid),assignee=chore['assigned_to'];
+    if(assignee is! String)_fail(400,'这件家务还没有指派负责人');
+    await _member(fid,assignee);
+    final actorName=actor['display_name'] is String?_clip(actor['display_name'] as String,80):'家庭成员';
+    final title=chore['title'] as String;
+    return {'type':type,'title':type=='chore_assigned'?'你被安排了家务：$title':'记得做家务：$title',
+      'body':type=='chore_assigned'?'$actorName 把这件家务交给了你':'$actorName 提醒你完成这件家务',
+      'icon_emoji':chore['emoji'],'created_by':store.deviceId,'created_at':_stamp,'read_by':<String>[],
+      'status':'pending_local_delivery','recipient_ids':[assignee],'source_plugin':'chore','source_id':chore['id']};
+  }
+  Future<void> _writeChore(String fid,String id,Json fields,{Json? notification})async{
+    await store.batch([
+      {'space':fid,'collection':_col(fid,'chore','chores'),'id':id,'fields':fields},
+      if(notification!=null){'space':fid,'collection':'/families/$fid/notifications','id':_uuid.v4(),'fields':notification},
+    ]);
+  }
+  Future<LocalResult> _chore(String verb,String fid,List<String> tail,Json body,Json query)async{
+    _only(query,tail.length==2&&verb=='GET'?{'done'}:<String>{});
+    if(tail.length==2){
+      if(verb=='GET'){
+        final done=_filter(query['done']);final rows=(await _choreRows(fid)).where((row)=>done==null||row['done']==done).toList();
+        rows.sort((a,b){final status=(a['done']==true?1:0)-(b['done']==true?1:0);if(status!=0)return status;
+          final time=DateTime.parse(b['created_at'] as String).compareTo(DateTime.parse(a['created_at'] as String));return time!=0?time:(a['id'] as String).compareTo(b['id'] as String);});
+        return(data:[for(final row in rows)await _choreRead(fid,row)],meta:null);
+      }
+      if(verb!='POST')_fail(405,'家务不支持该方法');
+      final values=await _choreValues(fid,body,create:true),id=_uuid.v4();
+      final fields=<String,dynamic>{...values,'family_id':fid,'created_by':store.deviceId,'created_at':_stamp,'done':false,'completed_at':null};
+      final shouldNotify=fields['assigned_to']!=null&&fields['assigned_to']!=store.deviceId;
+      final notification=shouldNotify?await _choreNotification(fid,{'id':id,...fields},'chore_assigned'):null;
+      await _writeChore(fid,id,fields,notification:notification);
+      return(data:await _choreRead(fid,await _load(fid,'chore','chores',id)),meta:null);
+    }
+    if(tail.length==3&&tail[2]=='reset-recurring'){
+      if(verb!='POST')_fail(405,'重置重复家务需要 POST');_only(body,<String>{});
+      final rows=(await _choreRows(fid)).where((row)=>row['recurring']==true&&row['done']==true).toList();
+      for(var start=0;start<rows.length;start+=256){await store.batch([for(final row in rows.skip(start).take(256)){
+        'space':fid,'collection':_col(fid,'chore','chores'),'id':row['id'],'fields':{'done':false,'completed_at':null},
+      }]);}
+      return(data:{'reset':rows.length},meta:null);
+    }
+    final row=await _load(fid,'chore','chores',tail[2]);
+    if(tail.length==4){
+      if(verb!='POST')_fail(405,'家务状态操作需要 POST');_only(body,<String>{});
+      if(tail[3]=='remind'){
+        if(row['done']==true)_fail(400,'这件家务已经完成');
+        final notification=await _choreNotification(fid,row,'chore_reminder');
+        final requestId=_uuid.v4();await store.patch(fid,'/families/$fid/notifications',requestId,notification);
+        return(data:{'reminded':row['assigned_to'],'notification_id':requestId,'status':'pending_local_delivery','system_delivered':false},meta:null);
+      }
+      final done=tail[3]=='complete';
+      if(row['done']!=done)await store.patch(fid,_col(fid,'chore','chores'),tail[2],{'done':done,'completed_at':done?_stamp:null});
+      return(data:await _choreRead(fid,await _load(fid,'chore','chores',tail[2])),meta:null);
+    }
+    if(verb=='GET')return(data:await _choreRead(fid,row),meta:null);
+    if(verb=='DELETE'){_only(body,<String>{});await store.patch(fid,_col(fid,'chore','chores'),tail[2],{},delete:true);return(data:null,meta:null);}
+    if(!['PUT','PATCH'].contains(verb))_fail(405,'家务不支持该方法');
+    final fields=await _choreValues(fid,body,create:false);
+    if(fields.containsKey('done'))fields['completed_at']=fields['done']==true?row['completed_at']??_stamp:null;
+    final next={...row,...fields};
+    final reassigned=fields.containsKey('assigned_to')&&fields['assigned_to']!=row['assigned_to']&&fields['assigned_to']!=null&&fields['assigned_to']!=store.deviceId;
+    final notification=reassigned?await _choreNotification(fid,next,'chore_assigned'):null;
+    if(fields.isNotEmpty)await _writeChore(fid,tail[2],fields,notification:notification);
+    return(data:await _choreRead(fid,await _load(fid,'chore','chores',tail[2])),meta:null);
+  }
+  Future<Json> choreStats(String fid)async{
+    await _member(fid);final rows=await _choreRows(fid),open=rows.where((row)=>row['done']!=true).toList();
+    return {'total':rows.length,'open':open.length,'done':rows.length-open.length,'mine_open':open.where((row)=>row['assigned_to']==store.deviceId).length,'recurring_open':open.where((row)=>row['recurring']==true).length};
+  }
+  Future<Json> chorePreview(String fid)async{
+    final stats=await choreStats(fid),mine=stats['mine_open'] as int,total=stats['open'] as int;
+    if(mine>0)return {'primary':'$mine 件家务待做','secondary':'该你出手啦','color_token':'chore','secondary_tone':'warning','badge':'$mine','emoji':'🧹'};
+    return {'primary':total==0?'家务都做完啦':'你没有待办家务','secondary':total==0?'干净又整齐 ✨':'家里还有 $total 件','color_token':'chore','emoji':'🧹'};
   }
 }

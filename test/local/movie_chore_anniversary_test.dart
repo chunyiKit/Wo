@@ -132,10 +132,78 @@ void main(){
     await expectLater(call('GET',['discover']),error(403));expect(requests,isEmpty);
   });
   test('已知非法方法拒绝，未知插件留给根路由且查询参数受限',()async{
-    expect(await routes.request('GET',fid,['chore','chores']),isNull);
+    expect(await routes.request('GET',fid,['unimplemented-plugin','items']),isNull);
     expect(await routes.request('GET',fid,['movie','unknown']),isNull);
     await expectLater(call('DELETE',['movies']),error(405));await expectLater(call('POST',['discover']),error(405));
     for(final query in <Json>[{'page':0},{'page':501},{'sort':'bad'},{'genres':'18,bad'},{'unexpected':'x'}]){await expectLater(call('GET',['discover'],query:query),error(400));}
     expect(requests,isEmpty);
+  });
+
+  Future<LocalResult> chore(String method,List<String> tail,{Json body=const{},Json query=const{}})async{
+    final result=await routes.request(method,fid,['chore','chores',...tail],body:body,query:query);expect(result,isNotNull);return result!;
+  }
+  test('家务CRUD与指派真实头像，身份固定且本地通知原子记录',()async{
+    await member(fid,'assignee-b');
+    final created=Chore.fromJson(Map<String,dynamic>.from((await chore('POST',[],body:{'title':' 扫地 ','emoji':'🧹','note':'客厅','assigned_to':'assignee-b','recurring':true})).data as Map));
+    expect(created.title,'扫地');expect(created.createdBy,store.deviceId);expect(created.assignedTo,'assignee-b');expect(created.assigneeAvatarUrl,'/local/avatar/assignee-b?v=1');
+    final notifications=await store.list(fid,'/families/$fid/notifications');expect(notifications,hasLength(1));
+    expect(notifications.single['recipient_ids'],['assignee-b']);expect(notifications.single['status'],'pending_local_delivery');expect(notifications.single['type'],'chore_assigned');expect(notifications.single['source_id'],created.id);
+    await chore('PUT',[created.id],body:{'title':'擦地','assigned_to':null,'note':null,'recurring':false});
+    final changed=Chore.fromJson(Map<String,dynamic>.from((await chore('GET',[created.id])).data as Map));expect(changed.assignedTo,isNull);expect(changed.assigneeAvatarUrl,isNull);expect(changed.note,isNull);expect(changed.recurring,isFalse);
+    expect((await chore('DELETE',[created.id])).data,isNull);await expectLater(chore('GET',[created.id]),error(404));expect(requests,isEmpty);
+  });
+  test('家务完成和重开幂等，列表和当前成员预览只从本地派生',()async{
+    final one=Chore.fromJson(Map<String,dynamic>.from((await chore('POST',[],body:{'title':'我做','assigned_to':store.deviceId})).data as Map));
+    clock=clock.add(const Duration(seconds:1));final two=Chore.fromJson(Map<String,dynamic>.from((await chore('POST',[],body:{'title':'未指派'})).data as Map));
+    expect(await store.list(fid,'/families/$fid/notifications'),isEmpty);
+    expect((await routes.choreStats(fid))['mine_open'],1);expect((await routes.chorePreview(fid))['primary'],'1 件家务待做');
+    final done=await chore('POST',[one.id,'complete']);final timestamp=(done.data as Map)['completed_at'];
+    clock=clock.add(const Duration(hours:3));expect(((await chore('POST',[one.id,'complete'])).data as Map)['completed_at'],timestamp);
+    expect(((await chore('PUT',[one.id],body:{'done':true})).data as Map)['completed_at'],timestamp);
+    final list=(await chore('GET',[])).data as List;expect(list.map((row)=>(row as Map)['id']),[two.id,one.id]);
+    expect(((await chore('GET',[],query:{'done':true})).data as List).single['id'],one.id);
+    expect(((await chore('POST',[one.id,'reopen'])).data as Map)['completed_at'],isNull);
+    expect(((await chore('POST',[one.id,'reopen'])).data as Map)['done'],isFalse);
+    expect(requests,isEmpty);
+  });
+  test('指派仅变化时记录请求，手动提醒明示未送达系统，失效指派拒绝',()async{
+    await member(fid,'assignee-b');await member(fid,'assignee-c');
+    final raw=(await chore('POST',[],body:{'title':'家务','assigned_to':'assignee-b'})).data as Map;final id=raw['id'] as String;
+    await chore('PUT',[id],body:{'title':'改名','assigned_to':'assignee-b'});expect(await store.list(fid,'/families/$fid/notifications'),hasLength(1));
+    await chore('PUT',[id],body:{'assigned_to':'assignee-c'});expect(await store.list(fid,'/families/$fid/notifications'),hasLength(2));
+    final remind=(await chore('POST',[id,'remind'])).data as Map;expect(remind['status'],'pending_local_delivery');expect(remind['system_delivered'],isFalse);expect(remind['reminded'],'assignee-c');
+    expect(await store.list(fid,'/families/$fid/notifications'),hasLength(3));
+    await chore('POST',[id,'complete']);await expectLater(chore('POST',[id,'remind']),error(400));
+    await chore('POST',[id,'reopen']);await store.patch(fid,'/families/$fid/members','assignee-c',{'status':'left'});
+    await expectLater(chore('POST',[id,'remind']),error(400));expect(await store.list(fid,'/families/$fid/notifications'),hasLength(3));
+    expect(requests,isEmpty);
+  });
+  test('重置重复家务保留负责人，不重置一次性或已打开任务',()async{
+    await member(fid,'assignee-b');final ids=<String>[];
+    for(final recurring in [true,true,false]){final raw=(await chore('POST',[],body:{'title':'重复允许同名','assigned_to':'assignee-b','recurring':recurring})).data as Map;ids.add(raw['id'] as String);await chore('POST',[ids.last,'complete']);}
+    final open=(await chore('POST',[],body:{'title':'已打开','recurring':true})).data as Map;
+    final before=(await store.list(fid,'/families/$fid/notifications')).length;
+    expect((await chore('POST',['reset-recurring'])).data,{'reset':2});
+    expect(((await chore('GET',[ids[0]])).data as Map)['assigned_to'],'assignee-b');expect(((await chore('GET',[ids[1]])).data as Map)['completed_at'],isNull);
+    expect(((await chore('GET',[ids[2]])).data as Map)['done'],isTrue);expect(((await chore('GET',[open['id'] as String])).data as Map)['done'],isFalse);
+    expect((await chore('POST',['reset-recurring'])).data,{'reset':0});expect((await store.list(fid,'/families/$fid/notifications')).length,before);
+  });
+  test('家务输入、伪造身份、非法负责人和空指派提醒拒绝不留通知',()async{
+    for(final body in <Json>[{'title':' '},{'title':'x'*65},{'title':'x','emoji':null},{'title':'x','recurring':'true'},{'title':'x','assigned_to':'outsider'},{'title':'x','created_by':'forged'},{'title':'x','done':true}]){
+      await expectLater(chore('POST',[],body:body),error(400));
+    }
+    expect((await routes.choreStats(fid))['total'],0);expect(await store.list(fid,'/families/$fid/notifications'),isEmpty);
+    final raw=(await chore('POST',[],body:{'title':'未指派'})).data as Map;await expectLater(chore('POST',[raw['id'] as String,'remind']),error(400));
+    await expectLater(chore('GET',[],query:{'done':'invalid'}),error(400));await expectLater(chore('GET',['reset-recurring']),error(405));
+    expect(requests,isEmpty);
+  });
+  test('家务通知与任务写入同批失败不会留下半成品',()async{
+    await member(fid,'assignee-b');
+    // 真实业务调用的第二份文档在 SQLite 层失败，不能留下已创建任务/序号。
+    await store.db.execute("CREATE TRIGGER reject_notification BEFORE INSERT ON documents WHEN NEW.collection = '/families/$fid/notifications' BEGIN SELECT RAISE(ABORT, 'synthetic notification persistence failure'); END");
+    final before=await store.vector(fid);
+    await expectLater(chore('POST',[],body:{'title':'不应保留','assigned_to':'assignee-b'}),throwsA(predicate((e)=>'$e'.contains('synthetic notification persistence failure'))));
+    expect(await store.list(fid,'/families/$fid/plugins/chore/chores'),isEmpty);
+    expect(await store.list(fid,'/families/$fid/notifications'),isEmpty);expect(await store.vector(fid),before);
   });
 }
