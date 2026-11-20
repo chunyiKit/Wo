@@ -184,8 +184,8 @@ class MobileRuntimeContract(unittest.TestCase):
         for function in ('Future<Json> _family(', 'Future<Json> _installed('):
             self.assertIn('await _joined(fid)', body(self.api, function))
         fixtures = (ROOT / 'test/local/mobile_runtime_access_test.dart').read_text()
-        self.assertEqual(len(re.findall(r"\btest\(", fixtures)), 4)
-        for fixture in ('撤权后bootstrap不显示旧家庭卡片', '有效备用家庭', '旧私有outbox', '私密计数或标题'):
+        self.assertEqual(len(re.findall(r"\btest\(", fixtures)), 5)
+        for fixture in ('撤权后bootstrap不显示旧家庭卡片', '有效备用家庭', '旧私有outbox', '私密计数或标题', '家庭未读计数从当前设备的本地通知与已读状态派生'):
             self.assertIn(fixture, fixtures)
 
     def test_independent_three_member_permission_model_keeps_private_and_couple_out_of_public(self):
