@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 const backupChunkBytes = 8 * 1024 * 1024;
+const backupMaxAttachmentBytes = 20 * 1024 * 1024;
 const backupMaxFileBytes = 64 * 1024 * 1024 * 1024;
 final _identifier = RegExp(r'^[A-Za-z0-9_-]{1,100}$');
 final _digest = RegExp(r'^[a-f0-9]{64}$');
@@ -26,9 +27,11 @@ enum BackupPrivacy { public, restricted }
 class BackupEntry {
   BackupEntry({required this.id, required this.kind, required this.size,
     required this.sha256, required this.sourceExact, this.missing = '', this.label = ''}) {
-    if (!validBackupId(id) || !{'records','photo','video','thumbnail','sealed'}.contains(kind) ||
+    if (!validBackupId(id) || !{'records','photo','video','thumbnail','sealed','file'}.contains(kind) ||
         size < 0 || size > backupMaxFileBytes || utf8.encode(label).length > 240 ||
         label.runes.any((r) => r < 32 || r == 127)) throw const BackupException('invalid_entry');
+    if (kind == 'file' && (size > backupMaxAttachmentBytes || (missing.isEmpty && size == 0)) ||
+        sourceExact && kind != 'photo' && kind != 'video') throw const BackupException('invalid_file_or_source_exact');
     if (missing.isNotEmpty) {
       if (!{'permission_denied','cloud_only','source_unavailable','not_exact_original'}.contains(missing) ||
           size != 0 || sha256.isNotEmpty || sourceExact) throw const BackupException('invalid_missing');
@@ -54,8 +57,10 @@ class BackupEntry {
 }
 
 class BackupManifest {
-  BackupManifest({required this.familyId, required this.backupId, required Iterable<BackupEntry> entries})
+  BackupManifest({required this.familyId, required this.backupId, required Iterable<BackupEntry> entries, int? version})
       : entries = List.unmodifiable(entries) {
+    this.version = version ?? (this.entries.any((e)=>e.kind=='file') ? 2 : 1);
+    if (![1,2].contains(this.version) || this.version==1 && this.entries.any((e)=>e.kind=='file')) throw const BackupException('unsupported_manifest_version');
     if (!validBackupId(familyId) || !validBackupId(backupId) || this.entries.isEmpty || this.entries.length > 4096) {
       throw const BackupException('invalid_manifest');
     }
@@ -68,15 +73,16 @@ class BackupManifest {
       throw const BackupException('manifest_limit');
     }
   }
+  late final int version;
   final String familyId, backupId;
   final List<BackupEntry> entries;
-  Map<String,dynamic> toJson() => {'version':1,'family_id':familyId,'backup_id':backupId,
+  Map<String,dynamic> toJson() => {'version':version,'family_id':familyId,'backup_id':backupId,
     'entries':entries.map((e)=>e.toJson()).toList()};
   String get canonicalJson => jsonEncode(toJson());
   factory BackupManifest.fromJson(Map<String,dynamic> j) {
     _fields(j, {'version','family_id','backup_id','entries'}, {});
-    if (j['version'] != 1 || j['entries'] is! List) throw const BackupException('invalid_manifest');
-    return BackupManifest(familyId:_string(j,'family_id'),backupId:_string(j,'backup_id'),
+    if (j['version'] is! int || ![1,2].contains(j['version']) || j['entries'] is! List) throw const BackupException('invalid_manifest');
+    return BackupManifest(version:j['version'] as int,familyId:_string(j,'family_id'),backupId:_string(j,'backup_id'),
       entries:(j['entries'] as List).map((e)=>BackupEntry.fromJson(backupObject(e))));
   }
 }

@@ -22,6 +22,8 @@ import (
 )
 
 const Version = 1
+const FileVersion = 2
+const MaxAttachmentBytes int64 = 20 << 20
 
 type Kind string
 
@@ -30,6 +32,7 @@ const (
 	Photo     Kind = "photo"
 	Video     Kind = "video"
 	Thumbnail Kind = "thumbnail"
+	File      Kind = "file"
 )
 
 type MissingReason string
@@ -144,8 +147,16 @@ func validReason(r MissingReason) bool {
 	}
 }
 
+func RequiredVersion(entries []Entry) int {
+	for _, e := range entries {
+		if e.Kind == File {
+			return FileVersion
+		}
+	}
+	return Version
+}
 func validate(m Manifest, l Limits) error {
-	if m.Version != Version || !identifier.MatchString(m.FamilyID) || m.Entries == nil {
+	if (m.Version != Version && m.Version != FileVersion) || !identifier.MatchString(m.FamilyID) || m.Entries == nil {
 		return ErrInvalid
 	}
 	if len(m.Entries) > l.MaxEntries {
@@ -160,6 +171,10 @@ func validate(m Manifest, l Limits) error {
 		seen[e.ID] = true
 		switch e.Kind {
 		case Records, Photo, Video, Thumbnail:
+		case File:
+			if m.Version != FileVersion || e.Size > MaxAttachmentBytes {
+				return ErrInvalid
+			}
 		default:
 			return ErrInvalid
 		}

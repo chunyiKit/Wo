@@ -25,6 +25,7 @@ import (
 const (
 	EntryID                    = "wo_backup_package_binding_v1"
 	Version                    = 1
+	FileVersion                = 2
 	Kind                       = "wo_backup_package_binding"
 	MaxBytes                   = 8 << 20
 	MaxPublicEntries           = 4095
@@ -54,11 +55,18 @@ type Index struct {
 	RestrictedEntries []portable.Entry `json:"restricted_entries"`
 }
 
-// Build is called before encryption, so it deliberately does not need the
-// ciphertext's size/hash. Source inventories must not contain the reserved ID.
-// The returned JSON bytes themselves must be a records entry in the inner tar.
+// RequiredVersion preserves v1 unless an inventory explicitly contains file.
+func RequiredVersion(public []backup.Entry, restricted []portable.Entry) int {
+	if backup.RequiredVersion(public) == backup.FileVersion || portable.RequiredVersion(restricted) == portable.FileVersion {
+		return FileVersion
+	}
+	return Version
+}
+
+// Build runs before encryption; its returned bytes must be a records entry in the inner tar.
+// Source inventories must not contain the reserved index ID.
 func Build(authContext vault.Context, public []backup.Entry, restricted []portable.Entry) ([]byte, error) {
-	index := Index{Version: Version, Kind: Kind, FamilyID: authContext.Family, BackupID: authContext.Backup, SealedID: authContext.Entry,
+	index := Index{Version: RequiredVersion(public, restricted), Kind: Kind, FamilyID: authContext.Family, BackupID: authContext.Backup, SealedID: authContext.Entry,
 		PublicEntries: append([]backup.Entry{}, public...), RestrictedEntries: append([]portable.Entry{}, restricted...)}
 	if err := validateIndex(index); err != nil {
 		return nil, err
@@ -162,7 +170,7 @@ func Validate(raw []byte, outer backup.Manifest, inner portable.Manifest, authen
 	if err := backup.Validate(outer); err != nil {
 		return Index{}, ErrInvalid
 	}
-	if inner.Version != portable.Version || !portableID.MatchString(inner.FamilyID) || inner.Entries == nil || len(inner.Entries) > MaxRestrictedEntries+1 {
+	if (inner.Version != portable.Version && inner.Version != portable.FileVersion) || inner.Version < portable.RequiredVersion(inner.Entries) || !portableID.MatchString(inner.FamilyID) || inner.Entries == nil || len(inner.Entries) > MaxRestrictedEntries+1 {
 		return Index{}, ErrInvalid
 	}
 	if err := validatePortable(inner.Entries, true); err != nil {
@@ -224,7 +232,7 @@ func validateIndex(index Index) error {
 	if !combinedFits(index, 0) {
 		return ErrInvalid
 	}
-	if index.Version != Version || index.Kind != Kind || !backup.ValidID(index.FamilyID) || !portableID.MatchString(index.FamilyID) || !backup.ValidID(index.BackupID) || !backup.ValidID(index.SealedID) ||
+	if (index.Version != Version && index.Version != FileVersion) || index.Version < RequiredVersion(index.PublicEntries, index.RestrictedEntries) || index.Kind != Kind || !backup.ValidID(index.FamilyID) || !portableID.MatchString(index.FamilyID) || !backup.ValidID(index.BackupID) || !backup.ValidID(index.SealedID) ||
 		strings.EqualFold(index.SealedID, EntryID) || index.PublicEntries == nil || index.RestrictedEntries == nil || len(index.PublicEntries) > MaxPublicEntries || len(index.RestrictedEntries) > MaxRestrictedEntries || len(index.PublicEntries)+len(index.RestrictedEntries) > MaxRestrictedEntries {
 		return ErrInvalid
 	}
@@ -232,13 +240,13 @@ func validateIndex(index Index) error {
 	// are excluded from the index because authenticated ciphertext does not exist yet.
 	entries := append([]backup.Entry{}, index.PublicEntries...)
 	entries = append(entries, backup.Entry{ID: index.SealedID, Kind: "sealed", Size: vault.MinCiphertextBytes, SHA256: strings.Repeat("0", 64)})
-	if err := backup.Validate(backup.Manifest{Version: 1, FamilyID: index.FamilyID, BackupID: index.BackupID, Entries: entries}); err != nil {
+	if err := backup.Validate(backup.Manifest{Version: backup.RequiredVersion(entries), FamilyID: index.FamilyID, BackupID: index.BackupID, Entries: entries}); err != nil {
 		return ErrInvalid
 	}
 	seen := map[string]bool{strings.ToLower(EntryID): true, strings.ToLower(index.SealedID): true}
 	for _, entry := range index.PublicEntries {
 		folded := strings.ToLower(entry.ID)
-		if entry.Size > 20<<30 || (entry.Kind != "photo" && entry.Kind != "video" && entry.Kind != "thumbnail") || seen[folded] || !utf8.ValidString(entry.Label) || entry.Missing != "" && entry.SourceExact || entry.SourceExact && entry.Kind != "photo" && entry.Kind != "video" {
+		if entry.Size > 20<<30 || (entry.Kind != "photo" && entry.Kind != "video" && entry.Kind != "thumbnail" && entry.Kind != "file") || seen[folded] || !utf8.ValidString(entry.Label) || entry.Missing != "" && entry.SourceExact || entry.SourceExact && entry.Kind != "photo" && entry.Kind != "video" {
 			return ErrInvalid
 		}
 		seen[folded] = true
@@ -289,6 +297,10 @@ func validatePortable(entries []portable.Entry, allowIndex bool) error {
 		seen[folded] = true
 		switch entry.Kind {
 		case portable.Records, portable.Photo, portable.Video, portable.Thumbnail:
+		case portable.File:
+			if entry.Size > portable.MaxAttachmentBytes {
+				return ErrInvalid
+			}
 		default:
 			return ErrInvalid
 		}

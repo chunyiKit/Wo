@@ -38,12 +38,18 @@ class BackupPackageBinding {
       final id=row['id'];if(id is! String||!validBackupId(id)||!ids.add(id.toLowerCase()))throw const BackupException('package_binding_collision');
     }
   }
+  static int _inventoryVersion(List<Map<String,dynamic>> public,List<Map<String,dynamic>> restricted){
+    for(final e in [...public,...restricted]){
+      if(e['kind']=='file'&&(e['size'] is! int||(e['size'] as int)>backupMaxAttachmentBytes||e['source_exact']==true))throw const BackupException('package_file_limit');
+    }
+    return [...public,...restricted].any((e)=>e['kind']=='file')?2:1;
+  }
   static Uint8List create({required String familyId,required String backupId,required String sealedId,
       required Iterable<BackupEntry> publicEntries,required Iterable<Map<String,dynamic>> restrictedEntries}){
     final public=_inventory(publicEntries.map((e)=>e.toJson())),restricted=_inventory(restrictedEntries);
-    if(public.any((e)=>!{'photo','video','thumbnail'}.contains(e['kind'])))throw const BackupException('package_public_kind');
+    if(public.any((e)=>!{'photo','video','thumbnail','file'}.contains(e['kind'])))throw const BackupException('package_public_kind');
     _identities(familyId,backupId,sealedId,public,restricted);
-    final bytes=Uint8List.fromList(utf8.encode(_canonical({'version':1,'kind':'wo_backup_package_binding',
+    final bytes=Uint8List.fromList(utf8.encode(_canonical({'version':_inventoryVersion(public,restricted),'kind':'wo_backup_package_binding',
       'family_id':familyId,'backup_id':backupId,'sealed_id':sealedId,'public_entries':public,'restricted_entries':restricted})));
     final total=[...public,...restricted].fold<int>(bytes.length,(sum,row)=>sum+(row['size'] as int));
     if(total>100*1024*1024*1024)throw const BackupException('package_total_limit');
@@ -55,17 +61,19 @@ class BackupPackageBinding {
     if(bytes.isEmpty||bytes.length>maxBytes)throw const BackupException('package_binding_limit');
     final j=backupObject(decodeBackupJson(utf8.decode(bytes,allowMalformed:false)));
     if(j.length!=7||j.keys.any((k)=>!{'version','kind','family_id','backup_id','sealed_id','public_entries','restricted_entries'}.contains(k))||
-      j['version'] is! int||j['version']!=1||j['kind']!='wo_backup_package_binding'||j['family_id']!=outer.familyId||j['backup_id']!=outer.backupId||j['sealed_id']!=sealedId||
+      j['version'] is! int||![1,2].contains(j['version'])||j['kind']!='wo_backup_package_binding'||j['family_id']!=outer.familyId||j['backup_id']!=outer.backupId||j['sealed_id']!=sealedId||
       j['public_entries'] is! List||j['restricted_entries'] is! List)throw const BackupException('package_binding_context');
     final sealed=outer.entries.where((e)=>e.kind=='sealed').toList();if(sealed.length!=1||sealed.single.id!=sealedId)throw const BackupException('package_binding_context');
     final public=_inventory((j['public_entries'] as List).map(backupObject)),restricted=_inventory((j['restricted_entries'] as List).map(backupObject));
     _identities(outer.familyId,outer.backupId,sealedId,public,restricted);
+    final requiredVersion=_inventoryVersion(public,restricted);
+    if(j['version']==1&&requiredVersion==2)throw const BackupException('package_binding_version');
     if([...public,...restricted].any((e)=>e['size'] is! int))throw const BackupException('package_binding_invalid');
     if([...public,...restricted].fold<int>(bytes.length,(sum,row)=>sum+(row['size'] as int))>100*1024*1024*1024)throw const BackupException('package_total_limit');
     final expectedPublic=_inventory(outer.entries.where((e)=>e.kind!='sealed').map((e)=>e.toJson()));
     final expectedRestricted=_inventory(innerEntries.where((e)=>e['id']!=entryId));
     if(_canonical(public)!=_canonical(expectedPublic)||_canonical(restricted)!=_canonical(expectedRestricted))throw const BackupException('package_binding_inventory');
-    if(expectedPublic.any((e)=>!{'photo','video','thumbnail'}.contains(e['kind'])))throw const BackupException('package_public_kind');
+    if(expectedPublic.any((e)=>!{'photo','video','thumbnail','file'}.contains(e['kind'])))throw const BackupException('package_public_kind');
   }
   static String digest(Uint8List bytes)=>hashing.sha256.convert(bytes).toString();
 }

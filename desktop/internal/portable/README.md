@@ -15,9 +15,11 @@
 
 ## 格式与发布规则
 
-首个 tar 条目固定 `manifest.json`，接下来按 manifest 顺序包含 `entries/<opaqueID>`。仅接受 GNU regular-file header；GNU 二进制大小字段可表示大于 8 GiB 的视频，逐个读取物理 512-byte header 并检查零 padding、两个完整零结束块及随后 EOF，避免标准 tar Reader 隐藏扩展块。禁止符号/硬链接、目录、PAX/GNU 辅助扩展、任意输入目标路径、重复或多余条目。JSON 拒绝重复字段、大小写别名、额外字段、缺字段、null、非法类型和未知枚举。每条记录必须声明 `id/kind/size/sha256/missing_reason/source_exact`，kind 为 `records/photo/video/thumbnail`。所有文件以 `0600` 创建，不应用源文件权限、文件名或时间。
+首个 tar 条目固定 `manifest.json`，接下来按 manifest 顺序包含 `entries/<opaqueID>`。仅接受 GNU regular-file header；GNU 二进制大小字段可表示大于 8 GiB 的视频，逐个读取物理 512-byte header 并检查零 padding、两个完整零结束块及随后 EOF，避免标准 tar Reader 隐藏扩展块。禁止符号/硬链接、目录、PAX/GNU 辅助扩展、任意输入目标路径、重复或多余条目。JSON 拒绝重复字段、大小写别名、额外字段、缺字段、null、非法类型和未知枚举。每条记录必须声明 `id/kind/size/sha256/missing_reason/source_exact`，v1 的 kind 为 `records/photo/video/thumbnail`；v2 在此基础上允许显式 `file`（普通附件单个硬上限20MiB，`source_exact=false`）。新 writer 使用 `RequiredVersion(entries)`，无 file 保持 v1；reader 明确拒绝 v1+file 和未知版本。所有文件以 `0600` 创建，不应用源文件权限、文件名或时间。
 
 完整验证后使用 `Mkdir(destination, 0700)` 原子预留目标；并发恢复只有一个能够成功。发布文件用 `O_CREATE|O_EXCL`，最终写 `restore.complete.json`；从不使用可能覆盖现有空目录的 Unix Rename。失败清理仅删除本次创建且 inode 相符的文件，目录只尝试非递归删除。已有目录（包括空目录）及符号链接一律拒绝，不删除、不合并、不覆盖。进程中断或断电可能留下没有 marker 的未完成目录，重试应选择另一个新目标；不得将此目录当作成功恢复。调用方应再次校验落盘媒体及 marker 后执行实际导入。本包不声称抵御同 UID 的恶意进程篡改受信父目录，也不提供跨文件系统断电原子性。
+
+普通 file 不按图片或 records 处理，不执行内容，不应用原文件名；恢复仍为随机私有 `.blob`，仅向恢复者提供校验后的只读字节。当前手机 producer 将所有附件归入 restricted，不新增电脑网页明文许可。
 
 默认上限：20,000 条、manifest 8 MiB、单文件 20 GiB、总字节 100 GiB。可显式下调或在实现上限内配置。流式拷贝使用固定 64 KiB 缓冲；manifest 与条目元数据在内存，媒体不会整文件读入内存。
 

@@ -22,6 +22,8 @@ import (
 )
 
 const ChunkSize int64 = 8 << 20
+const MaxAttachmentSize int64 = 20 << 20
+const FileVersion = 2
 const MaxFileSize int64 = 64 << 30
 const MaxTotalSize int64 = 1 << 40
 
@@ -47,7 +49,7 @@ func ValidID(id string) bool {
 
 type Entry struct {
 	ID          string `json:"id"`
-	Kind        string `json:"kind"` // records/photo/video/thumbnail/sealed
+	Kind        string `json:"kind"` // records/photo/video/thumbnail/sealed/file (file requires v2)
 	Size        int64  `json:"size"`
 	SHA256      string `json:"sha256,omitempty"`
 	Label       string `json:"label,omitempty"` // 仅公开显示，不作为路径
@@ -136,8 +138,16 @@ func token() string {
 	return hex.EncodeToString(b[:])
 }
 func digest(b []byte) string { x := sha256.Sum256(b); return hex.EncodeToString(x[:]) }
+func RequiredVersion(entries []Entry) int {
+	for _, e := range entries {
+		if e.Kind == "file" {
+			return FileVersion
+		}
+	}
+	return 1
+}
 func Validate(m Manifest) error {
-	if m.Version != 1 || !ValidID(m.FamilyID) || !ValidID(m.BackupID) || len(m.Entries) < 1 || len(m.Entries) > 4096 {
+	if (m.Version != 1 && m.Version != FileVersion) || !ValidID(m.FamilyID) || !ValidID(m.BackupID) || len(m.Entries) < 1 || len(m.Entries) > 4096 {
 		return errors.New("invalid manifest")
 	}
 	seen := map[string]bool{}
@@ -148,8 +158,11 @@ func Validate(m Manifest) error {
 			return errors.New("invalid or duplicate entry")
 		}
 		seen[strings.ToLower(e.ID)] = true
-		if e.Kind != "records" && e.Kind != "photo" && e.Kind != "video" && e.Kind != "thumbnail" && e.Kind != "sealed" {
+		if e.Kind != "records" && e.Kind != "photo" && e.Kind != "video" && e.Kind != "thumbnail" && e.Kind != "sealed" && e.Kind != "file" {
 			return errors.New("invalid kind")
+		}
+		if e.Kind == "file" && (m.Version != FileVersion || e.Size > MaxAttachmentSize || e.Missing == "" && e.Size == 0) || e.SourceExact && e.Kind != "photo" && e.Kind != "video" {
+			return errors.New("invalid file or source_exact")
 		}
 		if len(e.Label) > 240 {
 			return errors.New("label too long")

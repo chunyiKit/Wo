@@ -67,7 +67,8 @@ class OwnedMediaContracts(unittest.TestCase):
         for api in ('verifiedFile(String workspaceId','read(String workspaceId','openRange(String workspaceId','prepareBackupSource(String workspaceId'):
             self.assertIn(api,self.source)
     def test_records_stay_inert_and_source_exact_is_not_promoted(self):
-        self.assertIn("_kinds={'records','photo','video','thumbnail'}",self.source)
+        self.assertIn("_kinds={'records','photo','video','thumbnail','file'}",self.source)
+        self.assertIn("entry.kind=='file'&&entry.size>backupMaxAttachmentBytes",self.source)
         self.assertIn('sourceExact:asset.sourceExact',self.source)
         self.assertIn('declaredBytesComplete=>available&&',self.source)
         self.assertIn('声明非exact原件保留字节但不提升保真状态',self.tests)

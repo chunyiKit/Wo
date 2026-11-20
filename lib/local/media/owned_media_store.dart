@@ -47,7 +47,7 @@ class OwnedMediaStore {
   bool _closed=false;
   static const privateDirectoryName='owned-media-v1';
   static const maxReadBytes=8*1024*1024;
-  static const _kinds={'records','photo','video','thumbnail'};
+  static const _kinds={'records','photo','video','thumbnail','file'};
   static const _missing={'not_on_device','permission_denied','source_missing','source_unavailable','unsupported','not_authorized','source_not_exact','cloud_only','not_exact_original'};
   static final _logical=RegExp(r'^[A-Za-z0-9_-]{1,100}$');
   static final _owned=RegExp(r'^o_[a-f0-9]{32}$');
@@ -127,7 +127,7 @@ class OwnedMediaStore {
   OwnedMediaAsset _asset(Map<String,Object?> row){
     final id=row['id'],workspace=row['workspace_id'],key=row['import_key'],original=row['original_entry_id'],kind=row['kind'],size=row['expected_size'],sha=row['sha256'],exact=row['source_exact'],status=row['status'],missing=row['missing_reason'],thumbnail=row['thumbnail_id'];
     if(id is! String||!_full(_owned,id)||workspace is! String||!_full(_logical,workspace)||key is! String||!_full(_logical,key)||
-      original is! String||!_full(_logical,original)||kind is! String||!_kinds.contains(kind)||size is! int||size<0||size>20*1024*1024*1024||sha is! String||
+      original is! String||!_full(_logical,original)||kind is! String||!_kinds.contains(kind)||size is! int||size<0||size>20*1024*1024*1024||kind=='file'&&size>backupMaxAttachmentBytes||sha is! String||
       exact is! int||exact<0||exact>1||status is! String||!{'copying','ready','failed','missing'}.contains(status)||missing is! String||
       thumbnail!=null&&(thumbnail is! String||!_full(_owned,thumbnail))||
       size>0&&!_full(_sha,sha)||size==0&&sha.isNotEmpty||exact==1&&!{'photo','video'}.contains(kind))_fail('invalid_owned_index');
@@ -151,7 +151,7 @@ class OwnedMediaStore {
     if(asset.kind!='thumbnail'||!asset.available)_fail('invalid_thumbnail_reference');await _verify(asset);
   }
   static void _entry(PortableEntry entry){
-    if(!_kinds.contains(entry.kind)||!_full(_logical,entry.id)||entry.size<0||entry.size>20*1024*1024*1024||
+    if(!_kinds.contains(entry.kind)||!_full(_logical,entry.id)||entry.size<0||entry.size>20*1024*1024*1024||entry.kind=='file'&&entry.size>backupMaxAttachmentBytes||
       entry.missingReason.isEmpty&&(entry.size<1||!_full(_sha,entry.sha256))||
       entry.missingReason.isNotEmpty&&(!_missing.contains(entry.missingReason)||entry.size!=0||entry.sha256.isNotEmpty||entry.sourceExact)||
       entry.sourceExact&&!{'photo','video'}.contains(entry.kind))_fail('invalid_recovered_entry');

@@ -11,7 +11,7 @@ index, err = packagebinding.Validate(raw, outerManifest, innerManifest, actualCo
 err = packagebinding.VerifyPublic(ctx, index, openExactPublicID)
 ```
 
-固定保留条目 ID 为 `wo_backup_package_binding_v1`。它是 portable v1 内的 `records` 文件，JSON 顶层恰为：`version:1`、`kind:"wo_backup_package_binding"`、`family_id`、`backup_id`、`sealed_id`、`public_entries`、`restricted_entries`。公开仅允许 photo/video/thumbnail，全部业务 records 始终留在加密内层；source_exact 只允许照片/视频声明。公开条目使用完整 `backup.Entry` 元数据（含其可选 label/missing/source_exact）；受限条目使用全部六个 portable entry 字段，不包含索引自身。`Build` 按 ID 排序副本，不改调用者切片；JSON 键及 inventory 顺序不作为权限语义，但索引全文原始字节 SHA 和大小必须匹配内层 manifest。
+固定保留条目 ID 为 `wo_backup_package_binding_v1`。它是 portable 内的 `records` 文件，JSON 顶层恰为：`version:1|2`、`kind:"wo_backup_package_binding"`、`family_id`、`backup_id`、`sealed_id`、`public_entries`、`restricted_entries`。v1 仅接受既有 kind；任一区 inventory 含 `file` 时 `Build` 使用索引 v2，reader 拒绝 v1+file 和未知版本。公开通用验证支持 photo/video/thumbnail/file，但不会授予公开权限；手机 producer 将普通附件固定为 restricted。普通 file 硬上限20MiB且 `source_exact=false`，全部业务 records 始终留在加密内层；source_exact 只允许照片/视频声明。公开条目使用完整 `backup.Entry` 元数据（含其可选 label/missing/source_exact）；受限条目使用全部六个 portable entry 字段，不包含索引自身。`Build` 按 ID 排序副本，不改调用者切片；JSON 键及 inventory 顺序不作为权限语义，但索引全文原始字节 SHA 和大小必须匹配内层 manifest。
 
 调用顺序必须是：先以真实 family/backup/sealed 的 `vault.Context` 完成 Vault 认证，再读取经 portable 校验的内层 manifest 和索引字节，再 Validate，最后流式核验公开文件。不能从索引 JSON 推导一个自称可信的 Context，不能把普通 PortableRestore 当来源认证，不能仅凭 UUID 将公开文件连到受限归档。模块不会把返回的 `Index` 当成权限 receipt、旧成员身份、历史操作授权或“整机恢复完成”。
 

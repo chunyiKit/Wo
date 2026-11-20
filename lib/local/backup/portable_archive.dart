@@ -9,13 +9,14 @@ import 'vault_codec.dart';
 import 'package_binding.dart';
 import 'quarantine_store.dart';
 
-const _portableKinds={'records','photo','video','thumbnail'};
+const _portableKinds={'records','photo','video','thumbnail','file'};
 const _portableMissing={'not_on_device','permission_denied','source_missing','source_unavailable','unsupported','not_authorized','source_not_exact'};
 final _portableId=RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$');
 class PortableEntry {
   PortableEntry({required this.id,required this.kind,required this.size,required this.sha256,
       required this.sourceExact,this.missingReason=''}) {
     if(!_portableId.hasMatch(id)||!_portableKinds.contains(kind))throw const BackupException('invalid_portable_entry');
+    if(kind=='file'&&size>backupMaxAttachmentBytes)throw const BackupException('portable_file_limit');
     if(missingReason.isNotEmpty){
       if(!_portableMissing.contains(missingReason)||size!=0||sha256.isNotEmpty||sourceExact)throw const BackupException('invalid_portable_missing');
     }else if(size<1||size>20*1024*1024*1024||!RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256)||
@@ -31,17 +32,19 @@ class PortableEntry {
   }
 }
 class PortableManifest {
-  PortableManifest({required this.familyId,required Iterable<PortableEntry> entries}):entries=List.unmodifiable(entries){
+  PortableManifest({required this.familyId,required Iterable<PortableEntry> entries,int? version}):entries=List.unmodifiable(entries){
+    this.version=version??(this.entries.any((e)=>e.kind=='file')?2:1);
+    if(![1,2].contains(this.version)||this.version==1&&this.entries.any((e)=>e.kind=='file'))throw const BackupException('unsupported_portable_version');
     if(!_portableId.hasMatch(familyId)||this.entries.length>20000)throw const BackupException('portable_limit');
     final seen=<String>{};var total=0;
     for(final e in this.entries){if(!seen.add(e.id))throw const BackupException('duplicate_portable_id');total+=e.size;}
     if(total>100*1024*1024*1024||utf8.encode(jsonEncode(toJson())).length>8*1024*1024)throw const BackupException('portable_limit');
   }
-  final String familyId;final List<PortableEntry> entries;
-  Map<String,dynamic> toJson()=>{'version':1,'family_id':familyId,'entries':entries.map((e)=>e.toJson()).toList()};
+  late final int version;final String familyId;final List<PortableEntry> entries;
+  Map<String,dynamic> toJson()=>{'version':version,'family_id':familyId,'entries':entries.map((e)=>e.toJson()).toList()};
   factory PortableManifest.fromJson(Map<String,dynamic> j){
-    if(j.length!=3||j['version'] is! int||j['version']!=1||j['family_id'] is! String||j['entries'] is! List)throw const BackupException('invalid_portable_json');
-    return PortableManifest(familyId:j['family_id'] as String,entries:(j['entries'] as List).map((e)=>PortableEntry.fromJson(backupObject(e))));
+    if(j.length!=3||j['version'] is! int||![1,2].contains(j['version'])||j['family_id'] is! String||j['entries'] is! List)throw const BackupException('invalid_portable_json');
+    return PortableManifest(version:j['version'] as int,familyId:j['family_id'] as String,entries:(j['entries'] as List).map((e)=>PortableEntry.fromJson(backupObject(e))));
   }
 }
 class PortableRecoveredFile {
