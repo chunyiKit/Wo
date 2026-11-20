@@ -89,7 +89,7 @@ class StockAccountingRoutes {
         (entry['created_at'] as String).length>64||DateTime.tryParse(entry['created_at'] as String)?.isUtc!=true||
         !date(entry['calendar_date'])||entry['calendar_offset_minutes'] is! int||
         (entry['calendar_offset_minutes'] as int)<-1440||(entry['calendar_offset_minutes'] as int)>1440||
-        entry['amount_minor'] is! int||(entry['amount_minor'] as int).abs()>maxMinor||
+        entry['amount_minor'] is! int||(entry['amount_minor'] as int)<-maxMinor||(entry['amount_minor'] as int)>maxMinor||
         entry['category'] is! String||(entry['category'] as String).length>16||!identifier(entry['category'])||
         entry['exclude_from_budget'] is! bool||entry['note']!=null&&(entry['note'] is! String||(entry['note'] as String).runes.length>200))bad();
     if(entrySourceFields.any(entry.containsKey)) {

@@ -40,7 +40,7 @@ class RetirementSubscriptionRoutes {
   static const requestResponseFields = <String>{...accountEntryFields, ...debtEntryFields,
     ...planEntryFields, ...subscriptionEntryFields, 'id', 'balance', 'balance_conflict',
     'monthly_income', 'monthly_payment', 'settlement_conflict', 'savings_goal', 'creator_name', 'creator_emoji',
-    'creator_avatar_url', 'amount', 'days_until', 'billing_conflict', 'deleted'};
+    'creator_avatar_url', 'amount', 'days_until', 'billing_conflict', 'conflict_frontier', 'deleted'};
   static String eventSemantic(Json event) => LocalStore.canonical({for (final key in eventSemanticFields) if (event.containsKey(key)) key: event[key]});
   static Json decodeEvent(Object? encoded, {String? expectedId, String? actor, int? order, bool? subscription}) {
     Never bad() => throw const FormatException('财务事件结构、金额或来源无效');
@@ -180,6 +180,7 @@ class RetirementSubscriptionRoutes {
     await store.batchComputed((tx) async {
       await _member(tx, fid);
       final changes = <Json>[];
+      if (body.containsKey('expected_conflict_frontier') && (body['expected_conflict_frontier'] is! String || !RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$').hasMatch(body['expected_conflict_frontier'] as String))) _bad('确认版本无效，请重新读取记录', 409);
       final client = body['client_id'];
       final claimId = verb == 'GET' || client == null ? null : stable('$plugin-client:$fid:${_text(client, 100)}');
       final fingerprint = LocalStore.canonical({'method': verb, 'tail': tail, 'body': body, 'query': query});
@@ -206,6 +207,7 @@ class RetirementSubscriptionRoutes {
     final linked = entry['from_account_id'];
     final target = linked is String ? await _doc(tx, fid, col(fid, 'retirement', 'accounts'), linked) : null;
     return _author(tx, fid, {...entry, 'balance': money(balance),
+      'conflict_frontier': await _frontier(tx, fid, 'retirement', debt ? 'debts' : 'accounts', entry, state),
       'balance_conflict': state.conflicts(entry).isNotEmpty || debt && balance < 0 || !debt && await _settlementConflict(tx, fid, entry, state),
       if (!debt) 'settlement_conflict': await _settlementConflict(tx, fid, entry, state),
       if (debt) ...{'monthly_payment': money(entry['monthly_payment_minor'] as int), 'active': entry['active'] == true && balance > 0,
@@ -266,11 +268,15 @@ class RetirementSubscriptionRoutes {
         await _required(tx, fid, 'retirement', resource, tail[2]), state, debt: debt), meta: null);
     final create = tail.length == 2;
     if (create ? verb != 'POST' : verb != 'PUT') _bad('此记录不支持该操作', 405);
-    _only(body, {'name', 'kind', 'emoji', 'balance', if (debt) ...['monthly_payment', 'payment_day', 'from_account_id', 'active'] else ...['monthly_income', 'income_day'], 'client_id'});
+    _only(body, {'name', 'kind', 'emoji', 'balance', if (debt) ...['monthly_payment', 'payment_day', 'from_account_id', 'active'] else ...['monthly_income', 'income_day'], 'client_id', 'expected_conflict_frontier'});
     final id = create ? (body['client_id'] == null ? _uuid.v4() : stable('$fid:$resource:${body['client_id']}')) : tail[2];
     final entry = create ? <String, dynamic>{'family_id': fid, 'created_by': store.deviceId,
       'created_at': now().toUtc().toIso8601String(), 'created_on': date(today),
       'basis_event_ids': <String>[], 'acknowledged_conflicts': <String>[], if (!debt) 'settlement_checks': <String, int>{}, if (debt) 'active': true} : await _required(tx, fid, 'retirement', resource, id);
+    if (!create && body.containsKey('balance')) {
+      final frontier = await _frontier(tx, fid, 'retirement', resource, entry, state);
+      if (body['expected_conflict_frontier'] != frontier) _bad('确认期间记录已变化，请重新查看余额与流水后再确认', 409);
+    }
     if (create || body.containsKey('name')) entry['name'] = _text(body['name'], 40);
     if (create || body.containsKey('emoji')) entry['emoji'] = _text(body.containsKey('emoji') ? body['emoji'] : (debt ? '🏠' : '🏦'), 16);
     if (create || body.containsKey('kind')) entry['kind'] = _enum(body.containsKey('kind') ? body['kind'] : (debt ? 'mortgage' : 'deposit'), debt ? debtKinds : accountKinds);
@@ -311,7 +317,8 @@ class RetirementSubscriptionRoutes {
   Future<Json> _subscriptionRead(DatabaseExecutor tx, String fid, Json entry, _FinancialEvents state) async {
     final due = _due(entry, state);
     return _author(tx, fid, {...entry, 'amount': money(entry['amount_minor'] as int), 'next_due': due,
-      'days_until': day(due).difference(today).inDays, 'billing_conflict': state.subscriptionConflict(entry)});
+      'days_until': day(due).difference(today).inDays,
+      'conflict_frontier': await _frontier(tx, fid, 'subscription', 'subscriptions', entry, state), 'billing_conflict': state.subscriptionConflict(entry)});
   }
   Future<LocalResult> _subscription(DatabaseExecutor tx, String verb, String fid, List<String> tail,
       Json body, Json query, _FinancialEvents state, List<Json> changes) async {
@@ -335,13 +342,17 @@ class RetirementSubscriptionRoutes {
     }
     final create = tail.length == 2;
     if (create ? verb != 'POST' : verb != 'PUT') _bad('此订阅不支持该操作', 405);
-    _only(body, {'name', 'emoji', 'amount', 'cycle', 'next_due', 'note', 'notify_enabled', 'notify_days_before', 'auto_record', 'accounting_category', 'exclude_from_budget', 'active', 'client_id', 'confirm_billing'});
+    _only(body, {'name', 'emoji', 'amount', 'cycle', 'next_due', 'note', 'notify_enabled', 'notify_days_before', 'auto_record', 'accounting_category', 'exclude_from_budget', 'active', 'client_id', 'confirm_billing', 'expected_conflict_frontier'});
     final id = create ? (body['client_id'] == null ? _uuid.v4() : stable('$fid:subscription:${body['client_id']}')) : tail[2];
     final entry = create ? <String, dynamic>{'family_id': fid, 'created_by': store.deviceId,
       'created_at': now().toUtc().toIso8601String(), 'created_on': date(today),
       'note': null, 'active': true, 'notify_enabled': true, 'notify_days_before': 3,
       'auto_record': true, 'accounting_category': 'subscription', 'exclude_from_budget': false, 'acknowledged_charge_conflicts': <String>[]}
       : await _required(tx, fid, 'subscription', resource, id);
+    if (!create && body['confirm_billing'] == true) {
+      final frontier = await _frontier(tx, fid, 'subscription', resource, entry, state);
+      if (body['expected_conflict_frontier'] != frontier) _bad('确认期间账期或账目已变化，请重新核对后再确认', 409);
+    }
     if (create || body.containsKey('name')) entry['name'] = _text(body['name'], 40);
     if (create || body.containsKey('emoji')) entry['emoji'] = _text(body.containsKey('emoji') ? body['emoji'] : '💳', 16);
     if (create || body.containsKey('amount')) { final value = minor(body['amount'], nonnegative: true, subscription: true); if (value <= 0) _bad('订阅金额必须大于0'); entry['amount_minor'] = value; }
@@ -360,6 +371,43 @@ class RetirementSubscriptionRoutes {
     return (data: await _subscriptionRead(tx, fid, {...entry, 'id': id}, state), meta: null);
   }
 
+  /// Stable review token for exactly the persisted record, all related raw
+  /// authenticated occurrences, and current settlement/source expense facts.
+  Future<String> _frontier(DatabaseExecutor tx, String fid, String plugin, String resource,
+      Json entry, _FinancialEvents state) async {
+    final id = entry['id'] as String;
+    final eventIds = state.events.where((e) => plugin == 'subscription' ? e['subscription_id'] == id :
+      resource == 'debts' ? e['debt_id'] == id : e['account_id'] == id || e['kind'] == 'expense_settle' && e['account_id'] == null)
+      .map((e) => e['event_id']).toSet();
+    final related = state.events.where((e) => eventIds.contains(e['event_id'])).toList();
+    final encodedEvents = related.map((e) => LocalStore.canonical({
+      for (final key in {...eventSemanticFields, 'event_id', 'actor', 'order', 'created_at'}) if (e.containsKey(key)) key: e[key],
+      'source_sequence': e['_source_sequence'],
+    })).toSet().toList()..sort();
+    final totals = <String, int>{};
+    final index = <Json>[];
+    final expenses = <Json>[];
+    if (plugin == 'retirement' && resource == 'accounts') {
+      final periods = related.where((e) => e['kind'] == 'expense_settle').map((e) => e['expense_period'] as String).toSet().toList()..sort();
+      for (final month in periods) { totals[month] = await _expenseTotal(tx, fid, month); }
+      for (final account in await _entries(tx, fid, 'retirement', 'accounts')) {
+        index.add({'id': account['id'], 'kind': account['id'] == id ? entry['kind'] : account['kind'], 'created_at': account['id'] == id ? entry['created_at'] : account['created_at']});
+      }
+      if (!index.any((row) => row['id'] == id)) index.add({'id': id, 'kind': entry['kind'], 'created_at': entry['created_at']});
+      index.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
+    }
+    if (plugin == 'subscription') {
+      for (final expense in await _entries(tx, fid, 'accounting', 'transactions')) {
+        if (expense['source_plugin'] == 'subscription' && expense['source_id'] == id) expenses.add(expense);
+      }
+      expenses.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
+    }
+    final facts = {'schema': 1, 'family_id': fid, 'plugin': plugin, 'resource': resource, 'record_id': id,
+      'entry': {...entry}..remove('id'), 'events': [for (final encoded in encodedEvents) jsonDecode(encoded)],
+      'settlement_totals': totals, 'account_index': index, 'expenses': expenses};
+    return stable('wo-finance-frontier-v1:${LocalStore.canonical(facts)}');
+  }
+
   Future<int> _expenseTotal(DatabaseExecutor tx, String fid, String month) async {
     var total = 0;
     for (final entry in await _entries(tx, fid, 'accounting', 'transactions')) {
@@ -370,7 +418,8 @@ class RetirementSubscriptionRoutes {
   Future<bool> _settlementConflict(DatabaseExecutor tx, String fid, Json account, _FinancialEvents state) async {
     if (account['kind'] != 'deposit') return false;
     final checks = account['settlement_checks'] as Map? ?? {};
-    final deposits = (await _entries(tx, fid, 'retirement', 'accounts')).where((a) => a['kind'] == 'deposit').toList()
+    final known = await _entries(tx, fid, 'retirement', 'accounts');
+    final deposits = [for (final row in known) if (row['id'] != account['id']) row, account].where((a) => a['kind'] == 'deposit').toList()
       ..sort((a, b) { final t = (a['created_at'] as String).compareTo(b['created_at'] as String); return t != 0 ? t : (a['id'] as String).compareTo(b['id'] as String); });
     for (final event in state.canonical.where((e) => e['kind'] == 'expense_settle')) {
       final target = event['account_id'] ?? (deposits.isEmpty ? null : deposits.first['id']);
@@ -611,8 +660,8 @@ class _FinancialEvents {
       final fields = operation['fields'];
       if (operation['kind'] != 'patch' || fields is! Map || fields.length != 1 || fields['event'] is! String) RetirementSubscriptionRoutes._bad('财务事件不可删除或修改结构', 409);
       try {
-        events.add(RetirementSubscriptionRoutes.decodeEvent(fields['event'], expectedId: operation['id'] as String,
-          actor: operation['actor'] as String, order: operation['clock'] as int, subscription: subscription));
+        events.add({...RetirementSubscriptionRoutes.decodeEvent(fields['event'], expectedId: operation['id'] as String,
+          actor: operation['actor'] as String, order: operation['clock'] as int, subscription: subscription), '_source_sequence': operation['sequence']});
       } on FormatException { RetirementSubscriptionRoutes._bad('财务事件来源、金额或账期无效', 409); }
 
     }

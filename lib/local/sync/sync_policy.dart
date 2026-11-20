@@ -199,6 +199,8 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     RegExp(r'^[0-9]{4}-(0[1-9]|1[0-2])$').hasMatch(value)&&int.parse(value.substring(0,4))>=1;
   static bool _idList(Object? value)=>value is List&&value.length<=4096&&value.every((v)=>v is String&&syncId(v));
   static bool _conflictList(Object? value)=>value is List&&value.length<=4096&&value.every((v)=>v is String);
+  static bool _frontier(Object? value)=>value is String&&value.length==36&&
+    RegExp(r'^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$').hasMatch(value);
   static int _financeMoney(Object? value,{bool nonnegative=false,bool subscription=false}){
     try{return RetirementSubscriptionRoutes.minor(value,nonnegative:nonnegative,subscription:subscription);}catch(_){_badEmbedded();}
   }
@@ -212,7 +214,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
     final decoded=_jsonObject(encoded);Json event;
     try{event=RetirementSubscriptionRoutes.decodeEvent(LocalStore.canonical(decoded),expectedId:id,actor:actor,order:clock,subscription:suffix=='plugins/subscription/charges');}
     catch(_){_badEmbedded();}
-    if(!_period(event['period'])||event['actor'] is! String||!syncId(event['actor'] as String)||
+    if(!_integer(event['amount_minor'],-RetirementSubscriptionRoutes.safeInteger,RetirementSubscriptionRoutes.safeInteger)||!_period(event['period'])||event['actor'] is! String||!syncId(event['actor'] as String)||
         !_integer(event['order'],1,1<<40)||!_timestamp(event['created_at']))_badEmbedded();
     for(final key in ['account_id','debt_id','subscription_id']){if(event[key]!=null&&(event[key] is! String||!syncId(event[key] as String)))_badEmbedded();}
     String source;
@@ -274,10 +276,12 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       if(tail.length!=3||plan)_badEmbedded();_fields(body,{'client_id'},{});
     }else{
       if(plan?(tail.length!=2||method!='PUT'):(tail.length==2?method!='POST':method!='PUT'))_badEmbedded();
-      final keys=subscription?{'name','emoji','amount','cycle','next_due','note','notify_enabled','notify_days_before','auto_record','accounting_category','exclude_from_budget','active','confirm_billing','client_id'}:
+      final keys=subscription?{'name','emoji','amount','cycle','next_due','note','notify_enabled','notify_days_before','auto_record','accounting_category','exclude_from_budget','active','confirm_billing','expected_conflict_frontier','client_id'}:
         plan?{'retire_date','savings_goal','goal_basis','surplus_basis','client_id'}:
-        {'name','kind','emoji','balance',if(debt)...['monthly_payment','payment_day','from_account_id','active']else...['monthly_income','income_day'],'client_id'};
+        {'name','kind','emoji','balance',if(debt)...['monthly_payment','payment_day','from_account_id','active']else...['monthly_income','income_day'],'expected_conflict_frontier','client_id'};
       _fields(body,{'client_id'},keys);
+      if(body.containsKey('expected_conflict_frontier')&&!_frontier(body['expected_conflict_frontier']))_badEmbedded();
+      if(tail.length==3&&method=='PUT'&&(subscription?body['confirm_billing']==true:!plan&&body.containsKey('balance'))&&!_frontier(body['expected_conflict_frontier']))_badEmbedded();
       if(!plan&&tail.length==2&&(!body.containsKey('name')||!body.containsKey(subscription?'amount':'balance')||subscription&&!body.containsKey('next_due')))_badEmbedded();
       for(final key in ['name','emoji']){if(body.containsKey(key)&&!_text(body[key],key=='name'?40:16))_badEmbedded();}
       for(final key in ['amount','balance','monthly_payment','monthly_income','savings_goal']){
@@ -296,7 +300,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       if(body['confirm_billing']==true&&!body.containsKey('next_due'))_badEmbedded();
     }
     if(fields['response'] is! Map)_badEmbedded();final response=Json.from(fields['response'] as Map);_noOriginal(response);
-    _fields(response,{},RetirementSubscriptionRoutes.requestResponseFields);
+    _fields(response,{},{...RetirementSubscriptionRoutes.requestResponseFields,'conflict_frontier'});
     if(method=='DELETE'){_fields(response,{'deleted'},{});if(response['deleted']!=tail[2])_badEmbedded();return;}
     if(plan){
       _fields(response,{'retire_date','savings_goal','goal_basis','surplus_basis'},{});
@@ -304,10 +308,11 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
           !RetirementSubscriptionRoutes.goalBases.contains(response['goal_basis'])||!RetirementSubscriptionRoutes.surplusBases.contains(response['surplus_basis']))_badEmbedded();return;
     }
     final entryFields=subscription?RetirementSubscriptionRoutes.subscriptionEntryFields:debt?RetirementSubscriptionRoutes.debtEntryFields:RetirementSubscriptionRoutes.accountEntryFields;
-    final derived=subscription?{'amount','days_until','billing_conflict'}:debt?{'balance','balance_conflict','monthly_payment'}:{'balance','balance_conflict','monthly_income','settlement_conflict'};
+    final derived=subscription?{'amount','days_until','billing_conflict','conflict_frontier'}:debt?{'balance','balance_conflict','monthly_payment','conflict_frontier'}:{'balance','balance_conflict','monthly_income','settlement_conflict','conflict_frontier'};
     _fields(response,{...entryFields,...derived,'id','creator_name','creator_emoji','creator_avatar_url'},{});
     if(response['id'] is! String||!syncId(response['id'] as String)||response['creator_avatar_url']!=null||
         !_text(response['creator_name'],64,nullable:true,empty:true)||!_text(response['creator_emoji'],16,nullable:true,empty:true))_badEmbedded();
+    if(!_frontier(response['conflict_frontier']))_badEmbedded();
     final entry=<String,dynamic>{for(final key in entryFields)key:response[key]};
     _financeEntry(familyId,'plugins/$plugin/$resource',response['id'] as String,{'family_id':familyId,'entry':LocalStore.canonical(entry)});
     if(subscription){if(_renderedMoney(response['amount'])!=entry['amount_minor']||!_integer(response['days_until'],-4000000,4000000)||response['billing_conflict'] is! bool)_badEmbedded();}
@@ -399,6 +404,7 @@ class LocalIncrementalStrategy implements IncrementalSyncStrategy {
       if(deletion)_badEmbedded();_fields(fields,{'event'},{});
       final decoded=_jsonObject(fields['event']);
       StockAccountingRoutes.decodeEvent(LocalStore.canonical(decoded),expectedId:id,actor:actor,order:clock);
+      if(decoded.containsKey('delta')&&!_integer(decoded['delta'],-StockAccountingRoutes.safeMinor,StockAccountingRoutes.safeMinor))_badEmbedded();
       if(decoded['actor'] is! String||!syncId(decoded['actor'] as String)||!syncId(id)||
           !_integer(decoded['order'],1,1<<40)||!_timestamp(decoded['created_at']))_badEmbedded();
       for(final key in ['item_id','buy_id','cycle','next_cycle']){if(decoded[key]!=null&&(decoded[key] is! String||!syncId(decoded[key] as String)))_badEmbedded();}

@@ -24,7 +24,16 @@ void main() {
   Future<void> install(String plugin) async { await store.patch(fid, '/families/$fid/installed', plugin, {'plugin_id': plugin, 'enabled': true}); }
   Future<LocalResult> call(String method, List<String> tail, {Json body = const {}, Json query = const {}}) async =>
     (await routes.request(method, fid, tail, body: body, query: query))!;
-  Future<Json> row(String method, List<String> tail, {Json body = const {}}) async => Json.from((await call(method, tail, body: body)).data as Map);
+  Future<Json> row(String method, List<String> tail, {Json body = const {}}) async {
+    final needsToken = method == 'PUT' && tail.length == 3 &&
+      (tail[0] == 'retirement' && ['accounts', 'debts'].contains(tail[1]) && body.containsKey('balance') ||
+       tail[0] == 'subscription' && body['confirm_billing'] == true);
+    if (needsToken && !body.containsKey('expected_conflict_frontier')) {
+      final current = Json.from((await call('GET', tail)).data as Map);
+      body = {...body, 'expected_conflict_frontier': current['conflict_frontier']};
+    }
+    return Json.from((await call(method, tail, body: body)).data as Map);
+  }
   Matcher error(int status) => throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', status));
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('wo-retire-sub-');
@@ -154,6 +163,43 @@ void main() {
     expect(await routes.processDue(fid), 0);
     final counted = await row('PUT', ['retirement', 'accounts', account['id'] as String], body: {'balance': '85.00'});
     expect(counted['balance'], '85.00'); expect(counted['settlement_conflict'], false);
+  });
+
+
+  test('确认frontier稳定且不持久化，旧版本与缺版本余额写入被拒', () async {
+    final created = await row('POST', ['retirement', 'accounts'], body: {'name': '存款', 'balance': '100.00', 'monthly_income': '5.00'});
+    final path = ['retirement', 'accounts', created['id'] as String];
+    final before = await row('GET', path);
+    final token = before['conflict_frontier'] as String;
+    expect(token, matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')));
+    expect(created['conflict_frontier'], token);
+    expect((await row('GET', path))['conflict_frontier'], token);
+    await expectLater(call('PUT', path, body: {'balance': '77.00'}), error(409));
+    await routes.processDue(fid);
+    await expectLater(call('PUT', path, body: {'balance': '77.00', 'expected_conflict_frontier': token}), error(409));
+    expect((await row('GET', path))['balance'], '105.00');
+    final after = await row('GET', path);
+    final confirmed = await row('PUT', path, body: {'balance': '77.00', 'expected_conflict_frontier': after['conflict_frontier']});
+    expect(confirmed['balance'], '77.00');
+    expect((await row('GET', path))['conflict_frontier'], confirmed['conflict_frontier']);
+    final raw = await store.get(fid, '/families/$fid/plugins/retirement/accounts', created['id'] as String);
+    expect((jsonDecode(raw!['entry'] as String) as Map).keys.any((key) => key.toString().contains('frontier')), false);
+  });
+
+  test('订阅confirm与余额确认不同，新增账期或关联账目后旧token失效', () async {
+    await install('accounting');
+    final created = await row('POST', ['subscription', 'subscriptions'], body: {'name': '服务', 'amount': '1.00', 'next_due': '2026-11-01'});
+    final path = ['subscription', 'subscriptions', created['id'] as String];
+    final token = created['conflict_frontier'];
+    await expectLater(call('PUT', path, body: {'next_due': '2026-12-01', 'confirm_billing': true}), error(409));
+    await routes.processDue(fid);
+    await expectLater(call('PUT', path, body: {'next_due': '2026-12-01', 'confirm_billing': true, 'expected_conflict_frontier': token}), error(409));
+    final fresh = await row('GET', path);
+    final confirmed = await row('PUT', path, body: {'next_due': '2026-12-01', 'confirm_billing': true, 'expected_conflict_frontier': fresh['conflict_frontier']});
+    expect(confirmed['billing_conflict'], false);
+    expect((await row('GET', path))['conflict_frontier'], confirmed['conflict_frontier']);
+    final normal = await row('PUT', path, body: {'note': '只改备注'});
+    expect(normal['note'], '只改备注');
   });
 
 }
