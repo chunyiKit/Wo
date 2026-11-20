@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../data/memory_cache.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../local/local_runtime.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/member_avatar.dart';
@@ -15,6 +16,7 @@ import '../../../widgets/wo_open_container.dart';
 import '../../../widgets/wo_skeleton.dart';
 import 'memory_detail_page.dart';
 import 'memory_edit_page.dart';
+import 'local_memory_edit_page.dart';
 import 'memory_media.dart';
 
 // 时间线左侧那根贯穿全屏的线：线的 x 位置 + 卡片左缩进（给线和节点留位）。
@@ -54,6 +56,11 @@ class _MemoryListPageState extends State<MemoryListPage> {
   /// 翻下一页进行中，避免滚动抖动里重复触发。
   bool _loadingMore = false;
   bool _loaded = false;
+  bool _refreshingLocal = false;
+  bool _localRefreshQueued = false;
+  int _loadEpoch = 0;
+  String? _familyId;
+  LocalRuntime? _runtime;
 
   /// 已播放过入场动画的回忆 id：[ListView] 会回收复用，滚回去不应重播动画。
   final Set<String> _animated = {};
@@ -62,7 +69,7 @@ class _MemoryListPageState extends State<MemoryListPage> {
 
   // 捕获一次 session 引用：网络回调(.then)里要回写缓存 / 预热图片，此时页面可能已退出，
   // 不能再走 `WoScope.of(context)`（context 已失效）。session 与 App 同生命周期，安全。
-  late final WoSession _session;
+  late WoSession _session;
 
   bool get _hasMore => _nextCursor != null;
 
@@ -74,6 +81,7 @@ class _MemoryListPageState extends State<MemoryListPage> {
 
   @override
   void dispose() {
+    _runtime?.changes.removeListener(_onLocalChanged);
     _scroll.dispose();
     super.dispose();
   }
@@ -81,21 +89,43 @@ class _MemoryListPageState extends State<MemoryListPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_loaded) return;
+    final session = WoScope.of(context);
+    final familyId = session.currentFamilyId;
+    if (_loaded && familyId == _familyId) return;
     _loaded = true;
-    _session = WoScope.of(context);
-    final familyId = _session.currentFamilyId;
-    // 1) 进程内热缓存命中 → 首帧直接渲染，秒开（多见于主页已后台预取过首页）。
-    if (familyId != null) {
+    _session = session;
+    _familyId = familyId;
+    _items = null; _nextCursor = null; _total = null;
+    _loadingMore = false; _loadEpoch++;
+    _animated.clear();
+    if (session.api.isLocal) {
+      _runtime?.changes.removeListener(_onLocalChanged);
+      _runtime = LocalRuntime.instance;
+      _runtime?.changes.addListener(_onLocalChanged);
+    }
+    // 本地模式不读取旧 SharedPreferences 正文，也不预热任何网络图片。
+    if (!session.api.isLocal && familyId != null) {
       final hot = MemoryCache.peek(familyId);
       if (hot != null && hot.isNotEmpty) _items = hot;
     }
-    // 2) 启网络拉首页：驱动「无缓存」时的骨架/错误态，回来后静默替换 + 回写。
-    _future = _fetchFirst()..then(_applyFirst).catchError(_ignoreFetchError);
-    // 3) 进程内没命中就读盘补一手（冷启动后首次），不覆盖已到的网络数据。
-    if (_items == null && familyId != null) {
+    _future = _startFirst();
+    if (!session.api.isLocal && _items == null && familyId != null) {
       unawaited(_primeFromDisk(familyId));
     }
+  }
+
+  void _onLocalChanged() {
+    if (!mounted) return;
+    if (_refreshingLocal) { _localRefreshQueued = true; return; }
+    unawaited(_refreshSilently());
+  }
+
+  Future<MemoryPage> _startFirst() {
+    final epoch = _loadEpoch;
+    final future = _fetchFirst();
+    future.then((page) { if (epoch == _loadEpoch) _applyFirst(page); })
+      .catchError(_ignoreFetchError);
+    return future;
   }
 
   Future<MemoryPage> _fetchFirst() {
@@ -131,7 +161,7 @@ class _MemoryListPageState extends State<MemoryListPage> {
   /// 缓存只关心首屏，固定回写首页那批（[MemoryCache.save] 内部再截到前几条）。
   void _persist(List<Memory> firstPage) {
     final familyId = _session.currentFamilyId;
-    if (familyId == null) return;
+    if (familyId == null || _session.api.isLocal) return;
     unawaited(MemoryCache.save(familyId, firstPage));
     unawaited(MemoryCache.prewarmImages(_session.api, firstPage));
   }
@@ -143,7 +173,8 @@ class _MemoryListPageState extends State<MemoryListPage> {
       _nextCursor = null;
       _total = null;
       _animated.clear();
-      _future = _fetchFirst()..then(_applyFirst).catchError(_ignoreFetchError);
+      _loadEpoch++;
+      _future = _startFirst();
     });
     return _future;
   }
@@ -161,6 +192,7 @@ class _MemoryListPageState extends State<MemoryListPage> {
   Future<void> _loadMore() async {
     final familyId = _session.currentFamilyId;
     final cursor = _nextCursor;
+    final epoch = _loadEpoch;
     if (familyId == null || cursor == null || _loadingMore) return;
     setState(() => _loadingMore = true);
     try {
@@ -169,7 +201,7 @@ class _MemoryListPageState extends State<MemoryListPage> {
         cursor: cursor,
         limit: _pageSize,
       );
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch || familyId != _session.currentFamilyId) return;
       setState(() {
         _items = [...?_items, ...page.items];
         _nextCursor = page.nextCursor;
@@ -186,33 +218,49 @@ class _MemoryListPageState extends State<MemoryListPage> {
   /// 不把列表跳回顶部、不闪骨架。翻页前沿(`_nextCursor`)保持不动，续拉照常工作。
   Future<void> _refreshSilently() async {
     final familyId = _session.currentFamilyId;
-    if (familyId == null) return;
+    if (familyId == null || (_session.api.isLocal && _refreshingLocal)) return;
+    _refreshingLocal = _session.api.isLocal;
     try {
-      final page = await _session.api.memories(familyId, limit: _pageSize);
-      if (mounted) {
-        setState(() {
-          // 首页是「最新一段」的权威结果；已加载的更早条目（不在首页里的）保留在尾部。
-          final firstIds = page.items.map((m) => m.id).toSet();
-          final tail = (_items ?? const <Memory>[])
-              .where((m) => !firstIds.contains(m.id))
-              .toList();
-          _items = [...page.items, ...tail];
-          if (page.total != null) _total = page.total;
-          // `_nextCursor` 不动：它管的是最早一端的续拉前沿，刷新最新一端不该改它。
-        });
+      var page = await _session.api.memories(familyId, limit: _pageSize);
+      if (_session.api.isLocal) {
+        // 重新读取已加载范围，不能把已撤权或删除的旧 tail 再拼回列表。
+        final wanted = _items?.length ?? _pageSize;
+        final visible = [...page.items];
+        while (visible.length < wanted && page.nextCursor != null) {
+          page = await _session.api.memories(familyId, cursor: page.nextCursor, limit: _pageSize);
+          visible.addAll(page.items);
+        }
+        if (mounted && familyId == _session.currentFamilyId) {
+          setState(() { _items = visible; _nextCursor = page.nextCursor; _total = page.total; });
+        }
+      } else {
+        if (mounted && familyId == _session.currentFamilyId) {
+          setState(() {
+            final firstIds = page.items.map((m) => m.id).toSet();
+            final tail = (_items ?? const <Memory>[]).where((m) => !firstIds.contains(m.id)).toList();
+            _items = [...page.items, ...tail];
+            if (page.total != null) _total = page.total;
+          });
+        }
+        _persist(page.items);
       }
-      _persist(page.items);
     } catch (_) {
-      // 拉取失败就继续显示旧数据，不打断浏览。
+      // 普通读取失败保留已有列表；详情/媒体另在使用前重新核权。
+    } finally {
+      _refreshingLocal = false;
+      if (_localRefreshQueued && mounted) {
+        _localRefreshQueued = false;
+        unawaited(_refreshSilently());
+      }
     }
-    // 列表变化会影响首页卡片预览，刷新一次 bootstrap。
     if (mounted) await _session.refresh();
   }
 
   Future<void> _openEditor() async {
     final changed = await Navigator.of(
       context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const MemoryEditPage()));
+    ).push<bool>(MaterialPageRoute(builder: (_) => _session.api.isLocal
+      ? const LocalMemoryEditPage() : const MemoryEditPage()));
     if (changed == true) await _refreshSilently();
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../widgets/wo_cinema.dart';
 
@@ -7,7 +8,10 @@ import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/wo_card.dart';
+import '../../../widgets/member_avatar.dart';
+import '../retirement/finance_ui_support.dart';
 import '../accounting/accounting_category_dialog.dart';
+import '../accounting/accounting_page.dart';
 
 String _money(double v) =>
     v == v.roundToDouble() ? '¥${v.toInt()}' : '¥${v.toStringAsFixed(2)}';
@@ -22,20 +26,31 @@ class SubscriptionPage extends StatefulWidget {
   State<SubscriptionPage> createState() => _SubscriptionPageState();
 }
 
-class _SubscriptionPageState extends State<SubscriptionPage> {
+class _SubscriptionPageState extends State<SubscriptionPage> with FinanceLocalRefresh<SubscriptionPage> {
   // `_future` 只驱动首屏 spinner;数据缓存进 `_items`,之后的增删改静默就地替换,
   // 不闪——见 CLAUDE.md「列表页刷新不能闪一下」。
   late Future<List<Subscription>> _future;
   List<Subscription>? _items;
   bool _loaded = false;
+  String? _familyId;
+  int _ticket = 0;
+  bool _refreshing = false, _again = false, _home = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_loaded) {
-      _loaded = true;
-      _future = _fetch()..then(_store);
+    final session = WoScope.of(context);
+    bindFinanceChanges(session.api.isLocal);
+    if (!_loaded || _familyId != session.currentFamilyId) {
+      _loaded = true; _familyId = session.currentFamilyId; _items = null;
+      _future = _initialFetch();
     }
+  }
+  @override
+  void onFinanceChanged() { unawaited(_refreshSilently(notifyHome: false)); }
+  Future<List<Subscription>> _initialFetch() {
+    final ticket = ++_ticket; final family = _familyId;
+    return _fetch().then((rows) { if (mounted && ticket == _ticket && family == _familyId) setState(() => _items = rows); return rows; });
   }
 
   Future<List<Subscription>> _fetch() {
@@ -46,32 +61,27 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
         : session.api.subscriptions(familyId);
   }
 
-  void _store(List<Subscription> list) {
-    if (mounted) setState(() => _items = list);
-  }
-
   Future<void> _retry() {
-    setState(() {
-      _items = null;
-      _future = _fetch()..then(_store);
-    });
-    return _future;
+    setState(() { _items = null; _future = _initialFetch(); }); return _future;
   }
-
-  Future<void> _refreshSilently() async {
+  Future<void> _refreshSilently({bool notifyHome = true}) async {
+    _home = _home || notifyHome;
+    if (_refreshing) { _again = true; return; }
+    _refreshing = true;
     try {
-      final list = await _fetch();
-      if (mounted) setState(() => _items = list);
-    } catch (_) {
-      // 拉取失败就继续显示旧数据,不打断操作。
-    }
-    if (mounted) await WoScope.of(context).refresh();
+      do {
+        _again = false;
+        final ticket = ++_ticket; final family = _familyId;
+        try { final rows = await _fetch(); if (mounted && ticket == _ticket && family == _familyId) setState(() => _items = rows); } catch (_) { /* 保留缓存 */ }
+      } while (mounted && _again);
+      if (mounted && _home) { _home = false;  try { await WoScope.of(context).refresh(); } catch (_) {} }
+    } finally { _refreshing = false; if (mounted && _again) unawaited(_refreshSilently(notifyHome: false)); }
   }
 
-  Future<void> _openEditor([Subscription? existing]) async {
+  Future<void> _openEditor([Subscription? existing, bool confirmBilling = false]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => SubscriptionEditPage(existing: existing),
+        builder: (_) => SubscriptionEditPage(existing: existing, confirmBilling: confirmBilling),
       ),
     );
     if (changed == true) await _refreshSilently();
@@ -81,6 +91,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
+    if (s.billingConflict && !s.active && session.api.isLocal) { await _openEditor(s, true); return; }
     try {
       await session.api.updateSubscription(familyId, s.id, active: !s.active);
       await _refreshSilently();
@@ -122,6 +133,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
   void _toast(Object error) {
     final msg = switch (error) {
       ApiException e => e.message,
+      FormatException e => e.message,
       NetworkException e => e.message,
       _ => '操作失败',
     };
@@ -142,13 +154,11 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
         label: const Text('加订阅'),
       ),
       body: SafeArea(
-        child: _items != null
-            ? _buildBody(context, _items!)
-            : AsyncView<List<Subscription>>(
-                future: _future,
-                onRetry: _retry,
-                builder: _buildBody,
-              ),
+        child: Column(children: [
+          if (WoScope.api(context).isLocal) const LocalFinanceStatus(),
+          Expanded(child: _items != null ? _buildBody(context, _items!) : AsyncView<List<Subscription>>(
+            future: _future, onRetry: _retry, builder: _buildBody)),
+        ]),
       ),
     );
   }
@@ -168,7 +178,8 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: WoTokens.space3),
         itemBuilder: (_, i) => _SubTile(
-          sub: list[i],
+          key: ValueKey(list[i].id), sub: list[i],
+          onReview: WoScope.api(context).isLocal ? () => _openEditor(list[i], true) : null,
           onEdit: () => _openEditor(list[i]),
           onTogglePause: () => _togglePause(list[i]),
           onDelete: () => _delete(list[i]),
@@ -179,115 +190,49 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
 }
 
 class _SubTile extends StatelessWidget {
-  const _SubTile({
-    required this.sub,
-    required this.onEdit,
-    required this.onTogglePause,
-    required this.onDelete,
-  });
-
+  const _SubTile({super.key, required this.sub, required this.onEdit,
+    required this.onTogglePause, required this.onDelete, this.onReview});
   final Subscription sub;
-  final VoidCallback onEdit;
-  final VoidCallback onTogglePause;
-  final VoidCallback onDelete;
-
+  final VoidCallback onEdit, onTogglePause, onDelete;
+  final VoidCallback? onReview;
   ({String text, Color? tone}) _due(BuildContext context) {
     final wo = context.wo;
+    if (sub.billingConflict) return (text: '账期待核对', tone: wo.warning);
     if (!sub.active) return (text: '已暂停', tone: wo.fgDim);
-    final d = sub.daysUntil;
-    if (d < 0) return (text: '已过期待扣费', tone: wo.danger);
-    if (d == 0) return (text: '今天扣费', tone: wo.warning);
-    if (d == 1) return (text: '明天扣费', tone: wo.warning);
-    if (d <= 3) return (text: '$d 天后扣费', tone: wo.warning);
-    return (text: '$d 天后扣费', tone: null);
+    final local = WoScope.api(context).isLocal;
+    final action = local ? '到期' : '扣费';
+    if (sub.daysUntil < 0) return (text: local ? '已到期，待前台处理' : '已过期待扣费', tone: wo.danger);
+    if (sub.daysUntil == 0) return (text: '今天$action', tone: wo.warning);
+    if (sub.daysUntil == 1) return (text: '明天$action', tone: wo.warning);
+    return (text: '${sub.daysUntil} 天后$action', tone: sub.daysUntil <= 3 ? wo.warning : null);
   }
-
   @override
   Widget build(BuildContext context) {
-    final wo = context.wo;
-    final t = Theme.of(context).textTheme;
-    final due = _due(context);
-    final dim = !sub.active;
-    return WoCard(
-      onTap: onEdit,
-      child: Opacity(
-        opacity: dim ? 0.55 : 1,
-        child: Row(
-          children: [
-            Text(sub.emoji, style: const TextStyle(fontSize: 26)),
-            const SizedBox(width: WoTokens.space3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    sub.name,
-                    style: t.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: wo.fg,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Text(
-                        '${_money(sub.amount)} / ${_cycleLabel(sub.cycle)}',
-                        style: t.labelMedium?.copyWith(
-                          color: wo.fg,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: WoTokens.space2),
-                      Text(
-                        due.text,
-                        style: t.labelSmall?.copyWith(
-                          color: due.tone ?? wo.fgMid,
-                          fontWeight: due.tone != null
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (sub.autoRecord) ...[
-                    const SizedBox(height: 3),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.sync_alt, size: 12, color: wo.subscribe),
-                        const SizedBox(width: 3),
-                        Text(
-                          '到期自动记账',
-                          style: t.labelSmall?.copyWith(color: wo.subscribe),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: wo.fgDim),
-              onSelected: (v) {
-                if (v == 'edit') onEdit();
-                if (v == 'pause') onTogglePause();
-                if (v == 'delete') onDelete();
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                PopupMenuItem(
-                  value: 'pause',
-                  child: Text(sub.active ? '暂停' : '启用'),
-                ),
-                const PopupMenuItem(value: 'delete', child: Text('删除')),
-              ],
-            ),
+    final wo = context.wo; final t = Theme.of(context).textTheme; final due = _due(context);
+    return WoCard(onTap: onEdit, child: Opacity(opacity: !sub.active && !sub.billingConflict ? 0.55 : 1,
+      child: Row(children: [Text(sub.emoji, style: const TextStyle(fontSize: 26)),
+        const SizedBox(width: WoTokens.space3), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(sub.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 3),
+          Wrap(spacing: WoTokens.space2, children: [
+            Text('${sub.amountText == null ? _money(sub.amount) : '¥${sub.amountText}'} / ${_cycleLabel(sub.cycle)}', style: t.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(due.text, style: t.labelSmall?.copyWith(color: due.tone ?? wo.fgMid)),
+          ]),
+          if (sub.billingConflict) ...[
+            Text('同一期记账记录不一致，请先核对已有账单与下次到期日。', style: t.labelSmall?.copyWith(color: wo.warning)),
+            if (onReview != null) WoTextButton(onPressed: onReview, child: const Text('核对并确认账期')),
+          ] else if (sub.autoRecord) Text(WoScope.api(context).isLocal ? '前台处理到期记账' : '到期自动记账', style: t.labelSmall?.copyWith(color: wo.subscribe)),
+          if (sub.createdBy != null) ...[
+            const SizedBox(height: 4), Row(children: [MemberAvatar(url: sub.creatorAvatarUrl, emoji: sub.creatorEmoji ?? '👤', size: 16),
+              const SizedBox(width: 4), Expanded(child: Text(sub.creatorName ?? '家庭成员', maxLines: 1, overflow: TextOverflow.ellipsis, style: t.labelSmall?.copyWith(color: wo.fgDim)))]),
           ],
-        ),
-      ),
-    );
+        ])),
+        PopupMenuButton<String>(icon: Icon(Icons.more_vert, color: wo.fgDim),
+          onSelected: (value) { if (value == 'edit') onEdit(); if (value == 'pause') onTogglePause(); if (value == 'delete') onDelete(); },
+          itemBuilder: (_) => [const PopupMenuItem(value: 'edit', child: Text('编辑')),
+            PopupMenuItem(value: 'pause', child: Text(sub.active ? '暂停' : '启用')),
+            const PopupMenuItem(value: 'delete', child: Text('删除'))]),
+      ])));
   }
 }
 
@@ -325,9 +270,10 @@ class _Empty extends StatelessWidget {
 
 /// 订阅新增 / 编辑页。[existing] 为空 = 新增；非空 = 编辑。保存成功 `pop(true)`。
 class SubscriptionEditPage extends StatefulWidget {
-  const SubscriptionEditPage({super.key, this.existing});
+  const SubscriptionEditPage({super.key, this.existing, this.confirmBilling = false});
 
   final Subscription? existing;
+  final bool confirmBilling;
 
   @override
   State<SubscriptionEditPage> createState() => _SubscriptionEditPageState();
@@ -370,6 +316,9 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
   bool _loadingCategories = false;
   String? _categoryError;
   bool _submitting = false;
+  bool _reviewRequired = false, _reviewChecked = false;
+  final _requestKey = FinanceRequestKey();
+  String? _reviewFrontier, _latestBillNote;
 
   bool get _isEditing => widget.existing != null;
 
@@ -377,10 +326,12 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
   void initState() {
     super.initState();
     final s = widget.existing;
+    _reviewFrontier = s?.conflictFrontier;
+    _reviewRequired = widget.confirmBilling || s?.billingConflict == true;
     _emoji = s?.emoji ?? '💳';
     _name = TextEditingController(text: s?.name ?? '');
     _amount = TextEditingController(
-      text: s == null ? '' : _money(s.amount).replaceFirst('¥', ''),
+      text: s == null ? '' : (s.amountText ?? _money(s.amount).replaceFirst('¥', '')),
     );
     _note = TextEditingController(text: s?.note ?? '');
     _cycle = s?.cycle ?? 'monthly';
@@ -456,8 +407,8 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
       context: context,
       useRootNavigator: false,
       initialDate: _nextDue,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 5),
+      firstDate: _nextDue.isBefore(DateTime(now.year - 1)) ? DateTime(_nextDue.year, 1, 1) : DateTime(now.year - 1),
+      lastDate: _nextDue.isAfter(DateTime(now.year + 5)) ? DateTime(_nextDue.year + 1, 1, 1) : DateTime(now.year + 5),
     );
     if (picked != null) {
       setState(
@@ -468,30 +419,66 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final amount = double.tryParse(_amount.text.trim());
+    String amountText;
+    try { amountText = financeAmount(_amount.text, subscription: true); }
+    on FormatException catch (error) { _toast(error); return; }
+    final amount = double.parse(amountText);
     if (name.isEmpty) {
       _toastMsg('请填写名称');
       return;
     }
-    if (amount == null || amount <= 0) {
+    if (amount <= 0) {
       _toastMsg('请填写正确的金额');
       return;
     }
     if (_submitting) return;
-    setState(() => _submitting = true);
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
     final note = _note.text.trim();
     final nav = Navigator.of(context);
+    setState(() => _submitting = true);
     try {
+      String? expectedFrontier;
+      if (session.api.isLocal && _isEditing) {
+        final latest = (await session.api.subscriptions(familyId)).where((item) => item.id == widget.existing!.id).toList();
+        if (latest.isEmpty) throw ApiException('NOT_FOUND', '订阅已删除，请返回列表', statusCode: 404);
+        expectedFrontier = latest.single.conflictFrontier;
+        if (_reviewRequired && expectedFrontier != null && expectedFrontier != _reviewFrontier) {
+          if (mounted) {
+            setState(() { _reviewFrontier = expectedFrontier; _reviewChecked = false; _submitting = false;
+              _latestBillNote = '当前到期日 ${latest.single.nextDue.year}-${latest.single.nextDue.month}-${latest.single.nextDue.day}，每期 ¥${latest.single.amountText ?? latest.single.amount.toStringAsFixed(2)}'; });
+            _toastMsg('账期或关联账目已变化，请重新查看并勾选确认');
+          }
+          return;
+        }
+        if (latest.single.billingConflict && !_reviewRequired) {
+          if (mounted) setState(() { _reviewRequired = true; _reviewChecked = false; _submitting = false;
+            _reviewFrontier = expectedFrontier;
+            _latestBillNote = '当前到期日 ${latest.single.nextDue.year}-${latest.single.nextDue.month}-${latest.single.nextDue.day}，每期 ¥${latest.single.amountText ?? latest.single.amount.toStringAsFixed(2)}'; });
+          if (mounted) _toastMsg('账期有新差异，请先核对已有账目'); return;
+        }
+      }
+      final review = session.api.isLocal && _reviewRequired;
+      if (review) {
+        if (expectedFrontier == null) throw ApiException('LOCAL_FINANCIAL_CONFLICT', '请重新读取完整账期记录后确认', statusCode: 409);
+        if (!_reviewChecked) { setState(() => _submitting = false); _toastMsg('请先核对已有账目并明确确认下次日期'); return; }
+        final confirmed = await showWoDialog<bool>(context: context, builder: (ctx) => WoAlertDialog(
+          title: const Text('确认订阅账期'),
+          content: Text('已核对「$name」的已有账目，并确认下次到期日为 ${_nextDue.year}-${_nextDue.month}-${_nextDue.day}，每期金额 ¥$amountText。已有账目保留，历史差异请在记账页更正。'),
+          actions: [WoTextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('继续核对')),
+            WoFilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('确认账期'))]));
+        if (confirmed != true || !mounted) { if (mounted) setState(() => _submitting = false); return; }
+      }
+      final clientId = session.api.isLocal ? _requestKey.forBody([familyId, widget.existing?.id, name, _emoji, amountText, _cycle,
+        _nextDue.toIso8601String(), note, _notify, _notifyDaysBefore, _autoRecord, _accountingCategory, _excludeFromBudget, review, expectedFrontier]) : null;
       if (_isEditing) {
         await session.api.updateSubscription(
           familyId,
           widget.existing!.id,
           name: name,
           emoji: _emoji,
-          amount: amount,
+          amount: amount, amountText: amountText, clientId: clientId,
           cycle: _cycle,
           nextDue: _nextDue,
           note: note,
@@ -499,14 +486,14 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
           notifyDaysBefore: _notifyDaysBefore,
           autoRecord: _autoRecord,
           accountingCategory: _accountingCategory,
-          excludeFromBudget: _excludeFromBudget,
+          excludeFromBudget: _excludeFromBudget, confirmBilling: review, expectedConflictFrontier: expectedFrontier,
         );
       } else {
         await session.api.createSubscription(
           familyId,
           name: name,
           emoji: _emoji,
-          amount: amount,
+          amount: amount, amountText: amountText, clientId: clientId,
           cycle: _cycle,
           nextDue: _nextDue,
           note: note.isEmpty ? null : note,
@@ -533,6 +520,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
   void _toast(Object error) {
     final msg = switch (error) {
       ApiException e => e.message,
+      FormatException e => e.message,
       NetworkException e => e.message,
       _ => '操作失败',
     };
@@ -552,6 +540,16 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_reviewRequired && WoScope.api(context).isLocal) ...[
+                Text('账期记录存在差异，请先核对已有账目；确认后才恢复后续自动记账。', style: t.bodyMedium?.copyWith(color: wo.warning)),
+                if (_latestBillNote != null) Text(_latestBillNote!, style: t.bodyMedium?.copyWith(color: wo.warning)),
+                WoTextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountingPage())), child: const Text('查看已有账目')),
+                CheckboxListTile(contentPadding: EdgeInsets.zero, value: _reviewChecked,
+                  onChanged: _submitting ? null : (value) => setState(() => _reviewChecked = value ?? false),
+                  title: const Text('我已核对已有账目，并确认下次到期日与每期金额')),
+                const SizedBox(height: WoTokens.space3),
+              ],
+              if (WoScope.api(context).isLocal) const LocalFinanceStatus(),
               SizedBox(
                 height: 52,
                 child: ListView.separated(
@@ -643,7 +641,7 @@ class _SubscriptionEditPageState extends State<SubscriptionEditPage> {
                 activeColor: wo.subscribe,
                 title: const Text('到期自动记账'),
                 subtitle: Text(
-                  '到期当天把这笔扣费记进「记账」（需家庭已安装记账插件）',
+                  WoScope.api(context).isLocal ? '打开 App 时处理到期记账（需已安装记账插件）' : '到期当天把这笔扣费记进「记账」（需家庭已安装记账插件）',
                   style: t.labelSmall?.copyWith(color: wo.fgMid),
                 ),
                 onChanged: (v) => setState(() => _autoRecord = v),

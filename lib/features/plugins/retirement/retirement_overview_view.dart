@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
@@ -7,6 +8,8 @@ import '../../../widgets/async_view.dart';
 import '../../../widgets/wo_card.dart';
 import 'plan_edit_page.dart';
 import 'retirement_common.dart';
+import 'finance_ui_support.dart';
+import 'ledger_page.dart';
 
 /// 「总览」tab：退休倒计时 + 目标进度 + 需求6（还需几个月）/ 需求7（每月差额）+
 /// 月结余拆解 + 资产负债汇总。数据由后端 `/dashboard` 算好。
@@ -20,10 +23,12 @@ class RetirementOverviewView extends StatefulWidget {
   State<RetirementOverviewView> createState() => _RetirementOverviewViewState();
 }
 
-class _RetirementOverviewViewState extends State<RetirementOverviewView> {
+class _RetirementOverviewViewState extends State<RetirementOverviewView> with FinanceLocalRefresh<RetirementOverviewView> {
   late Future<RetireDashboard> _future;
   RetireDashboard? _data;
   bool _loaded = false;
+  String? _familyId;
+  int _ticket = 0;
 
   @override
   void initState() {
@@ -34,11 +39,15 @@ class _RetirementOverviewViewState extends State<RetirementOverviewView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_loaded) {
-      _loaded = true;
-      _future = _fetch()..then(_store);
+    final session = WoScope.of(context); bindFinanceChanges(session.api.isLocal);
+    if (!_loaded || _familyId != session.currentFamilyId) {
+      _loaded = true; _familyId = session.currentFamilyId; _data = null;
+      _future = _initialFetch();
     }
   }
+
+  @override
+  void onFinanceChanged() { unawaited(_refreshSilently()); }
 
   @override
   void dispose() {
@@ -54,22 +63,24 @@ class _RetirementOverviewViewState extends State<RetirementOverviewView> {
         : session.api.retireDashboard(fid);
   }
 
-  void _store(RetireDashboard d) {
-    if (mounted) setState(() => _data = d);
+  Future<RetireDashboard> _initialFetch() {
+    final ticket = ++_ticket; final family = _familyId;
+    return _fetch().then((value) { if (mounted && ticket == _ticket && family == _familyId) setState(() => _data = value); return value; });
   }
 
   Future<void> _retry() {
     setState(() {
       _data = null;
-      _future = _fetch()..then(_store);
+      _future = _initialFetch();
     });
     return _future;
   }
 
   Future<void> _refreshSilently() async {
     try {
+      final ticket = ++_ticket; final family = _familyId;
       final d = await _fetch();
-      if (mounted) setState(() => _data = d);
+      if (mounted && ticket == _ticket && family == _familyId) setState(() => _data = d);
     } catch (_) {
       // 拉取失败保留旧数据。
     }
@@ -108,6 +119,14 @@ class _RetirementOverviewViewState extends State<RetirementOverviewView> {
           100,
         ),
         children: [
+          if (d.ledgerConflict) ...[
+            WoCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('财务记录需要核对', style: TextStyle(color: context.wo.warning)),
+              const Text('请查看流水，再到资产或负债确认实际余额；当前测算包含待核对记录。'),
+              WoTextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RetireLedgerPage())), child: const Text('查看流水')),
+            ])),
+            const SizedBox(height: WoTokens.space3),
+          ],
           _CountdownCard(d: d, onEdit: _openPlanEditor),
           const SizedBox(height: WoTokens.space3),
           _GoalCard(d: d, onEdit: _openPlanEditor),

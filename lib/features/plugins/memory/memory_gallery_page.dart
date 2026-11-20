@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../local/local_runtime.dart';
 import '../../../theme/wo_tokens.dart';
 import 'memory_save.dart';
+import 'local_memory_media.dart';
 import 'memory_video_page.dart';
 
 /// 全屏大图画廊：左右滑动看上一张 / 下一张，照片可双指缩放、长按可保存到相册。
@@ -27,16 +29,57 @@ class MemoryGalleryPage extends StatefulWidget {
 class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
   late final PageController _controller;
   late int _index;
+  LocalRuntime? _runtime;
+  bool _localInitialized = false, _checkingLocal = false, _localAllowed = false;
+  int _permissionRequest = 0;
+  String? _validatedFamily;
 
   @override
   void initState() {
     super.initState();
-    _index = widget.initialIndex.clamp(0, widget.media.length - 1);
+    _index = widget.media.isEmpty ? 0 : widget.initialIndex.clamp(0, widget.media.length - 1);
     _controller = PageController(initialPage: _index);
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (WoScope.api(context).isLocal && (!_localInitialized ||
+        _validatedFamily != WoScope.of(context).currentFamilyId)) {
+      if (!_localInitialized) {
+        _runtime = LocalRuntime.instance;
+        _runtime?.changes.addListener(_localChanged);
+      }
+      _localInitialized = true; _checkingLocal = true;
+      _validatedFamily = WoScope.of(context).currentFamilyId;
+      _validateLocal();
+    }
+  }
+
+  void _localChanged() {
+    if (!mounted) return;
+    setState(() => _checkingLocal = true);
+    _validateLocal();
+  }
+
+  Future<void> _validateLocal() async {
+    final request = ++_permissionRequest;
+    final family = WoScope.of(context).currentFamilyId;
+    var allowed = family != null && widget.media.isNotEmpty;
+    if (allowed) {
+      for (final media in widget.media) {
+        if (!await localMemoryMediaVisible(media, family!)) { allowed = false; break; }
+      }
+    }
+    if (mounted && request == _permissionRequest &&
+        family == WoScope.of(context).currentFamilyId) {
+      setState(() { _checkingLocal = false; _localAllowed = allowed; });
+    }
+  }
+
+  @override
   void dispose() {
+    _runtime?.changes.removeListener(_localChanged);
     _controller.dispose();
     super.dispose();
   }
@@ -47,6 +90,7 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
   /// 黑色背景上显得突兀;底部面板从下方升起,跟系统分享面板一致。
   Future<void> _onLongPressPhoto(MemoryMedia media, String url) async {
     final api = WoScope.api(context);
+    if (api.isLocal) { await openLocalMemoryOriginal(context, media); return; }
     final action = await showWoModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -91,7 +135,15 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
 
   @override
   Widget build(BuildContext context) {
+    if(widget.media.isEmpty)return Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:const Text('回忆媒体')),body:const Center(child:Text('没有可查看的媒体')));
     final api = WoScope.api(context);
+    if (api.isLocal && (_checkingLocal || !_localAllowed)) {
+      return WoScaffold(backgroundColor: Colors.black,
+        appBar: WoAppBar(title: const Text('回忆'), foregroundColor: Colors.white,
+          backgroundColor: Colors.transparent),
+        body: Center(child: _checkingLocal ? const WoProgressIndicator(color: Colors.white24)
+          : const Text('此媒体已删除或当前身份无权访问', style: TextStyle(color: Colors.white70))));
+    }
     final total = widget.media.length;
     return WoScaffold(
       backgroundColor: Colors.black,
@@ -111,6 +163,7 @@ class _MemoryGalleryPageState extends State<MemoryGalleryPage> {
         onPageChanged: (i) => setState(() => _index = i),
         itemBuilder: (context, i) {
           final m = widget.media[i];
+          if (api.isLocal) return _LocalMediaPage(media: m);
           final url = api.memoryMediaUrl(m);
           if (m.isVideo) {
             return _VideoPage(url: url, durationLabel: m.durationLabel);
@@ -178,4 +231,22 @@ class _VideoPage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 另一台手机只有缩略图；原件通过当前设备已有的授权引用交给系统预览。
+class _LocalMediaPage extends StatelessWidget {
+  const _LocalMediaPage({required this.media});
+  final MemoryMedia media;
+  @override
+  Widget build(BuildContext context) => SafeArea(child: Column(children: [
+    Expanded(child: InteractiveViewer(minScale: 1, maxScale: 4,
+      child: Center(child: LocalMemoryThumbnail(media: media, fit: BoxFit.contain)))),
+    const SizedBox(height: 12),
+    Text(media.isVideo ? '视频缩略图 · 原视频仅在原设备或电脑备份中' : '照片缩略图 · 原照片仅在原设备或电脑备份中',
+      textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+    const SizedBox(height: 8),
+    WoTextButton(onPressed: () => openLocalMemoryOriginal(context, media),
+      child: Text(media.isVideo ? '打开本机原视频' : '打开本机原照片', style: const TextStyle(color: Colors.white))),
+    const SizedBox(height: 16),
+  ]));
 }

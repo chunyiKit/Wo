@@ -5,6 +5,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import 'retirement_common.dart';
+import 'finance_ui_support.dart';
 
 /// 账户新增 / 编辑页。[existing] 为空 = 新增。保存成功后 `Navigator.pop(true)`。
 class AccountEditPage extends StatefulWidget {
@@ -24,17 +25,21 @@ class _AccountEditPageState extends State<AccountEditPage> {
   late int _incomeDay;
 
   bool _submitting = false;
+  final _requestKey = FinanceRequestKey();
+  String? _reviewFrontier, _latestBalanceText;
+  bool _recordChanged = false;
   bool get _isEditing => widget.existing != null;
 
   @override
   void initState() {
     super.initState();
     final a = widget.existing;
+    _reviewFrontier = a?.conflictFrontier;
     _kind = a?.kind ?? 'deposit';
     _name = TextEditingController(text: a?.name ?? '');
-    _balance = TextEditingController(text: _numText(a?.balance));
+    _balance = TextEditingController(text: a?.balanceConflict == true || a?.settlementConflict == true ? '' : (a?.balanceText ?? _numText(a?.balance)));
     _income = TextEditingController(
-      text: (a != null && a.monthlyIncome > 0) ? _numText(a.monthlyIncome) : '',
+      text: (a != null && a.monthlyIncome > 0) ? (a.monthlyIncomeText ?? _numText(a.monthlyIncome)) : '',
     );
     _incomeDay = a?.incomeDay ?? 10;
   }
@@ -59,12 +64,45 @@ class _AccountEditPageState extends State<AccountEditPage> {
     final fid = session.currentFamilyId;
     if (fid == null) return;
 
-    final balance = double.tryParse(_balance.text.trim()) ?? 0;
-    final income = double.tryParse(_income.text.trim()) ?? 0;
+    String balanceText, incomeText;
+    try { balanceText = financeAmount(_balance.text, negative: true); incomeText = financeAmount(_income.text, emptyZero: true); }
+    on FormatException catch (error) { _toast(error); return; }
+    final balance = double.parse(balanceText), income = double.parse(incomeText);
 
     setState(() => _submitting = true);
     final nav = Navigator.of(context);
     try {
+      var preserveBalance = false;
+      String? expectedFrontier;
+      if (session.api.isLocal && _isEditing) {
+        final currentRows = (await session.api.retireAccounts(fid)).where((row) => row.id == widget.existing!.id).toList();
+        if (currentRows.isEmpty) throw ApiException('NOT_FOUND', '此记录已删除，请返回列表', statusCode: 404);
+        final current = currentRows.single;
+        expectedFrontier = current.conflictFrontier;
+        final original = financeAmount(widget.existing!.balanceText ?? _numText(widget.existing!.balance), negative: true);
+        final needsReview = current.balanceConflict || current.settlementConflict || widget.existing!.balanceConflict || widget.existing!.settlementConflict || _recordChanged || balanceText != original;
+        preserveBalance = !needsReview;
+        if (needsReview) {
+          if (expectedFrontier == null) throw ApiException('LOCAL_FINANCIAL_CONFLICT', '请重新读取完整记录后核对', statusCode: 409);
+          if (expectedFrontier != _reviewFrontier) {
+            if (mounted) {
+              setState(() { _reviewFrontier = expectedFrontier; _recordChanged = true;
+                _latestBalanceText = current.balanceText ?? _numText(current.balance); _balance.clear(); _submitting = false; });
+              _toast(ApiException('LOCAL_FINANCIAL_CONFLICT', '记录有变化，请查看最新账面，再填写实际金额确认', statusCode: 409));
+            }
+            return;
+          }
+          if (!mounted) return;
+          final confirmed = await showWoDialog<bool>(context: context, builder: (ctx) => WoAlertDialog(
+            title: const Text('确认实际余额'),
+            content: Text('请先核对实际账户余额，确认将「$name」记为 ¥$balanceText。既有流水会保留。'),
+            actions: [WoTextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('继续核对')),
+              WoFilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('已核对，确认金额'))]));
+          if (confirmed != true || !mounted) { if (mounted) setState(() => _submitting = false); return; }
+        }
+      }
+      final clientId = session.api.isLocal ? _requestKey.forBody([fid, widget.existing?.id, name, _kind, balanceText,
+        incomeText, _incomeDay, preserveBalance, expectedFrontier]) : null;
       if (_isEditing) {
         await session.api.updateRetireAccount(
           fid,
@@ -73,8 +111,8 @@ class _AccountEditPageState extends State<AccountEditPage> {
           kind: _kind,
           emoji: accountKindEmoji(_kind),
           balance: balance,
-          monthlyIncome: income,
-          incomeDay: _incomeDay,
+          monthlyIncome: income, balanceText: balanceText, monthlyIncomeText: incomeText, clientId: clientId,
+          incomeDay: _incomeDay, preserveBalance: preserveBalance, expectedConflictFrontier: expectedFrontier,
         );
       } else {
         await session.api.createRetireAccount(
@@ -83,7 +121,7 @@ class _AccountEditPageState extends State<AccountEditPage> {
           kind: _kind,
           emoji: accountKindEmoji(_kind),
           balance: balance,
-          monthlyIncome: income,
+          monthlyIncome: income, balanceText: balanceText, monthlyIncomeText: incomeText, clientId: clientId,
           incomeDay: _incomeDay,
         );
       }
@@ -99,6 +137,7 @@ class _AccountEditPageState extends State<AccountEditPage> {
   void _toast(Object error) {
     final msg = switch (error) {
       ApiException e => e.message,
+      FormatException e => e.message,
       NetworkException e => e.message,
       _ => '操作失败',
     };
@@ -121,6 +160,15 @@ class _AccountEditPageState extends State<AccountEditPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_recordChanged) ...[
+                Text('记录已更新，当前账面金额：¥${_latestBalanceText ?? ''}。请重新核对实际金额后填写。', style: t.bodyMedium?.copyWith(color: wo.warning)),
+                const SizedBox(height: WoTokens.space3),
+              ],
+              if (widget.existing?.balanceConflict == true || widget.existing?.settlementConflict == true) ...[
+                Text('存在待核对财务记录。请填写实际金额，保存前需明确确认；不会删除历史流水。', style: t.bodyMedium?.copyWith(color: wo.warning)),
+                const SizedBox(height: WoTokens.space3),
+              ],
+              if (WoScope.api(context).isLocal) const LocalFinanceStatus(),
               Wrap(
                 spacing: WoTokens.space2,
                 children: [
@@ -186,7 +234,7 @@ class _AccountEditPageState extends State<AccountEditPage> {
                   ],
                 ),
                 Text(
-                  '到这天自动把月收入计入余额，并记一条流水。',
+                  WoScope.api(context).isLocal ? '打开 App 时按本月入账日记录收入并写入流水。' : '到这天自动把月收入计入余额，并记一条流水。',
                   style: t.labelSmall?.copyWith(color: wo.fgDim),
                 ),
               ],

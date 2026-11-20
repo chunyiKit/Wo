@@ -4,12 +4,14 @@ import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
+import 'stock_request_key.dart';
 
 /// 囤货新增 / 编辑页。[existing] 为空 = 新增。保存成功后 `Navigator.pop(true)`。
 class StockItemEditPage extends StatefulWidget {
-  const StockItemEditPage({super.key, this.existing});
+  const StockItemEditPage({super.key, this.existing, this.stocktake = false});
 
   final StockItem? existing;
+  final bool stocktake;
 
   @override
   State<StockItemEditPage> createState() => _StockItemEditPageState();
@@ -43,6 +45,9 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
   late final TextEditingController _note;
 
   bool _submitting = false;
+  bool _stocktakeRequired = false;
+  final _requestKey = StockRequestKey();
+  bool get _isStocktake => WoScope.api(context).isLocal && (widget.stocktake || _stocktakeRequired || widget.existing?.quantityConflict == true);
   bool get _isEditing => widget.existing != null;
 
   @override
@@ -51,7 +56,7 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
     final it = widget.existing;
     _emoji = it?.emoji ?? '📦';
     _name = TextEditingController(text: it?.name ?? '');
-    _qty = TextEditingController(text: (it?.qty ?? 1).toString());
+    _qty = TextEditingController(text: it?.quantityConflict == true ? '' : (it?.qty ?? 1).toString());
     _unit = TextEditingController(text: it?.unit ?? '');
     _lowAt = TextEditingController(text: it?.lowAt?.toString() ?? '');
     _note = TextEditingController(text: it?.note ?? '');
@@ -74,15 +79,27 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
     final familyId = session.currentFamilyId;
     if (familyId == null) return;
 
-    final qty = int.tryParse(_qty.text.trim()) ?? 0;
+    final qty = int.tryParse(_qty.text.trim());
+    if (qty == null || qty < 0 || qty > 1000000000) { _toast(ApiException('VALIDATION_ERROR', '请填写0至10亿的整数数量')); return; }
     final unit = _unit.text.trim();
     final lowText = _lowAt.text.trim();
     final lowAt = lowText.isEmpty ? null : int.tryParse(lowText);
+    if (lowText.isNotEmpty && (lowAt == null || lowAt < 0 || lowAt > 1000000000)) { _toast(ApiException('VALIDATION_ERROR', '告急阈值须为非负整数')); return; }
     final note = _note.text.trim();
 
     setState(() => _submitting = true);
     final nav = Navigator.of(context);
     try {
+      final stocktake = _isStocktake;
+      if (stocktake) {
+        final confirmed = await showWoDialog<bool>(context: context, builder: (ctx) => WoAlertDialog(
+          title: const Text('确认盘点数量'),
+          content: Text('请确认刚盘点「$name」的实际数量为 $qty${unit.isEmpty ? '' : ' $unit'}。历史数量记录会保留。'),
+          actions: [WoTextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('再核对一下')),
+            WoFilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('确认实际数量'))]));
+        if (confirmed != true || !mounted) { if (mounted) setState(() => _submitting = false); return; }
+      }
+      final clientId = session.api.isLocal ? _requestKey.forBody([familyId, widget.existing?.id, name, _emoji, qty, unit, lowAt, note, stocktake]) : null;
       if (_isEditing) {
         await session.api.updateStockItem(
           familyId,
@@ -93,6 +110,8 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
           unit: unit.isEmpty ? null : unit,
           lowAt: lowAt,
           note: note.isEmpty ? null : note,
+          baseQty: !stocktake && session.api.isLocal ? widget.existing!.rawQty : null,
+          confirmStocktake: stocktake, clientId: clientId,
         );
       } else {
         await session.api.createStockItem(
@@ -102,13 +121,16 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
           qty: qty,
           unit: unit.isEmpty ? null : unit,
           lowAt: lowAt,
-          note: note.isEmpty ? null : note,
+          note: note.isEmpty ? null : note, clientId: clientId,
         );
       }
       if (mounted) nav.pop(true);
     } catch (e) {
       if (mounted) {
-        setState(() => _submitting = false);
+        setState(() {
+          _submitting = false;
+          if (e is ApiException && e.code == 'STOCK_QUANTITY_CONFLICT' && session.api.isLocal) _stocktakeRequired = true;
+        });
         _toast(e);
       }
     }
@@ -131,13 +153,18 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
 
     return WoScaffold(
       backgroundColor: wo.bg,
-      appBar: WoAppBar(title: Text(_isEditing ? '编辑囤货' : '加囤货')),
+      appBar: WoAppBar(title: Text(_isStocktake ? '盘点囤货' : _isEditing ? '编辑囤货' : '加囤货')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(WoTokens.space5),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_isStocktake) ...[
+                Text('请盘点实际数量后填写。原显示账面数量：${widget.existing?.rawQty ?? 0}；常规加减暂停，保存前需要明确确认。',
+                  style: t.bodyMedium?.copyWith(color: wo.warning)),
+                const SizedBox(height: WoTokens.space3),
+              ],
               SizedBox(
                 height: 52,
                 child: ListView.separated(
@@ -187,7 +214,7 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
                     child: WoTextField(
                       controller: _qty,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '现有数量'),
+                      decoration: InputDecoration(labelText: _isStocktake ? '盘点实际数量' : '现有数量'),
                     ),
                   ),
                   const SizedBox(width: WoTokens.space3),
@@ -238,7 +265,7 @@ class _StockItemEditPageState extends State<StockItemEditPage> {
                         height: 18,
                         child: WoProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(_isEditing ? '保存' : '添加'),
+                    : Text(_isStocktake ? '核对并确认盘点' : _isEditing ? '保存' : '添加'),
               ),
             ],
           ),

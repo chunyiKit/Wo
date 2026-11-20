@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../local/local_runtime.dart';
 import '../../../theme/wo_tokens.dart';
 import 'travel_add_page.dart';
 import 'travel_map.dart';
@@ -16,20 +17,29 @@ class TravelListPage extends StatefulWidget {
 
 class _TravelListPageState extends State<TravelListPage> {
   List<TravelTrip>? _trips;
-  late final WoSession _session;
+  late WoSession _session;
+  LocalRuntime? _runtime;
+  String? _family;
+  int _request=0;
   bool _loaded = false;
   bool _pollScheduled = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_loaded) return;
-    _loaded = true;
-    _session = WoScope.of(context);
+    final session=WoScope.of(context),family=session.currentFamilyId;
+    if(_loaded&&family==_family)return;
+    _loaded=true;_session=session;_family=family;_request++;
+    _trips=null;
+    if(session.api.isLocal){_runtime?.changes.removeListener(_localChanged);_runtime=LocalRuntime.instance;_runtime?.changes.addListener(_localChanged);}
     _fetch();
   }
 
+  void _localChanged(){if(mounted)_fetch();}
+  @override void dispose(){_runtime?.changes.removeListener(_localChanged);super.dispose();}
+
   Future<void> _fetch() async {
+    final request=++_request;
     final fid = _session.currentFamilyId;
     if (fid == null) {
       if (mounted) setState(() => _trips = const []);
@@ -37,12 +47,12 @@ class _TravelListPageState extends State<TravelListPage> {
     }
     try {
       final list = await _session.api.travelTrips(fid);
-      if (mounted) {
+      if (mounted&&request==_request&&fid==_session.currentFamilyId) {
         setState(() => _trips = list);
         _maybePoll();
       }
     } catch (_) {
-      if (mounted) setState(() => _trips ??= const []);
+      if (mounted&&request==_request) setState(() => _trips = _session.api.isLocal?const []:(_trips??const []));
     }
   }
 

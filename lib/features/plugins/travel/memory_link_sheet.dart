@@ -4,6 +4,7 @@ import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/wo_network_image.dart';
+import '../memory/local_memory_media.dart';
 
 /// 选择一段「回忆」来与旅行关联(1 对 1)。按回忆的地点(location)/标题模糊搜索;
 /// [seedQuery] 用于进场预填(添加页传当前选中的城市 / 具体地点)。返回所选 [Memory]。
@@ -49,7 +50,7 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
   Future<void> _load() async {
     try {
       final list = await _session.api.memoriesAll(_session.currentFamilyId!);
-      if (mounted) setState(() => _all = list);
+      if (mounted) setState(() => _all = _session.api.isLocal?list.where((m)=>m.visibility=='family').toList():list);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }
@@ -189,12 +190,12 @@ class _MemoryLinkSheetState extends State<_MemoryLinkSheet> {
                 width: 56,
                 height: 56,
                 child: cover != null
-                    ? WoNetworkImage(
+                    ? (_session.api.isLocal?LocalMemoryThumbnail(media:cover,placeholderColor:wo.memory):WoNetworkImage(
                         url: _session.api.memoryMediaUrl(cover),
                         headers: _session.api.imageHeaders,
                         placeholderColor: wo.memory,
                         decodeWidth: 120,
-                      )
+                      ))
                     : Container(
                         color: wo.memory.withValues(alpha: 0.25),
                         alignment: Alignment.center,

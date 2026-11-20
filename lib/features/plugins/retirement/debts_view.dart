@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../widgets/wo_cinema.dart';
 
@@ -8,6 +9,7 @@ import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/member_avatar.dart';
 import '../../../widgets/wo_card.dart';
+import 'finance_ui_support.dart';
 import 'debt_edit_page.dart';
 import 'retirement_common.dart';
 
@@ -21,18 +23,29 @@ class DebtsView extends StatefulWidget {
   State<DebtsView> createState() => _DebtsViewState();
 }
 
-class _DebtsViewState extends State<DebtsView> {
+class _DebtsViewState extends State<DebtsView> with FinanceLocalRefresh<DebtsView> {
   late Future<List<RetireDebt>> _future;
   List<RetireDebt>? _items;
   bool _loaded = false;
+  String? _familyId;
+  int _ticket = 0;
+  bool _refreshing = false, _again = false, _home = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_loaded) {
-      _loaded = true;
-      _future = _fetch()..then(_store);
+    final session = WoScope.of(context);
+    bindFinanceChanges(session.api.isLocal);
+    if (!_loaded || _familyId != session.currentFamilyId) {
+      _loaded = true; _familyId = session.currentFamilyId; _items = null;
+      _future = _initialFetch();
     }
+  }
+  @override
+  void onFinanceChanged() { unawaited(_refreshSilently(notifyHome: false)); }
+  Future<List<RetireDebt>> _initialFetch() {
+    final ticket = ++_ticket; final family = _familyId;
+    return _fetch().then((rows) { if (mounted && ticket == _ticket && family == _familyId) setState(() => _items = rows); return rows; });
   }
 
   Future<List<RetireDebt>> _fetch() {
@@ -43,27 +56,21 @@ class _DebtsViewState extends State<DebtsView> {
         : session.api.retireDebts(fid);
   }
 
-  void _store(List<RetireDebt> list) {
-    if (mounted) setState(() => _items = list);
-  }
-
   Future<void> _retry() {
-    setState(() {
-      _items = null;
-      _future = _fetch()..then(_store);
-    });
-    return _future;
+    setState(() { _items = null; _future = _initialFetch(); }); return _future;
   }
-
-  Future<void> _refreshSilently() async {
+  Future<void> _refreshSilently({bool notifyHome = true}) async {
+    _home = _home || notifyHome;
+    if (_refreshing) { _again = true; return; }
+    _refreshing = true;
     try {
-      final list = await _fetch();
-      if (mounted) setState(() => _items = list);
-    } catch (_) {
-      // 拉取失败保留旧数据。
-    }
-    widget.onChanged();
-    if (mounted) await WoScope.of(context).refresh();
+      do {
+        _again = false;
+        final ticket = ++_ticket; final family = _familyId;
+        try { final rows = await _fetch(); if (mounted && ticket == _ticket && family == _familyId) setState(() => _items = rows); } catch (_) { /* 保留缓存 */ }
+      } while (mounted && _again);
+      if (mounted && _home) { _home = false; widget.onChanged(); try { await WoScope.of(context).refresh(); } catch (_) {} }
+    } finally { _refreshing = false; if (mounted && _again) unawaited(_refreshSilently(notifyHome: false)); }
   }
 
   Future<void> _openEditor([RetireDebt? existing]) async {
@@ -192,9 +199,9 @@ class _DebtTile extends StatelessWidget {
                     ),
                     const SizedBox(width: WoTokens.space2),
                     _Chip(text: debtKindLabel(debt.kind)),
-                    if (!debt.active) ...[
+                    if (!debt.active && !debt.balanceConflict) ...[
                       const SizedBox(width: WoTokens.space2),
-                      _Chip(text: '已还清', highlight: true),
+                      _Chip(text: debt.balance <= 0 ? '已还清' : '已暂停', highlight: debt.balance <= 0),
                     ],
                   ],
                 ),
@@ -203,6 +210,10 @@ class _DebtTile extends StatelessWidget {
                   '剩 ${yuan(debt.balance)} · 月供 ${yuan(debt.monthlyPayment)}（${debt.paymentDay} 号）',
                   style: t.labelMedium?.copyWith(color: wo.fgMid),
                 ),
+                if (debt.balanceConflict) ...[
+                  Text('欠款记录不一致，不能将负数当作已还清。', style: t.labelSmall?.copyWith(color: wo.warning)),
+                  WoTextButton(onPressed: onEdit, child: const Text('核对并确认欠款')),
+                ],
               ],
             ),
           ),

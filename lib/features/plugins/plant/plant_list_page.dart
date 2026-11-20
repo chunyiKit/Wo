@@ -4,6 +4,7 @@ import '../../../widgets/wo_cinema.dart';
 
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../local/local_runtime.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import 'plant_detail_page.dart';
@@ -354,6 +355,8 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
   }
 
   Future<void> _useDeviceLocation() async {
+    // 本地默认环境只接受手工设置，不能将一次天气定位写成持久默认值。
+    if (WoScope.api(context).isLocal) return;
     setState(() => _busy = true);
     final loc = await getCurrentLocation();
     if (!loc.ok) {
@@ -399,6 +402,7 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
     final t = Theme.of(context).textTheme;
     final insets = MediaQuery.of(context).viewInsets;
     final s = _settings;
+    final local = WoScope.api(context).isLocal;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         WoTokens.space5,
@@ -413,7 +417,9 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
           Text('默认环境', style: t.titleLarge?.copyWith(color: wo.fg)),
           const SizedBox(height: WoTokens.space2),
           Text(
-            '用于按当地天气分析植物状态。家里植物默认共用这个位置。',
+            local
+                ? '默认环境保留手工设置。主页查询当前位置天气不会修改这里的设置。'
+                : '用于按当地天气分析植物状态。家里植物默认共用这个位置。',
             style: t.bodySmall?.copyWith(color: wo.fgMid),
           ),
           const SizedBox(height: WoTokens.space4),
@@ -448,11 +454,12 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
           ] else
             Text('尚未设置位置', style: t.bodyMedium?.copyWith(color: wo.fgMid)),
           const SizedBox(height: WoTokens.space4),
-          WoFilledButton.icon(
-            onPressed: _busy ? null : _useDeviceLocation,
-            icon: const Icon(Icons.my_location),
-            label: Text(_busy ? '定位中…' : '使用当前定位'),
-          ),
+          if (!local)
+            WoFilledButton.icon(
+              onPressed: _busy ? null : _useDeviceLocation,
+              icon: const Icon(Icons.my_location),
+              label: Text(_busy ? '定位中…' : '使用当前定位'),
+            ),
           if (s != null && s.hasLocation) ...[
             const SizedBox(height: WoTokens.space4),
             WoTextField(
@@ -475,7 +482,7 @@ class _PlantSettingsSheetState extends State<_PlantSettingsSheet> {
 }
 
 /// 主页顶部天气卡片:显示当前位置名 + 和风能取到的全部天气字段。
-/// 自己拉取(用 [ValueKey] 在位置变化后重建即重拉);不可用时显示原因。
+/// 初始化仅GET；本地当前位置天气必须明确点击查询，非本地沿用原有拉取。
 class _WeatherCard extends StatefulWidget {
   const _WeatherCard({super.key});
 
@@ -486,12 +493,19 @@ class _WeatherCard extends StatefulWidget {
 class _WeatherCardState extends State<_WeatherCard> {
   Future<PlantWeather>? _future;
   bool _loaded = false;
+  bool _requesting = false;
+  String? _familyId;
+  int _requestEpoch = 0;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_loaded) {
+    final fid = WoScope.of(context).currentFamilyId;
+    if (!_loaded || fid != _familyId) {
       _loaded = true;
+      _familyId = fid;
+      _requestEpoch++;
+      _requesting = false;
       _reload();
     }
   }
@@ -506,10 +520,48 @@ class _WeatherCardState extends State<_WeatherCard> {
     });
   }
 
+  // 只有这个按钮回调进入 typed 前台天气入口；初始化和默认环境返回只 GET。
+  Future<void> _fetchCurrentWeather() async {
+    if (_requesting) return;
+    final session = WoScope.of(context);
+    if (!session.api.isLocal) return;
+    final fid = session.currentFamilyId;
+    final runtime = LocalRuntime.instance;
+    if (fid == null || runtime == null) return;
+    final epoch = ++_requestEpoch;
+    final auth = session.authSnapshot;
+    setState(() => _requesting = true);
+    PlantWeather result;
+    try {
+      final snapshot = await runtime.plants.weatherForUserAction(fid);
+      // 展示字段无需经纬度，连卡片内存状态也不保留本次坐标。
+      final display = Map<String, dynamic>.from(snapshot)
+        ..remove('latitude')
+        ..remove('longitude');
+      result = PlantWeather.fromJson(display);
+    } catch (_) {
+      result = const PlantWeather(reason: '天气暂不可用，请检查配置与定位授权');
+    }
+    if (!mounted || epoch != _requestEpoch) return;
+    if (!session.isCurrentAuth(auth) || session.currentFamilyId != fid) {
+      setState(() {
+        _requesting = false;
+        _future = Future.value(const PlantWeather(reason: '家庭身份已变更，请重新查询'));
+      });
+      return;
+    }
+    // 只留在此天气卡的内存状态；不更新默认环境，不写数据库或坐标缓存。
+    setState(() {
+      _requesting = false;
+      _future = Future.value(result);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
+    final local = WoScope.api(context).isLocal;
     return Container(
       margin: const EdgeInsets.fromLTRB(
         WoTokens.space4,
@@ -522,44 +574,67 @@ class _WeatherCardState extends State<_WeatherCard> {
         color: wo.plant,
         borderRadius: BorderRadius.circular(WoTokens.cardRadius),
       ),
-      child: FutureBuilder<PlantWeather>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return Row(
-              children: [
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: WoProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: WoTokens.space3),
-                Text('天气加载中…', style: t.bodyMedium?.copyWith(color: wo.fg)),
-              ],
-            );
-          }
-          final w = snap.data;
-          if (w == null || !w.available) {
-            return Row(
-              children: [
-                Icon(Icons.cloud_off_outlined, color: wo.fgMid, size: 20),
-                const SizedBox(width: WoTokens.space2),
-                Expanded(
-                  child: Text(
-                    w?.reason ?? '天气不可用',
-                    style: t.bodyMedium?.copyWith(color: wo.fgMid),
-                  ),
-                ),
-                WoIconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.refresh, color: wo.fgMid),
-                  onPressed: _reload,
-                ),
-              ],
-            );
-          }
-          return _buildWeather(context, w);
-        },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FutureBuilder<PlantWeather>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return Row(
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: WoProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: WoTokens.space3),
+                    Text('天气加载中…', style: t.bodyMedium?.copyWith(color: wo.fg)),
+                  ],
+                );
+              }
+              final w = snap.data;
+              if (w == null || !w.available) {
+                return Row(
+                  children: [
+                    Icon(Icons.cloud_off_outlined, color: wo.fgMid, size: 20),
+                    const SizedBox(width: WoTokens.space2),
+                    Expanded(
+                      child: Text(
+                        w?.reason == 'explicit_action_required'
+                            ? '点击下方按钮查询本次当前位置天气'
+                            : w?.reason ?? '天气不可用',
+                        style: t.bodyMedium?.copyWith(color: wo.fgMid),
+                      ),
+                    ),
+                    if (!local)
+                      WoIconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(Icons.refresh, color: wo.fgMid),
+                        onPressed: _reload,
+                      ),
+                  ],
+                );
+              }
+              return _buildWeather(context, w);
+            },
+          ),
+          if (local) ...[
+            const SizedBox(height: WoTokens.space2),
+            WoTextButton.icon(
+              onPressed: _requesting || _familyId == null
+                  ? null
+                  : _fetchCurrentWeather,
+              icon: Icon(Icons.my_location, color: wo.fgMid),
+              label: Text(_requesting ? '正在获取当前位置天气…' : '获取当前位置天气'),
+            ),
+            Text(
+              '仅查询本次天气，不修改默认环境',
+              style: t.labelSmall?.copyWith(color: wo.fgDim),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -629,11 +704,12 @@ class _WeatherCardState extends State<_WeatherCard> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            WoIconButton(
-              visualDensity: VisualDensity.compact,
-              icon: Icon(Icons.refresh, color: wo.fgMid),
-              onPressed: _reload,
-            ),
+            if (!WoScope.api(context).isLocal)
+              WoIconButton(
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.refresh, color: wo.fgMid),
+                onPressed: _reload,
+              ),
           ],
         ),
         if (rows.isNotEmpty) ...[

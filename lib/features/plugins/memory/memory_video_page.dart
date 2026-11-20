@@ -27,7 +27,13 @@ class _MemoryVideoPageState extends State<MemoryVideoPage> {
   }
 
   Future<void> _init() async {
-    final headers = WoScope.api(context).imageHeaders;
+    final api = WoScope.api(context);
+    final uri = Uri.tryParse(widget.url);
+    if (api.isLocal || uri == null || !{'https', 'http'}.contains(uri.scheme)) {
+      if (mounted) setState(() => _error = StateError('本地原视频须由已授权引用打开'));
+      return;
+    }
+    final headers = api.imageHeaders;
     final controller = VideoPlayerController.networkUrl(
       Uri.parse(widget.url),
       httpHeaders: headers,

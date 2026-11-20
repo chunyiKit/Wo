@@ -828,19 +828,28 @@ class StockItem {
     required this.name,
     required this.emoji,
     required this.qty,
+    int? rawQty,
+    this.quantityConflict = false,
+    this.quantityConflicts = const [],
     this.unit,
     this.lowAt,
     this.note,
     required this.isLow,
     this.createdAt,
     this.createdBy,
-  });
+    this.creatorName,
+    this.creatorEmoji,
+    this.creatorAvatarUrl,
+  }) : rawQty = rawQty ?? qty;
 
   final String id;
   final String familyId;
   final String name;
   final String emoji;
   final int qty;
+  final int rawQty;
+  final bool quantityConflict;
+  final List<String> quantityConflicts;
 
   /// 单位，可空（如「瓶」「卷」）。
   final String? unit;
@@ -853,6 +862,9 @@ class StockItem {
   final bool isLow;
   final DateTime? createdAt;
   final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final String? creatorAvatarUrl;
 
   factory StockItem.fromJson(Map<String, dynamic> j) => StockItem(
         id: j['id'] as String,
@@ -860,12 +872,20 @@ class StockItem {
         name: j['name'] as String? ?? '',
         emoji: j['emoji'] as String? ?? '📦',
         qty: (j['qty'] as num?)?.toInt() ?? 0,
+        rawQty: (j['raw_qty'] as num?)?.toInt(),
+        quantityConflict: (j['quantity_conflict'] as bool? ?? false) ||
+            ((j['raw_qty'] ?? j['qty']) as num? ?? 0) < 0 ||
+            ((j['quantity_conflicts'] as List?)?.isNotEmpty ?? false),
+        quantityConflicts: (j['quantity_conflicts'] as List?)?.whereType<String>().toList(growable: false) ?? const [],
         unit: j['unit'] as String?,
         lowAt: (j['low_at'] as num?)?.toInt(),
         note: j['note'] as String?,
         isLow: j['is_low'] as bool? ?? false,
         createdAt: _parseDate(j['created_at']),
         createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
       );
 }
 
@@ -880,9 +900,14 @@ class BuyItem {
     this.note,
     this.stockItemId,
     required this.bought,
+    this.receiptConflict = false,
+    this.purchaseCycle,
     this.boughtAt,
     this.createdAt,
     this.createdBy,
+    this.creatorName,
+    this.creatorEmoji,
+    this.creatorAvatarUrl,
   });
 
   final String id;
@@ -897,9 +922,14 @@ class BuyItem {
   /// 这条待买关联的囤货项 id，可空（手动添加的零散待买无关联）。
   final String? stockItemId;
   final bool bought;
+  final bool receiptConflict;
+  final String? purchaseCycle;
   final DateTime? boughtAt;
   final DateTime? createdAt;
   final String? createdBy;
+  final String? creatorName;
+  final String? creatorEmoji;
+  final String? creatorAvatarUrl;
 
   factory BuyItem.fromJson(Map<String, dynamic> j) => BuyItem(
         id: j['id'] as String,
@@ -910,9 +940,14 @@ class BuyItem {
         note: j['note'] as String?,
         stockItemId: j['stock_item_id'] as String?,
         bought: j['bought'] as bool? ?? false,
+        receiptConflict: j['receipt_conflict'] as bool? ?? false,
+        purchaseCycle: j['purchase_cycle'] as String?,
         boughtAt: _parseDate(j['bought_at']),
         createdAt: _parseDate(j['created_at']),
         createdBy: j['created_by'] as String?,
+        creatorName: j['creator_name'] as String?,
+        creatorEmoji: j['creator_emoji'] as String?,
+        creatorAvatarUrl: j['creator_avatar_url'] as String?,
       );
 }
 
@@ -1528,6 +1563,12 @@ class Subscription {
     this.daysUntil = 0,
     this.createdAt,
     this.createdBy,
+    this.billingConflict = false,
+    this.amountText,
+    this.creatorName,
+    this.creatorEmoji,
+    this.creatorAvatarUrl,
+    this.conflictFrontier,
   });
 
   final String id;
@@ -1562,6 +1603,18 @@ class Subscription {
 
   bool get isYearly => cycle == 'yearly';
 
+  final bool billingConflict;
+
+  final String? amountText;
+
+  final String? creatorName;
+
+  final String? creatorEmoji;
+
+  final String? creatorAvatarUrl;
+
+  final String? conflictFrontier;
+
   factory Subscription.fromJson(Map<String, dynamic> j) => Subscription(
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
@@ -1581,6 +1634,12 @@ class Subscription {
         daysUntil: (j['days_until'] as num?)?.toInt() ?? 0,
         createdAt: _parseDate(j['created_at']),
         createdBy: j['created_by'] as String?,
+        billingConflict: j['billing_conflict'] as bool? ?? false,
+        amountText: j['amount']?.toString(),
+        creatorName: j['creator_name']?.toString(),
+        creatorEmoji: j['creator_emoji']?.toString(),
+        creatorAvatarUrl: j['creator_avatar_url']?.toString(),
+        conflictFrontier: j['conflict_frontier'] as String?,
       );
 }
 
@@ -1883,6 +1942,11 @@ class RetireAccount {
     this.creatorName,
     this.creatorEmoji,
     this.creatorAvatarUrl,
+    this.balanceConflict = false,
+    this.settlementConflict = false,
+    this.balanceText,
+    this.monthlyIncomeText,
+    this.conflictFrontier,
   });
 
   final String id;
@@ -1908,6 +1972,16 @@ class RetireAccount {
   bool get isDeposit => kind == 'deposit';
   bool get isFund => kind == 'fund';
 
+  final bool balanceConflict;
+
+  final bool settlementConflict;
+
+  final String? balanceText;
+
+  final String? monthlyIncomeText;
+
+  final String? conflictFrontier;
+
   factory RetireAccount.fromJson(Map<String, dynamic> j) => RetireAccount(
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
@@ -1922,6 +1996,11 @@ class RetireAccount {
         creatorName: j['creator_name'] as String?,
         creatorEmoji: j['creator_emoji'] as String?,
         creatorAvatarUrl: j['creator_avatar_url'] as String?,
+        balanceConflict: j['balance_conflict'] as bool? ?? false,
+        settlementConflict: j['settlement_conflict'] as bool? ?? false,
+        balanceText: j['balance']?.toString(),
+        monthlyIncomeText: j['monthly_income']?.toString(),
+        conflictFrontier: j['conflict_frontier'] as String?,
       );
 }
 
@@ -1943,6 +2022,10 @@ class RetireDebt {
     this.creatorName,
     this.creatorEmoji,
     this.creatorAvatarUrl,
+    this.balanceConflict = false,
+    this.balanceText,
+    this.monthlyPaymentText,
+    this.conflictFrontier,
   });
 
   final String id;
@@ -1967,6 +2050,14 @@ class RetireDebt {
   final String? creatorEmoji;
   final String? creatorAvatarUrl;
 
+  final bool balanceConflict;
+
+  final String? balanceText;
+
+  final String? monthlyPaymentText;
+
+  final String? conflictFrontier;
+
   factory RetireDebt.fromJson(Map<String, dynamic> j) => RetireDebt(
         id: j['id'] as String,
         familyId: j['family_id'] as String? ?? '',
@@ -1983,6 +2074,10 @@ class RetireDebt {
         creatorName: j['creator_name'] as String?,
         creatorEmoji: j['creator_emoji'] as String?,
         creatorAvatarUrl: j['creator_avatar_url'] as String?,
+        balanceConflict: j['balance_conflict'] as bool? ?? false,
+        balanceText: j['balance']?.toString(),
+        monthlyPaymentText: j['monthly_payment']?.toString(),
+        conflictFrontier: j['conflict_frontier'] as String?,
       );
 }
 
@@ -2037,6 +2132,7 @@ class RetireDashboard {
     this.requiredMonthly,
     this.monthlyGap,
     this.accountingInstalled = false,
+    this.ledgerConflict = false,
   });
 
   final double totalDeposit;
@@ -2072,6 +2168,8 @@ class RetireDashboard {
   final double? monthlyGap;
   final bool accountingInstalled;
 
+  final bool ledgerConflict;
+
   factory RetireDashboard.fromJson(Map<String, dynamic> j) => RetireDashboard(
         totalDeposit: _parseNum(j['total_deposit']),
         totalFund: _parseNum(j['total_fund']),
@@ -2095,6 +2193,7 @@ class RetireDashboard {
         requiredMonthly: _parseNumOrNull(j['required_monthly']),
         monthlyGap: _parseNumOrNull(j['monthly_gap']),
         accountingInstalled: j['accounting_installed'] as bool? ?? false,
+        ledgerConflict: j['ledger_conflict'] as bool? ?? false,
       );
 }
 

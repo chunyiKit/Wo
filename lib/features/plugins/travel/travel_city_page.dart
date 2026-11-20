@@ -8,9 +8,13 @@ import 'package:path_provider/path_provider.dart';
 import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../local/local_runtime.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/wo_network_image.dart';
 import '../memory/memory_detail_page.dart';
+import '../memory/local_memory_media.dart';
+import 'local_travel_add_page.dart';
+import 'local_travel_media.dart';
 import 'memory_link_sheet.dart';
 
 /// 某座城市的旅行图集:封面网格 → 点开全屏查看(可缩放)、下载、删除。
@@ -32,6 +36,22 @@ class TravelCityPage extends StatefulWidget {
 class _TravelCityPageState extends State<TravelCityPage> {
   late final List<TravelTrip> _trips = List.of(widget.trips);
   bool _changed = false;
+  LocalRuntime? _runtime;
+  String? _localFamily;
+  int _request=0;
+  @override void didChangeDependencies(){
+    super.didChangeDependencies();
+    if(_session.api.isLocal&&_runtime==null){_localFamily=_session.currentFamilyId;_runtime=LocalRuntime.instance;_runtime?.changes.addListener(_localChanged);_localChanged();}
+    if(_runtime!=null&&_session.currentFamilyId!=_localFamily)_trips.clear();
+  }
+  void _localChanged()async{
+    if(!mounted||_localFamily==null)return;final request=++_request;
+    try{final fresh=await _session.api.travelTrips(_localFamily!);if(!mounted||request!=_request||_session.currentFamilyId!=_localFamily)return;
+      setState((){_trips..clear()..addAll(fresh.where((t)=>t.cityName==widget.cityName));});
+    }catch(_){if(mounted&&request==_request)setState(()=>_trips.clear());}
+  }
+  @override void dispose(){_runtime?.changes.removeListener(_localChanged);super.dispose();}
+
 
   WoSession get _session => WoScope.of(context);
   String _full(String url) => '${_session.api.baseUrl}$url';
@@ -106,6 +126,7 @@ class _TravelCityPageState extends State<TravelCityPage> {
           headers: _session.api.imageHeaders,
           onDelete: _delete,
           onSetMemory: _setMemory,
+          onUpdated:(trip){if(mounted)setState((){final i=_trips.indexWhere((t)=>t.id==trip.id);if(i>=0)_trips[i]=trip;_changed=true;});},
         ),
       ),
     );
@@ -163,7 +184,9 @@ class _TravelCityPageState extends State<TravelCityPage> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            WoNetworkImage(
+            if(_session.api.isLocal)
+              LocalTravelThumbnail(tripId:trip.id,placeholderColor:wo.travel)
+            else WoNetworkImage(
               url: _full(trip.imageUrl),
               headers: _session.api.imageHeaders,
               placeholderColor: wo.travel,
@@ -244,6 +267,7 @@ class _Viewer extends StatefulWidget {
     required this.headers,
     required this.onDelete,
     required this.onSetMemory,
+    required this.onUpdated,
   });
 
   final List<TravelTrip> trips;
@@ -251,6 +275,7 @@ class _Viewer extends StatefulWidget {
   final String Function(String) fullUrl;
   final Map<String, String> headers;
   final Future<void> Function(TravelTrip) onDelete;
+  final ValueChanged<TravelTrip> onUpdated;
 
   /// 置 / 清关联回忆,返回更新后的 trip(失败 null)。由城市页落地调用 API。
   final Future<TravelTrip?> Function(TravelTrip trip, String? memoryId)
@@ -269,15 +294,39 @@ class _ViewerState extends State<_Viewer> {
   late final List<TravelTrip> _trips = List.of(widget.trips);
 
   WoSession get _session => WoScope.of(context);
+  LocalRuntime? _runtime;
+  String? _localFamily;
+  bool _generationBusy=false;
+  int _request=0;
+  @override void didChangeDependencies(){
+    super.didChangeDependencies();
+    if(_session.api.isLocal&&_runtime==null){_localFamily=_session.currentFamilyId;_runtime=LocalRuntime.instance;_runtime?.changes.addListener(_localChanged);_localChanged();}
+    if(_runtime!=null&&_localFamily!=_session.currentFamilyId)_trips.clear();
+  }
+  void _localChanged()async{
+    if(!mounted||_localFamily==null)return;final request=++_request;
+    try{final values=await _session.api.travelTrips(_localFamily!);if(!mounted||request!=_request||_localFamily!=_session.currentFamilyId)return;
+      final ids=_trips.map((t)=>t.id).toSet();final visible=values.where((t)=>ids.contains(t.id)).toList();
+      setState((){_trips..clear()..addAll(visible);if(_index>=_trips.length)_index=_trips.isEmpty?0:_trips.length-1;});
+    }catch(_){if(mounted&&request==_request)setState(()=>_trips.clear());}
+  }
+  Future<void> _generate()async{
+    if(_generationBusy||_trips.isEmpty)return;setState(()=>_generationBusy=true);
+    try{final updated=await generateLocalTravelImage(context,_trips[_index].id);if(updated!=null&&mounted){setState((){final i=_trips.indexWhere((t)=>t.id==updated.id);if(i>=0)_trips[i]=updated;});widget.onUpdated(updated);}}
+    finally{if(mounted)setState(()=>_generationBusy=false);}
+  }
 
   @override
   void dispose() {
+    _runtime?.changes.removeListener(_localChanged);
     _controller.dispose();
     super.dispose();
   }
 
   Future<void> _download() async {
+    if(_trips.isEmpty)return;
     final trip = _trips[_index];
+    if(_session.api.isLocal){await openLocalTravelOriginal(context,trip.id);return;}
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(WoSnackBar(content: Text('正在保存…')));
     final err = await _saveToGallery(
@@ -306,7 +355,7 @@ class _ViewerState extends State<_Viewer> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true||_trips.isEmpty) return;
     final trip = _trips[_index];
     await widget.onDelete(trip);
     if (mounted) Navigator.of(context).pop();
@@ -325,15 +374,16 @@ class _ViewerState extends State<_Viewer> {
   }
 
   Future<void> _pickAndLink() async {
+    if(_trips.isEmpty)return;
     final trip = _trips[_index];
     final seed = (trip.place != null && trip.place!.isNotEmpty)
         ? trip.place
         : trip.cityName;
     final mem = await showMemoryLinkSheet(context, seedQuery: seed);
-    if (mem != null) await _applySetMemory(trip, mem.id);
+    if (mem != null&&(! _session.api.isLocal||mem.visibility=='family')) await _applySetMemory(trip, mem.id);
   }
 
-  Future<void> _unlink() => _applySetMemory(_trips[_index], null);
+  Future<void> _unlink() async {if(_trips.isNotEmpty)await _applySetMemory(_trips[_index],null);}
 
   /// 跳转到关联回忆详情。回忆已删除 / 不可见时给出提示。
   Future<void> _openMemory(LinkedMemory lm) async {
@@ -364,6 +414,8 @@ class _ViewerState extends State<_Viewer> {
   @override
   Widget build(BuildContext context) {
     final total = _trips.length;
+    if(total==0)return WoScaffold(backgroundColor:Colors.black,appBar:WoAppBar(title:const Text('旅行')),
+      body:const Center(child:Text('旅行已删除或当前身份无法访问',style:TextStyle(color:Colors.white70))));
     return WoScaffold(
       backgroundColor: Colors.black,
       appBar: WoAppBar(
@@ -375,8 +427,10 @@ class _ViewerState extends State<_Viewer> {
           style: const TextStyle(fontSize: 15),
         ),
         actions: [
+          if(_session.api.isLocal)WoIconButton(tooltip:'逐次确认生成或重试',icon:const Icon(Icons.auto_awesome),onPressed:_generationBusy?null:_generate),
           WoIconButton(
-            icon: const Icon(Icons.download_outlined),
+            tooltip:_session.api.isLocal?'打开本机原照':'保存到相册',
+            icon: Icon(_session.api.isLocal?Icons.photo_outlined:Icons.download_outlined),
             onPressed: _download,
           ),
           WoIconButton(
@@ -396,7 +450,7 @@ class _ViewerState extends State<_Viewer> {
               minScale: 1,
               maxScale: 4,
               child: Center(
-                child: WoNetworkImage(
+                child: _session.api.isLocal?LocalTravelThumbnail(tripId:_trips[i].id,fit:BoxFit.contain,placeholderColor:const Color(0xFF222222)):WoNetworkImage(
                   url: widget.fullUrl(_trips[i].imageUrl),
                   headers: widget.headers,
                   placeholderColor: const Color(0xFF222222),
@@ -463,12 +517,12 @@ class _ViewerState extends State<_Viewer> {
               width: 46,
               height: 46,
               child: cover != null
-                  ? WoNetworkImage(
+                  ? (_session.api.isLocal?LocalMemoryThumbnail(media:MemoryMedia(id:Uri.parse(cover).host,memoryId:mem.id,kind:'photo',url:cover,contentType:'image/jpeg',sizeBytes:0),placeholderColor:const Color(0xFF333333)):WoNetworkImage(
                       url: '${_session.api.baseUrl}$cover',
                       headers: widget.headers,
                       placeholderColor: const Color(0xFF333333),
                       decodeWidth: 100,
-                    )
+                    ))
                   : Container(
                       color: const Color(0xFF333333),
                       alignment: Alignment.center,

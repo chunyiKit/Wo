@@ -72,6 +72,7 @@ class MemoryCache {
   /// 而非 downloadFile：命中缓存直接返回、缺失才下载，幂等不会重复拉，因此可多次安全调用
   /// （splash 与主页都会触发）。限并发分批，避免一次几十张图打满带宽。
   static Future<void> prewarmImages(WoApi api, List<Memory> all) async {
+    if (api.isLocal) return;
     final headers = api.imageHeaders;
     final cm = DefaultCacheManager();
     final keep = all.length > _keep ? all.sublist(0, _keep) : all;
@@ -104,6 +105,7 @@ class MemoryCache {
   /// 用磁盘上已有的内容缓存把媒体重新预热进图片缓存——进程被杀后内存缓存没了，
   /// 启动时靠这一步「按已有引用补图」，离线也能用（不发列表请求）。
   static Future<void> warmFromDisk(WoApi api, String familyId) async {
+    if (api.isLocal) return;
     final cached = await load(familyId);
     if (cached == null || cached.isEmpty) return;
     await prewarmImages(api, cached);
@@ -116,7 +118,7 @@ class MemoryCache {
     String? familyId,
     List<InstalledPlugin> installed,
   ) async {
-    if (familyId == null) return;
+    if (api.isLocal || familyId == null) return;
     if (!installed.any((p) => p.pluginId == 'memory')) return;
     await warmFromDisk(api, familyId);
     await prefetch(api, familyId);
@@ -125,6 +127,7 @@ class MemoryCache {
   /// 主页后台预取：拉**首页**（覆盖缓存的前 [_keep] 条即够）→ 存内容 → 预热照片。
   /// 每次启动每个家庭只做一次。时间线分页后，缓存只关心首屏，故只取首页不翻全量。
   static Future<void> prefetch(WoApi api, String familyId) async {
+    if (api.isLocal) return;
     if (_prefetched.contains(familyId)) return;
     _prefetched.add(familyId);
     try {

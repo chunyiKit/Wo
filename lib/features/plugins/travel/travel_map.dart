@@ -10,6 +10,7 @@ import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/wo_network_image.dart';
 import 'travel_city_page.dart';
+import 'local_travel_media.dart';
 
 // ── 投影：等距圆柱 + cos(midLat) 横向校正，把 [lng,lat] 投到固定地图坐标系 ──
 // 固定中国范围(不含南海诸岛那条远在 ~3°N 的九段线,否则大陆会被压扁)。
@@ -455,7 +456,9 @@ class _TravelMapState extends State<TravelMap> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    WoNetworkImage(
+                    if(api.isLocal)
+                      LocalTravelThumbnail(tripId:cover.id,placeholderColor:wo.travel)
+                    else WoNetworkImage(
                       url: '${api.baseUrl}${cover.imageUrl}',
                       headers: api.imageHeaders,
                       placeholderColor: wo.travel,

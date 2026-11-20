@@ -4,6 +4,7 @@ import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
+import 'stock_request_key.dart';
 
 /// 采买新增 / 编辑页。[existing] 为空 = 新增。保存成功后 `Navigator.pop(true)`。
 class BuyItemEditPage extends StatefulWidget {
@@ -41,6 +42,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
   late final TextEditingController _note;
 
   bool _submitting = false;
+  final _requestKey = StockRequestKey();
   bool get _isEditing => widget.existing != null;
 
   @override
@@ -73,6 +75,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
     setState(() => _submitting = true);
     final nav = Navigator.of(context);
     try {
+      final clientId = session.api.isLocal ? _requestKey.forBody([familyId, widget.existing?.id, name, _emoji, wantQty, note]) : null;
       if (_isEditing) {
         await session.api.updateBuyItem(
           familyId,
@@ -80,7 +83,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
           name: name,
           emoji: _emoji,
           wantQty: wantQty.isEmpty ? null : wantQty,
-          note: note.isEmpty ? null : note,
+          note: note.isEmpty ? null : note, clientId: clientId,
         );
       } else {
         await session.api.createBuyItem(
@@ -88,7 +91,7 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
           name: name,
           emoji: _emoji,
           wantQty: wantQty.isEmpty ? null : wantQty,
-          note: note.isEmpty ? null : note,
+          note: note.isEmpty ? null : note, clientId: clientId,
         );
       }
       if (mounted) nav.pop(true);
@@ -123,6 +126,10 @@ class _BuyItemEditPageState extends State<BuyItemEditPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.existing?.receiptConflict == true) ...[
+                Text('收货数量仍需核对；此页只编辑采买信息，请在囤货页盘点相关库存。', style: TextStyle(color: wo.warning)),
+                const SizedBox(height: WoTokens.space3),
+              ],
               SizedBox(
                 height: 52,
                 child: ListView.separated(

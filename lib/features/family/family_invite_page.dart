@@ -1,3 +1,4 @@
+import '../profile/local_sync_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -38,6 +39,7 @@ class _FamilyInvitePageState extends State<FamilyInvitePage> {
 
   @override
   Widget build(BuildContext context) {
+    if(WoScope.api(context).isLocal)return const LocalSyncPage();
     final wo = context.wo;
     final t = Theme.of(context).textTheme;
     final familyId = WoScope.of(context).currentFamilyId;

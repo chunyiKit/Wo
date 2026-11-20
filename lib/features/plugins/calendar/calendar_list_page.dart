@@ -99,7 +99,7 @@ class _CalendarListPageState extends State<CalendarListPage> {
       await session.api.remindCalendarItem(familyId, c.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          WoSnackBar(content: Text('已提醒 ${c.assigneeName ?? '负责人'}')),
+          WoSnackBar(content: Text(session.api.isLocal?'已登记本地提醒，尚未由系统投递':'已提醒 ${c.assigneeName ?? '负责人'}')),
         );
       }
     } catch (e) {

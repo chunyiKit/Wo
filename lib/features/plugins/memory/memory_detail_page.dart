@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../data/api_client.dart';
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
+import '../../../local/local_runtime.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/member_avatar.dart';
 import 'memory_edit_page.dart';
+import 'local_memory_edit_page.dart';
 import 'memory_gallery_page.dart';
 import 'memory_media.dart';
 
@@ -28,6 +30,10 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
   final _commentController = TextEditingController();
   bool _sending = false;
   bool _detailLoaded = false;
+  bool _accessLost = false;
+  bool _checkingLocal = false;
+  int _accessRequest = 0;
+  LocalRuntime? _runtime;
 
   @override
   void initState() {
@@ -38,28 +44,54 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_detailLoaded && WoScope.api(context).isLocal &&
+        WoScope.of(context).currentFamilyId != _memory.familyId) {
+      _accessLost = true; _checkingLocal = false; _accessRequest++;
+    }
     // 列表卡片不带 comments 全量，进详情后拉一次拿到留言。
     if (!_detailLoaded) {
       _detailLoaded = true;
+      if (WoScope.api(context).isLocal) {
+        _checkingLocal = true;
+        _runtime = LocalRuntime.instance;
+        _runtime?.changes.addListener(_localChanged);
+      }
       _reloadDetail();
     }
   }
 
   @override
   void dispose() {
+    _runtime?.changes.removeListener(_localChanged);
     _commentController.dispose();
     super.dispose();
   }
 
+  void _localChanged() {
+    if (!mounted) return;
+    setState(() => _checkingLocal = true);
+    _reloadDetail();
+  }
+
   Future<void> _reloadDetail() async {
+    final request = ++_accessRequest;
     final session = WoScope.of(context);
     final familyId = session.currentFamilyId;
-    if (familyId == null) return;
+    if (familyId == null || familyId != _memory.familyId) {
+      if (session.api.isLocal && mounted) setState(() { _accessLost = true; _checkingLocal = false; });
+      return;
+    }
     try {
       final fresh = await session.api.memory(familyId, _memory.id);
-      if (mounted) setState(() => _memory = fresh);
+      if (mounted && request == _accessRequest && session.currentFamilyId == familyId) {
+        setState(() { _memory = fresh; _accessLost = false; _checkingLocal = false; });
+      }
     } catch (_) {
-      // 拉取失败不致命，仍显示列表带过来的数据。
+      if (session.api.isLocal && mounted && request == _accessRequest) {
+        setState(() { _accessLost = true; _checkingLocal = false; });
+        _commentController.clear();
+      }
+      // 远程读取暂时失败仍显示列表数据；本地核权失败隐藏正文。
     }
   }
 
@@ -73,7 +105,8 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
 
   Future<void> _edit() async {
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => MemoryEditPage(existing: _memory)),
+      MaterialPageRoute(builder: (_) => WoScope.api(context).isLocal
+        ? LocalMemoryEditPage(existing: _memory) : MemoryEditPage(existing: _memory)),
     );
     if (saved != true || !mounted) return;
     _changed = true;
@@ -85,7 +118,9 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
       context: context,
       builder: (ctx) => WoAlertDialog(
         title: const Text('删除回忆'),
-        content: Text('确定删除「${_memory.title}」吗？照片和留言会一起删除，不可撤销。'),
+        content: Text(WoScope.api(context).isLocal
+          ? '确定删除「${_memory.title}」吗？回忆和留言将删除；本机已授权的相册/文件原件不会被删除。'
+          : '确定删除「${_memory.title}」吗？照片和留言会一起删除，不可撤销。'),
         actions: [
           WoTextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -168,6 +203,7 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
         createdBy: m.createdBy,
         authorName: m.authorName,
         authorEmoji: m.authorEmoji,
+        authorAvatarUrl: m.authorAvatarUrl,
         createdAt: m.createdAt,
         media: m.media,
         commentCount: m.commentCount + 1,
@@ -188,6 +224,7 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
       createdBy: m.createdBy,
       authorName: m.authorName,
       authorEmoji: m.authorEmoji,
+      authorAvatarUrl: m.authorAvatarUrl,
       createdAt: m.createdAt,
       media: m.media,
       commentCount: remaining.length,
@@ -210,6 +247,17 @@ class _MemoryDetailPageState extends State<MemoryDetailPage> {
     final t = Theme.of(context).textTheme;
     final m = _memory;
     final myId = WoScope.of(context).user?.id;
+    if (_checkingLocal) {
+      return WoScaffold(appBar: WoAppBar(title: const Text('回忆')),
+        body: const Center(child: WoProgressIndicator()));
+    }
+    if (_accessLost) {
+      return WoScaffold(appBar: WoAppBar(title: const Text('回忆')),
+        body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('此回忆已删除或当前身份无权访问'),
+          WoTextButton(onPressed: _reloadDetail, child: const Text('重新核对权限')),
+        ])));
+    }
 
     return PopScope(
       canPop: false,
@@ -340,6 +388,12 @@ class _MetaLine extends StatelessWidget {
           Icon(Icons.place_outlined, size: 15, color: wo.fgDim),
           const SizedBox(width: 3),
           Text(m.location!, style: t.bodyMedium?.copyWith(color: wo.fgMid)),
+        ],
+        if (m.visibility == 'couple') ...[
+          const SizedBox(width: WoTokens.space3),
+          Icon(Icons.favorite_outline, size: 15, color: wo.fgDim),
+          const SizedBox(width: 3),
+          Text('我和 TA', style: t.bodySmall?.copyWith(color: wo.fgDim)),
         ],
         if (m.visibility == 'private') ...[
           const SizedBox(width: WoTokens.space3),

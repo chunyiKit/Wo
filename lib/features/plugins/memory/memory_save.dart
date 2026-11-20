@@ -21,6 +21,7 @@ Future<String?> saveMemoryImageToGallery({
   required String url,
   required Map<String, String> headers,
 }) async {
+  if (Uri.tryParse(url)?.scheme == 'wo-local-media') return '本地缩略图不是原件，请使用原设备或已核验的电脑备份';
   if (media.isVideo) return '暂不支持保存视频';
 
   // 权限。`requestAccess(toAlbum: true)` 在 iOS 上请求的是「仅添加」权限

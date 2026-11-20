@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/wo_tokens.dart';
+import '../../../data/wo_session.dart';
+import 'finance_ui_support.dart';
 import 'accounts_view.dart';
 import 'debts_view.dart';
 import 'ledger_page.dart';
@@ -55,13 +57,14 @@ class _RetirementPageState extends State<RetirementPage> {
           ),
         ),
         body: SafeArea(
-          child: TabBarView(
-            children: [
+          child: Column(children: [
+            if (WoScope.api(context).isLocal) const LocalFinanceStatus(),
+            Expanded(child: TabBarView(children: [
               RetirementOverviewView(refreshSignal: _tick),
               AccountsView(onChanged: _bump),
               DebtsView(onChanged: _bump),
-            ],
-          ),
+            ])),
+          ]),
         ),
       ),
     );

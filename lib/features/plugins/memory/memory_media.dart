@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'local_memory_media.dart';
+
 import '../../../data/models.dart';
 import '../../../data/wo_session.dart';
 import '../../../theme/wo_tokens.dart';
 import '../../../widgets/wo_network_image.dart';
 
-/// 单个媒体方块：照片走网络图，视频走暖色占位 + 播放角标 + 时长。
+/// 单个媒体方块：本地照片与视频走授权缩略图；视频保留播放角标与时长。
 ///
 /// 只有传了 [onTap] 时才拦截点击；否则点击会冒泡给父级（例如列表卡片整体进详情）。
 /// 视频的播放、照片的看大图，都由调用方（详情页 → 大图画廊）决定。
@@ -30,7 +32,17 @@ class MemoryMediaTile extends StatelessWidget {
     final url = api.memoryMediaUrl(media);
 
     Widget content;
-    if (media.isVideo) {
+    if (api.isLocal) {
+      content = LocalMemoryThumbnail(media: media, fit: fit, placeholderColor: wo.memory);
+      if (media.isVideo) {
+        content = Stack(fit: StackFit.expand, children: [
+          content,
+          const Center(child: Icon(Icons.play_circle_fill, size: 40, color: Colors.white)),
+          if (media.durationLabel != null)
+            Positioned(left: 6, bottom: 6, child: _Badge(text: media.durationLabel!)),
+        ]);
+      }
+    } else if (media.isVideo) {
       content = Stack(
         fit: StackFit.expand,
         children: [

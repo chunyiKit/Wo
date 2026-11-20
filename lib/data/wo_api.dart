@@ -808,146 +808,103 @@ class WoApi {
   }
 
   // ── 囤货铺插件 · 囤货库存 ──────────────────────────────────────
-  /// 拉取囤货列表。[low] 为 true 时只取告急（数量见底）的项。
   Future<List<StockItem>> stockItems(String familyId, {bool? low}) async {
-    final data = await _client.get(
-      '/families/$familyId/plugins/stock/items',
-      query: low != null ? {'low': low} : null,
-    ) as List;
-    return data
-        .map((e) => StockItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final data = await _client.get('/families/$familyId/plugins/stock/items',
+      query: low != null ? {'low': low} : null) as List;
+    return data.map((e) => StockItem.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<StockItem> createStockItem(
-    String familyId, {
-    required String name,
-    required String emoji,
-    required int qty,
-    String? unit,
-    int? lowAt,
-    String? note,
-  }) async {
-    final data = await _client.post(
-      '/families/$familyId/plugins/stock/items',
-      body: {
-        'name': name,
-        'emoji': emoji,
-        'qty': qty,
-        if (unit != null && unit.isNotEmpty) 'unit': unit,
-        if (lowAt != null) 'low_at': lowAt,
-        if (note != null && note.isNotEmpty) 'note': note,
-      },
-    );
+  Future<StockItem> createStockItem(String familyId, {required String name,
+      required String emoji, required int qty, String? unit, int? lowAt,
+      String? note, String? clientId}) async {
+    final data = await _client.post('/families/$familyId/plugins/stock/items', body: {
+      'name': name, 'emoji': emoji, 'qty': qty,
+      if (unit != null && unit.isNotEmpty) 'unit': unit,
+      if (lowAt != null) 'low_at': lowAt,
+      if (note != null && note.isNotEmpty) 'note': note,
+      if (isLocal && clientId != null) 'client_id': clientId,
+    });
     return StockItem.fromJson(data as Map<String, dynamic>);
   }
 
-  /// 更新囤货项。编辑页一次性提交完整状态，[unit]/[lowAt]/[note] 传 null 即清除。
-  Future<StockItem> updateStockItem(
-    String familyId,
-    String id, {
-    required String name,
-    required String emoji,
-    required int qty,
-    String? unit,
-    int? lowAt,
-    String? note,
-  }) async {
-    final data = await _client.put(
-      '/families/$familyId/plugins/stock/items/$id',
-      body: {
-        'name': name,
-        'emoji': emoji,
-        'qty': qty,
-        'unit': (unit != null && unit.isNotEmpty) ? unit : null,
-        'low_at': lowAt,
-        'note': (note != null && note.isNotEmpty) ? note : null,
-      },
-    );
+  /// 本地普通编辑附带打开时数量；显式盘点确认由调用者取得。
+  Future<StockItem> updateStockItem(String familyId, String id,
+      {required String name, required String emoji, required int qty,
+      String? unit, int? lowAt, String? note, int? baseQty,
+      bool confirmStocktake = false, String? clientId}) async {
+    final data = await _client.put('/families/$familyId/plugins/stock/items/$id', body: {
+      'name': name, 'emoji': emoji, 'qty': qty,
+      'unit': (unit != null && unit.isNotEmpty) ? unit : null,
+      'low_at': lowAt, 'note': (note != null && note.isNotEmpty) ? note : null,
+      if (isLocal && baseQty != null && !confirmStocktake) 'base_qty': baseQty,
+      if (isLocal && confirmStocktake) 'confirm_stocktake': true,
+      if (isLocal && clientId != null) 'client_id': clientId,
+    });
+    return StockItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 增减动作直接表达增量，避免旧视图的绝对PUT覆盖同步来的数量。
+  Future<StockItem> adjustLocalStockItem(String familyId, String id,
+      {required int deltaQty, required String clientId}) async {
+    if (!isLocal) throw ApiException('LOCAL_ONLY', '此增量操作仅用于本机库存', statusCode: 405);
+    final data = await _client.post('/families/$familyId/plugins/stock/items/$id/adjust',
+      body: {'delta_qty': deltaQty, 'client_id': clientId});
     return StockItem.fromJson(data as Map<String, dynamic>);
   }
 
   Future<void> deleteStockItem(String familyId, String id) =>
-      _client.delete('/families/$familyId/plugins/stock/items/$id');
+    _client.delete('/families/$familyId/plugins/stock/items/$id');
 
-  /// 把一个囤货项加进采买清单（关联回该项）；已有未买的同项时返回那一条。
-  Future<BuyItem> stockItemToBuy(String familyId, String id) async {
-    final data = await _client
-        .post('/families/$familyId/plugins/stock/items/$id/to-buy');
+  Future<BuyItem> stockItemToBuy(String familyId, String id, {String? clientId}) async {
+    final data = await _client.post('/families/$familyId/plugins/stock/items/$id/to-buy',
+      body: isLocal && clientId != null ? {'client_id': clientId} : null);
     return BuyItem.fromJson(data as Map<String, dynamic>);
   }
 
   // ── 囤货铺插件 · 采买待买清单 ──────────────────────────────────
-  /// 拉取采买清单。[bought] 为空取全部，false 取待买，true 取已买。
   Future<List<BuyItem>> buyItems(String familyId, {bool? bought}) async {
-    final data = await _client.get(
-      '/families/$familyId/plugins/stock/buys',
-      query: bought != null ? {'bought': bought} : null,
-    ) as List;
-    return data
-        .map((e) => BuyItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final data = await _client.get('/families/$familyId/plugins/stock/buys',
+      query: bought != null ? {'bought': bought} : null) as List;
+    return data.map((e) => BuyItem.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<BuyItem> createBuyItem(
-    String familyId, {
-    required String name,
-    required String emoji,
-    String? wantQty,
-    String? note,
-  }) async {
-    final data = await _client.post(
-      '/families/$familyId/plugins/stock/buys',
-      body: {
-        'name': name,
-        'emoji': emoji,
-        if (wantQty != null && wantQty.isNotEmpty) 'want_qty': wantQty,
-        if (note != null && note.isNotEmpty) 'note': note,
-      },
-    );
+  Future<BuyItem> createBuyItem(String familyId, {required String name,
+      required String emoji, String? wantQty, String? note, String? clientId}) async {
+    final data = await _client.post('/families/$familyId/plugins/stock/buys', body: {
+      'name': name, 'emoji': emoji,
+      if (wantQty != null && wantQty.isNotEmpty) 'want_qty': wantQty,
+      if (note != null && note.isNotEmpty) 'note': note,
+      if (isLocal && clientId != null) 'client_id': clientId,
+    });
     return BuyItem.fromJson(data as Map<String, dynamic>);
   }
 
-  Future<BuyItem> updateBuyItem(
-    String familyId,
-    String id, {
-    required String name,
-    required String emoji,
-    String? wantQty,
-    String? note,
-  }) async {
-    final data = await _client.put(
-      '/families/$familyId/plugins/stock/buys/$id',
-      body: {
-        'name': name,
-        'emoji': emoji,
-        'want_qty': (wantQty != null && wantQty.isNotEmpty) ? wantQty : null,
-        'note': (note != null && note.isNotEmpty) ? note : null,
-      },
-    );
+  Future<BuyItem> updateBuyItem(String familyId, String id, {required String name,
+      required String emoji, String? wantQty, String? note, String? clientId}) async {
+    final data = await _client.put('/families/$familyId/plugins/stock/buys/$id', body: {
+      'name': name, 'emoji': emoji,
+      'want_qty': (wantQty != null && wantQty.isNotEmpty) ? wantQty : null,
+      'note': (note != null && note.isNotEmpty) ? note : null,
+      if (isLocal && clientId != null) 'client_id': clientId,
+    });
     return BuyItem.fromJson(data as Map<String, dynamic>);
   }
 
   Future<void> deleteBuyItem(String familyId, String id) =>
-      _client.delete('/families/$familyId/plugins/stock/buys/$id');
+    _client.delete('/families/$familyId/plugins/stock/buys/$id');
 
-  /// 标记买到。[intoStockQty] 非空时把这些数量入库：关联项直接累加，
-  /// 未关联则以这条待买新建一个囤货项。只在第一次确认时传数量。
-  Future<BuyItem> markBuyBought(
-    String familyId,
-    String id, {
-    int? intoStockQty,
-  }) async {
-    final data = await _client.post(
-      '/families/$familyId/plugins/stock/buys/$id/bought',
-      body: intoStockQty != null ? {'into_stock_qty': intoStockQty} : null,
-    );
+  Future<BuyItem> markBuyBought(String familyId, String id,
+      {int? intoStockQty, String? clientId}) async {
+    final data = await _client.post('/families/$familyId/plugins/stock/buys/$id/bought',
+      body: isLocal ? {if (intoStockQty != null) 'into_stock_qty': intoStockQty,
+        if (clientId != null) 'client_id': clientId}
+        : intoStockQty != null ? {'into_stock_qty': intoStockQty} : null);
     return BuyItem.fromJson(data as Map<String, dynamic>);
   }
 
-  Future<BuyItem> reopenBuyItem(String familyId, String id) async {
-    final data =
-        await _client.post('/families/$familyId/plugins/stock/buys/$id/reopen');
+  Future<BuyItem> reopenBuyItem(String familyId, String id, {String? clientId}) async {
+    final data = await _client.post('/families/$familyId/plugins/stock/buys/$id/reopen',
+      body: isLocal && clientId != null ? {'client_id': clientId} : null);
     return BuyItem.fromJson(data as Map<String, dynamic>);
   }
 
@@ -1218,7 +1175,7 @@ class WoApi {
       );
 
   /// 回忆媒体原图/视频的完整地址（含 host）。
-  String memoryMediaUrl(MemoryMedia m) => '${_client.baseUrl}${m.url}';
+  String memoryMediaUrl(MemoryMedia m) => isLocal ? m.url : '${_client.baseUrl}${m.url}';
 
   // ── 看电影插件 ──────────────────────────────────────────────────────
   /// 拉电影列表。[watched] 为空取全部,false 取想看,true 取看过。
@@ -1464,6 +1421,7 @@ class WoApi {
     required String cycle,
     required DateTime nextDue,
     String? note,
+    String? amountText, String? clientId,
     bool notifyEnabled = true,
     int notifyDaysBefore = 3,
     bool autoRecord = true,
@@ -1475,7 +1433,7 @@ class WoApi {
       body: {
         'name': name,
         'emoji': emoji,
-        'amount': amount,
+        'amount': isLocal && amountText != null ? amountText : amount,
         'cycle': cycle,
         'next_due': _formatDate(nextDue),
         if (note != null && note.isNotEmpty) 'note': note,
@@ -1484,6 +1442,7 @@ class WoApi {
         'auto_record': autoRecord,
         'accounting_category': accountingCategory,
         'exclude_from_budget': excludeFromBudget,
+        if (isLocal && clientId != null) 'client_id': clientId,
       },
     );
     return Subscription.fromJson(data as Map<String, dynamic>);
@@ -1498,6 +1457,7 @@ class WoApi {
     String? cycle,
     DateTime? nextDue,
     String? note,
+    String? amountText, String? clientId, bool confirmBilling = false, String? expectedConflictFrontier,
     bool? notifyEnabled,
     int? notifyDaysBefore,
     bool? autoRecord,
@@ -1510,7 +1470,7 @@ class WoApi {
       body: {
         if (name != null) 'name': name,
         if (emoji != null) 'emoji': emoji,
-        if (amount != null) 'amount': amount,
+        if (amount != null) 'amount': isLocal && amountText != null ? amountText : amount,
         if (cycle != null) 'cycle': cycle,
         if (nextDue != null) 'next_due': _formatDate(nextDue),
         'note': (note != null && note.isNotEmpty) ? note : null,
@@ -1521,6 +1481,9 @@ class WoApi {
           'accounting_category': accountingCategory,
         if (excludeFromBudget != null) 'exclude_from_budget': excludeFromBudget,
         if (active != null) 'active': active,
+        if (isLocal && clientId != null) 'client_id': clientId,
+        if (isLocal && confirmBilling) 'confirm_billing': true,
+        if (isLocal && expectedConflictFrontier != null) 'expected_conflict_frontier': expectedConflictFrontier,
       },
     );
     return Subscription.fromJson(data as Map<String, dynamic>);
@@ -1778,6 +1741,7 @@ class WoApi {
     required double balance,
     double monthlyIncome = 0,
     int incomeDay = 1,
+    String? balanceText, String? monthlyIncomeText, String? clientId,
   }) async {
     final data = await _client.post(
       '/families/$familyId/plugins/retirement/accounts',
@@ -1785,9 +1749,10 @@ class WoApi {
         'name': name,
         'kind': kind,
         'emoji': emoji,
-        'balance': balance,
-        'monthly_income': monthlyIncome,
+        'balance': isLocal && balanceText != null ? balanceText : balance,
+        'monthly_income': isLocal && monthlyIncomeText != null ? monthlyIncomeText : monthlyIncome,
         'income_day': incomeDay,
+        if (isLocal && clientId != null) 'client_id': clientId,
       },
     );
     return RetireAccount.fromJson(data as Map<String, dynamic>);
@@ -1803,6 +1768,7 @@ class WoApi {
     required double balance,
     required double monthlyIncome,
     required int incomeDay,
+    String? balanceText, String? monthlyIncomeText, String? clientId, bool preserveBalance = false, String? expectedConflictFrontier,
   }) async {
     final data = await _client.put(
       '/families/$familyId/plugins/retirement/accounts/$id',
@@ -1810,9 +1776,11 @@ class WoApi {
         'name': name,
         'kind': kind,
         'emoji': emoji,
-        'balance': balance,
-        'monthly_income': monthlyIncome,
+        if (!isLocal || !preserveBalance) 'balance': isLocal && balanceText != null ? balanceText : balance,
+        'monthly_income': isLocal && monthlyIncomeText != null ? monthlyIncomeText : monthlyIncome,
         'income_day': incomeDay,
+        if (isLocal && clientId != null) 'client_id': clientId,
+        if (isLocal && expectedConflictFrontier != null) 'expected_conflict_frontier': expectedConflictFrontier,
       },
     );
     return RetireAccount.fromJson(data as Map<String, dynamic>);
@@ -1837,6 +1805,7 @@ class WoApi {
     required double balance,
     required double monthlyPayment,
     int paymentDay = 1,
+    String? balanceText, String? monthlyPaymentText, String? clientId,
     String? fromAccountId,
   }) async {
     final data = await _client.post(
@@ -1845,9 +1814,10 @@ class WoApi {
         'name': name,
         'kind': kind,
         'emoji': emoji,
-        'balance': balance,
-        'monthly_payment': monthlyPayment,
+        'balance': isLocal && balanceText != null ? balanceText : balance,
+        'monthly_payment': isLocal && monthlyPaymentText != null ? monthlyPaymentText : monthlyPayment,
         'payment_day': paymentDay,
+        if (isLocal && clientId != null) 'client_id': clientId,
         if (fromAccountId != null) 'from_account_id': fromAccountId,
       },
     );
@@ -1864,6 +1834,7 @@ class WoApi {
     required double balance,
     required double monthlyPayment,
     required int paymentDay,
+    String? balanceText, String? monthlyPaymentText, String? clientId, bool preserveBalance = false, String? expectedConflictFrontier,
     String? fromAccountId,
     bool? active,
   }) async {
@@ -1873,9 +1844,11 @@ class WoApi {
         'name': name,
         'kind': kind,
         'emoji': emoji,
-        'balance': balance,
-        'monthly_payment': monthlyPayment,
+        if (!isLocal || !preserveBalance) 'balance': isLocal && balanceText != null ? balanceText : balance,
+        'monthly_payment': isLocal && monthlyPaymentText != null ? monthlyPaymentText : monthlyPayment,
         'payment_day': paymentDay,
+        if (isLocal && clientId != null) 'client_id': clientId,
+        if (isLocal && expectedConflictFrontier != null) 'expected_conflict_frontier': expectedConflictFrontier,
         'from_account_id': fromAccountId,
         if (active != null) 'active': active,
       },

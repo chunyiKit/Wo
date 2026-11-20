@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../widgets/wo_cinema.dart';
 
@@ -8,6 +9,7 @@ import '../../../theme/wo_tokens.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/member_avatar.dart';
 import '../../../widgets/wo_card.dart';
+import 'finance_ui_support.dart';
 import 'account_edit_page.dart';
 import 'retirement_common.dart';
 
@@ -22,18 +24,29 @@ class AccountsView extends StatefulWidget {
   State<AccountsView> createState() => _AccountsViewState();
 }
 
-class _AccountsViewState extends State<AccountsView> {
+class _AccountsViewState extends State<AccountsView> with FinanceLocalRefresh<AccountsView> {
   late Future<List<RetireAccount>> _future;
   List<RetireAccount>? _items;
   bool _loaded = false;
+  String? _familyId;
+  int _ticket = 0;
+  bool _refreshing = false, _again = false, _home = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_loaded) {
-      _loaded = true;
-      _future = _fetch()..then(_store);
+    final session = WoScope.of(context);
+    bindFinanceChanges(session.api.isLocal);
+    if (!_loaded || _familyId != session.currentFamilyId) {
+      _loaded = true; _familyId = session.currentFamilyId; _items = null;
+      _future = _initialFetch();
     }
+  }
+  @override
+  void onFinanceChanged() { unawaited(_refreshSilently(notifyHome: false)); }
+  Future<List<RetireAccount>> _initialFetch() {
+    final ticket = ++_ticket; final family = _familyId;
+    return _fetch().then((rows) { if (mounted && ticket == _ticket && family == _familyId) setState(() => _items = rows); return rows; });
   }
 
   Future<List<RetireAccount>> _fetch() {
@@ -44,27 +57,21 @@ class _AccountsViewState extends State<AccountsView> {
         : session.api.retireAccounts(fid);
   }
 
-  void _store(List<RetireAccount> list) {
-    if (mounted) setState(() => _items = list);
-  }
-
   Future<void> _retry() {
-    setState(() {
-      _items = null;
-      _future = _fetch()..then(_store);
-    });
-    return _future;
+    setState(() { _items = null; _future = _initialFetch(); }); return _future;
   }
-
-  Future<void> _refreshSilently() async {
+  Future<void> _refreshSilently({bool notifyHome = true}) async {
+    _home = _home || notifyHome;
+    if (_refreshing) { _again = true; return; }
+    _refreshing = true;
     try {
-      final list = await _fetch();
-      if (mounted) setState(() => _items = list);
-    } catch (_) {
-      // 拉取失败保留旧数据。
-    }
-    widget.onChanged();
-    if (mounted) await WoScope.of(context).refresh();
+      do {
+        _again = false;
+        final ticket = ++_ticket; final family = _familyId;
+        try { final rows = await _fetch(); if (mounted && ticket == _ticket && family == _familyId) setState(() => _items = rows); } catch (_) { /* 保留缓存 */ }
+      } while (mounted && _again);
+      if (mounted && _home) { _home = false; widget.onChanged(); try { await WoScope.of(context).refresh(); } catch (_) {} }
+    } finally { _refreshing = false; if (mounted && _again) unawaited(_refreshSilently(notifyHome: false)); }
   }
 
   Future<void> _openEditor([RetireAccount? existing]) async {
@@ -203,6 +210,10 @@ class _AccountTile extends StatelessWidget {
                       : '余额 ${yuan(account.balance)}',
                   style: t.labelMedium?.copyWith(color: wo.fgMid),
                 ),
+                if (account.balanceConflict || account.settlementConflict) ...[
+                  Text('上期支出变化或余额记录不一致，请先核对流水。', style: t.labelSmall?.copyWith(color: wo.warning)),
+                  WoTextButton(onPressed: onEdit, child: const Text('核对并确认余额')),
+                ],
               ],
             ),
           ),
