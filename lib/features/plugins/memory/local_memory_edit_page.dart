@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/api_client.dart';
@@ -150,7 +151,7 @@ class _LocalMemoryEditPageState extends State<LocalMemoryEditPage> {
     _title.dispose();_body.dispose();_location.dispose();super.dispose();
   }
   void _message(String text){ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content:Text(text)));}
-  void _toast(Object error){_message(error is ApiException?error.message:'无法完成本机操作，请保留草稿后重试');}
+  void _toast(Object error){_message(error is ApiException?error.message:error is PlatformException&&error.code=='MEDIA_UNAVAILABLE'&&error.details=='unsupported'?'此设备相册接口当前不可用，请选择文件中的照片或视频；草稿已保留':'无法完成本机操作，请保留草稿后重试');}
   Future<void> _addMedia() async {
     if(_picking||_mediaIds.length>=9||!_current)return;
     final epoch=_authorityEpoch;

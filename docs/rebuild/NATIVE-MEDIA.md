@@ -61,3 +61,10 @@ Python 静态检查：`python3 -m unittest discover -s tool/tests -p test_native
 Android Activity 和 iOS 隐式Engine注册media/crypto/discovery桥；退后台停止发现。原件不可读取或授权被拒时，手机备份来源保留缩略图并返回缺件，不会用脱敏或转码流补位。
 
 备份暂存仅能请求固定名字的App私有目录：Android noBackupFilesDir/0700，iOS ApplicationSupport/FileProtection.complete/排除备份并读回确认。拒绝符号链接或目录别名。此源码核对不等于实际OS权限、原件字节或平台编译验收。iOS Keychain采用ThisDeviceOnly且不同步；卸载后可能残留不可达旧密钥，当前新UUID引用不会自动继承旧身份，未宣称物理擦除。
+
+
+## 第五批iOS最低版本接线修复
+
+保持部署目标iOS13，媒体通道不再整体限制14+注册。Files13使用open-in-place与bookmark，14+使用UTType接口；PHPicker与相关新API仅14+。iOS13 Photos明确unsupported，回忆/旅行页面提示选择文件，不使用可能在选择过程中下载云端资源的旧UIImagePicker，也不拿重编码结果伪装原件。底层有界原件I/O移除13.4 API门槛。此为源码修复，未执行Swift/Xcode或iOS13/14真机；Photos13完整选择仍未交付。
+
+构建工具声明已对齐现有lock的Dart>=3.11.0/Flutter>=3.38.4，不改变手机OS下限。未解析依赖，FFI dev未锁及旧jpush锁条目仍待pub解析，不能手写生成产物假称可编译。

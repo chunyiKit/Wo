@@ -3,14 +3,15 @@ import UIKit
 import Photos
 import PhotosUI
 import UniformTypeIdentifiers
+import MobileCoreServices
+import Darwin
 import ImageIO
 import AVFoundation
 import AVKit
 import CryptoKit
 
 /// Native identifiers/bookmarks remain in this device-only registry, never channel maps.
-@available(iOS 14.0, *)
-final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
+final class WoMediaBridge: NSObject, UIDocumentPickerDelegate {
   private static let maxRead = 8 * 1024 * 1024
   private static let maxThumbnail = 96 * 1024
   private static let maxOriginal: Int64 = 20 * 1024 * 1024 * 1024
@@ -102,36 +103,41 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     guard let host = presenter(), host.presentedViewController == nil else { result(failure(fail("source_unavailable"))); return }
     pending = result; pendingKind = kind; pendingSource = source
     if source == "photos" {
-      var configuration = PHPickerConfiguration(photoLibrary: .shared())
-      configuration.selectionLimit = 1
-      configuration.filter = kind == "photo" ? .images : .videos
-      configuration.preferredAssetRepresentationMode = .current
-      let picker = PHPickerViewController(configuration: configuration)
-      picker.delegate = self; host.present(picker, animated: true)
+      if #available(iOS 14.0, *) {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.selectionLimit = 1
+        configuration.filter = kind == "photo" ? .images : .videos
+        configuration.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self; host.present(picker, animated: true)
+      } else {
+        // UIImagePickerController can expose PHAsset identity, but offers no
+        // public switch forbidding iCloud hydration inside its selection UI.
+        // Fail closed on iOS 13; the Files open-in-place path remains available.
+        pending = nil
+        result(FlutterError(code: "MEDIA_UNAVAILABLE", message: "iOS 13 暂不支持离线相册选择，请使用文件", details: "unsupported"))
+      }
     } else {
-      // Open in place: retain a security-scoped bookmark, never import or transcode.
-      let picker = UIDocumentPickerViewController(forOpeningContentTypes: [kind == "photo" ? UTType.image : UTType.movie], asCopy: false)
+      // Open in place on both supported OS generations; never import/transcode.
+      let picker: UIDocumentPickerViewController
+      if #available(iOS 14.0, *) {
+        picker = UIDocumentPickerViewController(forOpeningContentTypes: [kind == "photo" ? UTType.image : UTType.movie], asCopy: false)
+      } else {
+        picker = UIDocumentPickerViewController(documentTypes: [kind == "photo" ? kUTTypeImage as String : kUTTypeMovie as String], in: .open)
+      }
       picker.allowsMultipleSelection = false; picker.delegate = self
       host.present(picker, animated: true)
     }
   }
 
-  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-    picker.dismiss(animated: true)
-    guard let callback = pending else { return }
-    pending = nil
-    guard let selected = results.first else { callback(nil); return }
-    guard let identifier = selected.assetIdentifier else { callback(failure(fail("source_unavailable"))); return }
-    let kind = pendingKind
-    // PHPicker selection does not grant PHAssetResource access. Ask only after
-    // explicit user selection; denial does not trigger item-provider cloud loads.
-    PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in
-      self.async(callback) {
-        let handle = UUID().uuidString.lowercased()
-        let ref: [String: Any] = ["source": "photos", "kind": kind, "assetIdentifier": identifier]
-        var refs = try self.refs(); refs[handle] = ref; try self.save(refs)
-        return try self.resolve(handle, ref: ref)
-      }
+  private func finishPhotoSelection(_ identifier: String, kind: String, callback: @escaping FlutterResult) {
+    async(callback) {
+      let handle = UUID().uuidString.lowercased()
+      let ref: [String: Any] = ["source": "photos", "kind": kind, "assetIdentifier": identifier]
+      // Validate access and selected media kind before retaining any identity.
+      _ = try self.asset(ref)
+      var refs = try self.refs(); refs[handle] = ref; try self.save(refs)
+      return try self.resolve(handle, ref: ref)
     }
   }
 
@@ -177,8 +183,12 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
   }
   private func snapshot(_ handle: String) throws -> URL { try base().appendingPathComponent("original-\(handle).snapshot") }
   private func asset(_ ref: [String: Any]) throws -> PHAsset {
-    let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-    guard status == .authorized || status == .limited else { throw fail("permission_denied") }
+    if #available(iOS 14.0, *) {
+      let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+      guard status == .authorized || status == .limited else { throw fail("permission_denied") }
+    } else {
+      guard PHPhotoLibrary.authorizationStatus() == .authorized else { throw fail("permission_denied") }
+    }
     guard let identifier = ref["assetIdentifier"] as? String,
         let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject else { throw fail("source_missing") }
     let expected: PHAssetMediaType = ref["kind"] as? String == "photo" ? .image : .video
@@ -200,8 +210,80 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     guard !stale, url.isFileURL else { throw fail("permission_denied") }
     return url
   }
+  private func mimeType(_ identifier: String) -> String {
+    guard !identifier.isEmpty else { return "" }
+    if #available(iOS 14.0, *) { return UTType(identifier)?.preferredMIMEType ?? "" }
+    guard let tag = UTTypeCopyPreferredTagWithClass(identifier as CFString, kUTTagClassMIMEType)?.takeRetainedValue() else { return "" }
+    return tag as String
+  }
+  private func conforms(_ identifier: String, kind: String) -> Bool {
+    guard !identifier.isEmpty, ["photo", "video"].contains(kind) else { return false }
+    if #available(iOS 14.0, *) { return UTType(identifier)?.conforms(to: kind == "photo" ? .image : .movie) == true }
+    return UTTypeConformsTo(identifier as CFString, kind == "photo" ? kUTTypeImage : kUTTypeMovie)
+  }
+
+  // Throwing FileHandle read/write APIs require iOS 13.4. POSIX keeps iOS 13.0
+  // error handling explicit instead of using exception-raising legacy methods.
+  private final class MediaFile {
+    private var descriptor: Int32 = -1
+    private static func ioError() -> NSError { NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+    init(_ url: URL, writing: Bool = false) throws {
+      guard url.isFileURL else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(EINVAL)) }
+      descriptor = Darwin.open(url.path, (writing ? O_WRONLY : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+      guard descriptor >= 0 else { throw Self.ioError() }
+      var metadata = stat()
+      guard Darwin.fstat(descriptor, &metadata) == 0 else {
+        let error = Self.ioError(); Darwin.close(descriptor); descriptor = -1; throw error
+      }
+      guard (metadata.st_mode & S_IFMT) == S_IFREG else {
+        Darwin.close(descriptor); descriptor = -1
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(EINVAL))
+      }
+    }
+    deinit { if descriptor >= 0 { Darwin.close(descriptor) } }
+    func read(upToCount count: Int) throws -> Data {
+      guard count >= 0, count <= 8 * 1024 * 1024 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(EINVAL)) }
+      if count == 0 { return Data() }
+      var bytes = Data(count: count), received = 0
+      try bytes.withUnsafeMutableBytes { (raw: UnsafeMutableRawBufferPointer) in
+        while received < count {
+          let next = Darwin.read(descriptor, raw.baseAddress!.advanced(by: received), count - received)
+          if next < 0 && errno == EINTR { continue }
+          guard next >= 0 else { throw Self.ioError() }
+          if next == 0 { break }
+          received += next
+        }
+      }
+      bytes.count = received; return bytes
+    }
+    func write(_ data: Data) throws {
+      try data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+        var offset = 0
+        while offset < raw.count {
+          let written = Darwin.write(descriptor, raw.baseAddress!.advanced(by: offset), raw.count - offset)
+          if written < 0 && errno == EINTR { continue }
+          guard written > 0 else { throw Self.ioError() }
+          offset += written
+        }
+      }
+    }
+    func seek(_ offset: UInt64) throws {
+      guard offset <= UInt64(Int64.max), Darwin.lseek(descriptor, off_t(offset), SEEK_SET) >= 0 else { throw Self.ioError() }
+    }
+    func synchronize() throws {
+      var result: Int32
+      repeat { result = Darwin.fsync(descriptor) } while result < 0 && errno == EINTR
+      guard result == 0 else { throw Self.ioError() }
+    }
+    func close() throws {
+      if descriptor < 0 { return }
+      let old = descriptor; descriptor = -1
+      guard Darwin.close(old) == 0 else { throw Self.ioError() }
+    }
+  }
+
   private func ensureLocalFile(_ url: URL) throws -> URLResourceValues {
-    let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .fileSizeKey, .contentTypeKey, .contentModificationDateKey])
+    let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .fileSizeKey, .typeIdentifierKey, .contentModificationDateKey])
     guard values.isRegularFile == true else { throw fail("source_unavailable") }
     if values.isUbiquitousItem == true {
       guard values.ubiquitousItemDownloadingStatus == .current || values.ubiquitousItemDownloadingStatus == .downloaded else { throw fail("not_on_device") }
@@ -226,7 +308,7 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     do {
       if ref["source"] as? String == "photos" {
         let asset = try self.asset(ref); let resource = try self.resource(ref)
-        out["contentType"] = UTType(resource.uniformTypeIdentifier)?.preferredMIMEType ?? ""
+        out["contentType"] = mimeType(resource.uniformTypeIdentifier)
         out["width"] = asset.pixelWidth; out["height"] = asset.pixelHeight
         out["durationMs"] = Int64(max(0, asset.duration) * 1000)
         // PHAssetResource has no public byte-size API. No KVC, download or full scan.
@@ -235,7 +317,7 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
         guard url.startAccessingSecurityScopedResource() else { throw fail("permission_denied") }
         defer { url.stopAccessingSecurityScopedResource() }
         let values = try ensureLocalFile(url)
-        out["contentType"] = values.contentType?.preferredMIMEType ?? ""
+        out["contentType"] = mimeType(values.typeIdentifier ?? "")
       }
     } catch { out["missingReason"] = (error as? MediaFailure)?.reason ?? "source_unavailable" }
     return out
@@ -249,7 +331,7 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     let temporary = try base().appendingPathComponent("partial-\(UUID().uuidString)")
     guard manager.createFile(atPath: temporary.path, contents: nil, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]) else { throw fail("source_unavailable") }
     defer { try? manager.removeItem(at: temporary) }
-    let output = try FileHandle(forWritingTo: temporary)
+    let output = try MediaFile(temporary, writing: true)
     var digest = SHA256(); var total: Int64 = 0
     do {
       if ref["source"] as? String == "photos" {
@@ -263,7 +345,7 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
           if streamError != nil { return }
           do {
             guard total <= Self.maxOriginal - Int64(data.count) else { throw self.fail("size_limit") }
-            try output.write(contentsOf: data); digest.update(data: data); total += Int64(data.count)
+            try output.write(data); digest.update(data: data); total += Int64(data.count)
           } catch { streamError = error }
         }, completionHandler: { error in
           lock.lock(); if streamError == nil { streamError = error }; lock.unlock(); done.signal()
@@ -274,7 +356,7 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
           if native.domain == PHPhotosErrorDomain && native.code == PHPhotosError.Code.networkAccessRequired.rawValue { throw fail("not_on_device") }
           throw streamError
         }
-        ref["contentType"] = UTType(resource.uniformTypeIdentifier)?.preferredMIMEType ?? ""
+        ref["contentType"] = mimeType(resource.uniformTypeIdentifier)
         ref["width"] = asset.pixelWidth; ref["height"] = asset.pixelHeight
         ref["durationMs"] = Int64(max(0, asset.duration) * 1000)
       } else {
@@ -282,16 +364,18 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
         guard url.startAccessingSecurityScopedResource() else { throw fail("permission_denied") }
         defer { url.stopAccessingSecurityScopedResource() }
         let before = try ensureLocalFile(url)
-        let type = before.contentType
-        guard type?.conforms(to: ref["kind"] as? String == "photo" ? .image : .movie) == true else { throw fail("unsupported") }
-        let input = try FileHandle(forReadingFrom: url); defer { try? input.close() }
-        while let data = try input.read(upToCount: 64 * 1024), !data.isEmpty {
+        let identifier = before.typeIdentifier ?? ""
+        guard conforms(identifier, kind: ref["kind"] as? String ?? "") else { throw fail("unsupported") }
+        let input = try MediaFile(url); defer { try? input.close() }
+        while true {
+          let data = try input.read(upToCount: 64 * 1024)
+          if data.isEmpty { break }
           guard total <= Self.maxOriginal - Int64(data.count) else { throw fail("size_limit") }
-          try output.write(contentsOf: data); digest.update(data: data); total += Int64(data.count)
+          try output.write(data); digest.update(data: data); total += Int64(data.count)
         }
         let after = try ensureLocalFile(url)
         guard before.fileSize == after.fileSize, before.contentModificationDate == after.contentModificationDate, total == Int64(after.fileSize ?? -1) else { throw fail("source_changed") }
-        ref["contentType"] = type?.preferredMIMEType ?? ""
+        ref["contentType"] = mimeType(identifier)
       }
       guard total > 0 else { throw fail("source_unavailable") }
       try output.synchronize(); try output.close()
@@ -314,9 +398,13 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     guard let expected = ref["snapshotSHA256"] as? String else { throw fail("not_prepared") }
     let signature = try snapshotSignature(url, hash: expected)
     if verifiedSnapshots[handle] == signature { return }
-    let input = try FileHandle(forReadingFrom: url); defer { try? input.close() }
+    let input = try MediaFile(url); defer { try? input.close() }
     var digest = SHA256()
-    while let data = try input.read(upToCount: 64 * 1024), !data.isEmpty { digest.update(data: data) }
+    while true {
+      let data = try input.read(upToCount: 64 * 1024)
+      if data.isEmpty { break }
+      digest.update(data: data)
+    }
     guard digest.finalize().map({ String(format: "%02x", $0) }).joined() == expected else { throw fail("source_changed") }
     verifiedSnapshots[handle] = signature
   }
@@ -328,9 +416,9 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? -1
     guard Int64(size) == expected.int64Value, offset <= UInt64(size) else { throw fail("source_changed") }
     try verifySnapshot(handle, ref: ref, url: url)
-    let input = try FileHandle(forReadingFrom: url); defer { try? input.close() }
-    try input.seek(toOffset: offset)
-    let bytes = try input.read(upToCount: min(count, size - Int(offset))) ?? Data()
+    let input = try MediaFile(url); defer { try? input.close() }
+    try input.seek(offset)
+    let bytes = try input.read(upToCount: min(count, size - Int(offset)))
     guard bytes.count == min(count, size - Int(offset)) else { throw fail("source_changed") }
     return bytes
   }
@@ -498,4 +586,19 @@ final class WoMediaBridge: NSObject, PHPickerViewControllerDelegate, UIDocumentP
     throw fail("thumbnail_invalid")
   }
 
+}
+
+@available(iOS 14.0, *)
+extension WoMediaBridge: PHPickerViewControllerDelegate {
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    picker.dismiss(animated: true)
+    guard let callback = pending else { return }; pending = nil
+    guard let selected = results.first else { callback(nil); return }
+    guard let identifier = selected.assetIdentifier else { callback(failure(fail("source_unavailable"))); return }
+    let kind = pendingKind
+    // PHPicker alone does not grant original PHAssetResource access.
+    PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in
+      self.finishPhotoSelection(identifier, kind: kind, callback: callback)
+    }
+  }
 }

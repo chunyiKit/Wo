@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/api_client.dart';
@@ -34,7 +35,7 @@ class _LocalTravelAddPageState extends State<LocalTravelAddPage> {
   }
   bool _valid(int epoch)=>mounted&&_epoch==epoch&&_familyId==WoScope.of(context).currentFamilyId;
   void _toast(String text)=>ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content:Text(text)));
-  void _error(Object e)=>_toast(e is ApiException?e.message:'无法完成本机旅行操作，请保留当前记录后重试');
+  void _error(Object e)=>_toast(e is ApiException?e.message:e is PlatformException&&e.code=='MEDIA_UNAVAILABLE'&&e.details=='unsupported'?'此设备相册接口当前不可用，请选择文件中的原照；当前记录仍保留':'无法完成本机旅行操作，请保留当前记录后重试');
   @override void dispose(){_epoch++;_place.dispose();_caption.dispose();super.dispose();}
   Future<void> _pick()async{
     if(_busy||_saved!=null)return;final epoch=_epoch,runtime=LocalRuntime.instance;

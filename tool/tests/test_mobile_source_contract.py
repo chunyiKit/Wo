@@ -191,7 +191,13 @@ class MobileSourceContract(unittest.TestCase):
             self.assertNotRegex(source, r'Text\(\s*(?:error|exception|snapshot\.error)\.toString\(')
             self.assertNotRegex(source, r'\b(?:print|debugPrint)\s*\(')
         editor = (ROOT / 'lib/features/plugins/memory/local_memory_edit_page.dart').read_text()
-        self.assertIn("error is ApiException?error.message:'无法完成本机操作，请保留草稿后重试'", editor)
+        toast = editor.split('void _toast(Object error)', 1)[1].split('Future<void> _addMedia()', 1)[0]
+        self.assertIn('error is ApiException?error.message:', toast)
+        self.assertIn("error is PlatformException&&error.code=='MEDIA_UNAVAILABLE'&&error.details=='unsupported'", toast)
+        self.assertEqual(toast.count('error.message'), 1)
+        self.assertIn('无法完成本机操作，请保留草稿后重试', toast)
+        self.assertNotIn('error.toString()', toast)
+        self.assertNotRegex(toast, r'_message\(\s*error\s*\)')
         self.assertIn('changes.removeListener(_permissionChanged)', editor)
         self.assertIn("runtime.store.setPrivate(key,snapshot)", editor)
 
