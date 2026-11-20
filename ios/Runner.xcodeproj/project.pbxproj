@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A7059F5D58AB45CBB55913AA /* WoAttachmentBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE965CD1AD3B4F0EB287C8F1 /* WoAttachmentBridge.swift */; };
 		23207C51863ABDA58EA1DCDF /* WoMediaBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02DDFB3425FEF689BEC8152B /* WoMediaBridge.swift */; };
 		B54628827762A2E43D241867 /* WoLocalBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE0E60ECD545E8B78D0E90A /* WoLocalBridge.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
@@ -44,6 +45,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		CE965CD1AD3B4F0EB287C8F1 /* WoAttachmentBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WoAttachmentBridge.swift; sourceTree = "<group>"; };
 		02DDFB3425FEF689BEC8152B /* WoMediaBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WoMediaBridge.swift; sourceTree = "<group>"; };
 		FCE0E60ECD545E8B78D0E90A /* WoLocalBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WoLocalBridge.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				02DDFB3425FEF689BEC8152B /* WoMediaBridge.swift */,
+				CE965CD1AD3B4F0EB287C8F1 /* WoAttachmentBridge.swift */,
 				FCE0E60ECD545E8B78D0E90A /* WoLocalBridge.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
@@ -289,6 +292,7 @@
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				23207C51863ABDA58EA1DCDF /* WoMediaBridge.swift in Sources */,
+				A7059F5D58AB45CBB55913AA /* WoAttachmentBridge.swift in Sources */,
 				B54628827762A2E43D241867 /* WoLocalBridge.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,

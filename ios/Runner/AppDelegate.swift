@@ -6,6 +6,7 @@ import UIKit
   private var localPrivacyChannel: FlutterMethodChannel?
   private var localBridge: WoLocalBridge?
   private var mediaBridge: AnyObject?
+  private var attachmentBridge: WoAttachmentBridge?
   private var backgroundObserver: NSObjectProtocol?
 
   override func application(
@@ -21,6 +22,13 @@ import UIKit
     localBridge?.close()
     localBridge = WoLocalBridge(messenger: messenger)
     mediaBridge = WoMediaBridge.attach(messenger: messenger) { [weak self] in
+      var controller = self?.window?.rootViewController ?? UIApplication.shared.connectedScenes
+        .compactMap { ($0 as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow })?.rootViewController }.first
+      while let presented = controller?.presentedViewController { controller = presented }
+      return controller
+    }
+    attachmentBridge?.close()
+    attachmentBridge = WoAttachmentBridge.attach(messenger: messenger) { [weak self] in
       var controller = self?.window?.rootViewController ?? UIApplication.shared.connectedScenes
         .compactMap { ($0 as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow })?.rootViewController }.first
       while let presented = controller?.presentedViewController { controller = presented }
