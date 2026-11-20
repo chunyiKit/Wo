@@ -182,6 +182,20 @@ class _RecoveryWorkspacePageState extends State<_RecoveryWorkspacePage> {
       if(asset.workspaceId!=workspaceId)throw const BackupException('recovery_asset_scope_mismatch');
       // 所有文件都由owned store按workspace和新ID核验，绝不拼路径或使用旧照片URI。
       var file=await widget.store.media.verifiedFile(workspaceId,asset.id);
+      if(asset.kind=='file'){
+        if(!mounted)return;
+        if(file==null){ScaffoldMessenger.of(context).showSnackBar(WoSnackBar(content:const Text('普通附件当前不可读取，已有记录与缺件声明仍保留')));return;}
+        await showDialog<void>(context:context,builder:(dialogContext)=>AlertDialog(
+          title:const Text('普通附件原字节校验'),
+          content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+            const Text('已重新校验文件大小与 SHA-256；这不代表完整业务恢复。'),
+            const SizedBox(height:WoTokens.space3),Text('文件大小：${asset.size} 字节'),
+            const SizedBox(height:WoTokens.space2),const Text('SHA-256'),SelectableText(asset.sha256,style:const TextStyle(fontFamily:'monospace',fontSize:12)),
+            const SizedBox(height:WoTokens.space3),const Text('当前仅保留原字节，不预览 PDF 或办公文档，不调用外部程序。可通过独立资料库备份再次保存这些字节。'),
+          ])),actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext),child:const Text('关闭'))],
+        ));
+        return;
+      }
       var kind=asset.kind,thumbnailOnly=asset.kind=='thumbnail',originalUnavailable=false;
       if(file==null&&asset.thumbnailId!=null){
         file=await widget.store.media.verifiedFile(workspaceId,asset.thumbnailId!);
@@ -270,11 +284,12 @@ String _collectionLabel(String collection){
   final parts=collection.split('/').where((part)=>part.isNotEmpty).toList();
   return parts.length>2?parts.skip(2).join('/'):'历史记录';
 }
-String _assetKind(String kind)=>switch(kind){'photo'=>'照片原件','video'=>'视频原件','thumbnail'=>'缩略图',_=>'记录归档原字节'};
+String _assetKind(String kind)=>switch(kind){'photo'=>'照片原件','video'=>'视频原件','thumbnail'=>'缩略图','file'=>'普通附件',_=>'记录归档原字节'};
 String _assetStatus(OwnedMediaAsset asset){
   if(!asset.available)return '${switch(asset.status){'copying'=>'复制尚未完成','failed'=>'复制未完成，可从同一归档重试',_=>'缺件或当前不可读取'}}；已有文字记录保留';
   if(asset.kind=='records')return '原始记录字节已保留；可在历史记录页阅读或独立再备份';
   if(asset.kind=='thumbnail')return '缩略图字节已保存；不表示原件存在';
+  if(asset.kind=='file')return '原字节已保存；点按重新校验大小与 SHA-256，暂不预览文档';
   return asset.sourceExact?'已保存，打开前重新校验摘要':'已保存，原件保真待确认';
 }
 String _recoveryError(Object error){
@@ -291,6 +306,8 @@ String _recoveryError(Object error){
     'package_binding_collision'=>'备份条目标识存在冲突，未作为同包导入。',
     'package_binding_limit'||'package_total_limit'=>'备份包超过联合恢复限额，未作为成功导入。',
     'private_acl_unavailable'=>'此平台未验证私有目录权限，已停止打开或写入明文。',
+    'owned_integrity'=>'资料库文件大小或摘要不匹配，未通过校验；可从同一归档重试。',
+    'owned_unavailable'=>'资料库文件当前不可读取，已有记录及缺件声明仍保留。',
     _=>'操作未完成，现有资料保持原样。请核对同一已校验归档后显式重试。',
   };
 }

@@ -60,6 +60,22 @@ class RecoveryLibraryUiContractTests(unittest.TestCase):
         for forbidden in ('OpenFile', 'open_filex', 'Share.', 'launchUrl', 'VideoPlayerController.network', 'Image.network'):
             self.assertNotIn(forbidden, self.source)
 
+    def test_ordinary_file_is_labeled_and_verified_without_media_or_external_preview(self):
+        self.assertIn("'file'=>'普通附件'", self.source)
+        status = self.source.split('String _assetStatus(', 1)[1].split('String _recoveryError(', 1)[0]
+        self.assertIn("if(asset.kind=='file')return '原字节已保存；点按重新校验大小与 SHA-256，暂不预览文档'", status)
+        self.assertLess(status.index("asset.kind=='file'"), status.index('return asset.sourceExact?'))
+        media = self.source.split('Future<void> _openAsset(', 1)[1].split('Widget _media()', 1)[0]
+        self.assertLess(media.index('asset.workspaceId!=workspaceId'), media.index('verifiedFile(workspaceId,asset.id)'))
+        self.assertLess(media.index('verifiedFile(workspaceId,asset.id)'), media.index("if(asset.kind=='file')"))
+        ordinary = media.split("if(asset.kind=='file'){", 1)[1].split('var kind=asset.kind', 1)[0]
+        for required in ('if(file==null)', '普通附件当前不可读取', '普通附件原字节校验', '已重新校验文件大小与 SHA-256', "Text('文件大小：${asset.size} 字节')", 'SelectableText(asset.sha256', '不预览 PDF 或办公文档，不调用外部程序', 'return;'):
+            self.assertIn(required, ordinary)
+        self.assertTrue(ordinary.rstrip().endswith('return;\n      }'))
+        for forbidden in ('_RecoveryMediaPage', 'Image.file', 'VideoPlayer', 'verifiedFile(workspaceId,asset.thumbnailId!)', '.write', '.delete', 'launchUrl', 'OpenFile', 'Share.'):
+            self.assertNotIn(forbidden, ordinary)
+        self.assertIn("'owned_integrity'=>'资料库文件大小或摘要不匹配，未通过校验", self.source)
+
     def test_incomplete_thumbnail_and_codec_states_are_not_complete_restore(self):
         self.assertIn('originalUnavailable=true', self.source)
         self.assertIn('此项不声明对应原件是否可用', self.source)
